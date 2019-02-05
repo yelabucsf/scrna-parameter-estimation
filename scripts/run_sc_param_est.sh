@@ -22,7 +22,7 @@
 #tasks=(0 1bac 2xyz 3ijk 4abc 5def 6ghi 7jkl 8mno 9pqr 1stu )
 #input="${tasks[$SGE_TASK_ID]}"
 
-export PYTHONPATH=/netapp/home/mincheol/scrna-parameter-estimation/
+export PYTHONPATH=/netapp/home/mincheol/scrna-parameter-estimation/simplesc/
 # export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/netapp/home/mincheol/anaconda3/lib
 
 # export CUDA_PATH=/ye/yelabstore2/mincheol/cuda-8.0

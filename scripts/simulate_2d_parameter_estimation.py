@@ -27,21 +27,23 @@ if __name__ =='__main__':
 	# True Parameters
 	num_cells = 100000
 	p = 0.1
-	mu = [3, 5]
-	sigma = [[3, 2],[2, 2]]
+	mu = [1.1, 1.5]
+	sigma = [[0.6**2, 0.1],[0.1, 0.4**2]]
 
-	continuous_gaussian= multivariate_normal.rvs(mu, sigma, size=num_cells)
+	print('True params: mu={}, sigma={}'.format(mu, sigma))
 
-	ground_truth_counts = np.clip(
-		np.round(continuous_gaussian),
-		a_min=0, 
-		a_max=100).astype(np.int64)
+	continuous_gaussian = multivariate_normal.rvs(mu, sigma, size=num_cells)
+	continuous = np.exp(continuous_gaussian)
+
+	ground_truth_counts = np.round(continuous).astype(np.int64)
 
 	observed = np.random.binomial(n=ground_truth_counts, p=p)
 
-	mu_hat, sigma_hat, progress = md2.run_2d_em(observed)
+	mu_hat, sigma_hat, progress = md2.run_2d_em(
+		observed, 
+		num_iter=200)
 
 	print(mu_hat)
 	print(sigma_hat)
 
-	progress.to_csv('/netapp/home/mincheol/param_est_data/simulated_2d_em_progress.csv', index=False)
+	#progress.to_csv('/netapp/home/mincheol/simulated_2d_em_progress.csv', index=False)
