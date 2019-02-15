@@ -13,6 +13,7 @@ import numpy as np
 import itertools
 import logging
 from scipy.stats import multivariate_normal
+import pickle as pkl
 
 
 class SingleCellEstimator(object):
@@ -33,6 +34,8 @@ class SingleCellEstimator(object):
 		self.group_label = group_label
 		self.param_1d = {}
 		self.param_2d = {}
+		self.param_sweep_2d = {}
+		self.log_likelihood_2d = {}
 		self.fitting_progress = {}
 		self.diff_exp = {}
 
@@ -107,7 +110,48 @@ class SingleCellEstimator(object):
 		return np.nan_to_num(stats.multivariate_normal.pdf(np.log(x), mean=mean, cov=cov)/denom)
 
 
-	def _multivariate_pdf(self, x, mean, cov, method='lognormal'):
+	def _lognormal_pmf_2d(self, x, mean, cov):
+
+		if type(x) == list:
+			x = np.array(x).reshape(-1, 2)
+		
+		x = x.astype(np.float64)
+
+		upper_right = x + 0.5
+
+		lower_left = x - 0.5
+
+		upper_left = x.copy()
+		upper_left[:, 0] = upper_left[:, 0] - 0.5
+		upper_left[:, 1] = upper_left[:, 1] + 0.5
+
+		lower_right = x.copy()
+		lower_right[:, 0] = lower_right[:, 0] + 0.5
+		lower_right[:, 1] = lower_right[:, 1] - 0.5
+
+		both_zero = (x.sum(axis=1) == 0)
+		d0_zero = (x[:, 0] == 0) & (x[:, 1] != 0)
+		d1_zero = (x[:, 1] == 0) & (x[:, 0] != 0)
+		both_nonzero = ~(d0_zero | d1_zero | both_zero)
+
+		upper_right_cdf = stats.multivariate_normal.cdf(np.log(upper_right), mean=mean, cov=cov)
+		lower_left_cdf = np.nan_to_num(stats.multivariate_normal.cdf(np.log(lower_left), mean=mean, cov=cov))
+		upper_left_cdf = np.nan_to_num(stats.multivariate_normal.cdf(np.log(upper_left), mean=mean, cov=cov))
+		lower_right_cdf = np.nan_to_num(stats.multivariate_normal.cdf(np.log(lower_right), mean=mean, cov=cov))
+
+		both_zeros_pmf = upper_right_cdf
+		d1_zero_pmf = upper_right_cdf - upper_left_cdf
+		d0_zero_pmf = upper_right_cdf - lower_right_cdf
+		both_nonzero_pmf = upper_right_cdf - lower_right_cdf - (upper_left_cdf-lower_left_cdf)
+
+		return \
+			(both_zeros_pmf * both_zero) + \
+			(d1_zero_pmf * d1_zero) + \
+			(d0_zero_pmf * d0_zero) + \
+			(both_nonzero_pmf * both_nonzero)
+
+
+	def _multivariate_pmf(self, x, mean, cov, method='lognormal'):
 		""" Multivariate normal PMF. """
 
 		if method == 'normal':
@@ -116,23 +160,23 @@ class SingleCellEstimator(object):
 
 		if method == 'lognormal':
 
-			return self._lognormal_pdf_2d(x, mean=mean, cov=cov)
+			return self._lognormal_pmf_2d(x, mean=mean, cov=cov)
 
 
-	def _calculate_px_2d(self, x1, x2, mu, sigma, p, method, max_count=21):
-		z_candidates = np.array(list(itertools.product(np.arange(x1, max_count), np.arange(x2, max_count))))
+	def _calculate_px_2d(self, x1, x2, mu, sigma, p, method):
+		z_candidates = np.array(list(itertools.product(np.arange(x1, self.max_latent), np.arange(x2, self.max_latent))))
 		return (
 			stats.binom.pmf(x1, z_candidates[:, 0], p) * \
 			stats.binom.pmf(x2, z_candidates[:, 1], p) * \
-			self._multivariate_pdf(z_candidates, mean=mu, cov=sigma, method=method)
+			self._multivariate_pmf(z_candidates, mean=mu, cov=sigma, method=method)
 			).sum()
 
 
-	def _create_px_table_2d(self, mu, sigma, p, method, max_count=21):
+	def _create_px_table_2d(self, mu, sigma, p, method):
 
-		px_table = np.zeros((max_count, max_count))
-		for i in range(max_count):
-			for j in range(max_count):
+		px_table = np.zeros((self.max_latent, self.max_latent))
+		for i in range(self.max_latent):
+			for j in range(self.max_latent):
 				px_table[i][j] = self._calculate_px_2d(i, j, mu, sigma, p, method)
 		return px_table
 
@@ -166,7 +210,7 @@ class SingleCellEstimator(object):
 
 			# Compute the log likelihood
 			px_table = self._create_px_table(mu_hat, sigma_hat, p_hat)
-			log_likelihood = np.array([count*np.log(px_table[int(val)]) for val,count in zip(observed_counts.index, observed_counts)]).sum()
+			log_likelihood = np.array([count*np.log(px_table[int(val)]) if val < self.max_latent else 0 for val,count in zip(observed_counts.index, observed_counts)]).sum()
 			
 
 			# Early stopping and prevent pathological behavior
@@ -174,7 +218,7 @@ class SingleCellEstimator(object):
 				itr > 0 and \
 				(np.isinf(log_likelihood) or \
 					np.isnan(log_likelihood) or \
-					(log_likelihood < fitting_progress[-1][4] + 1e-4) or \
+					(log_likelihood < fitting_progress[-1][4] + 5e-3) or \
 					np.isnan(mu_hat) or \
 					np.isnan(sigma_hat))
 
@@ -201,6 +245,93 @@ class SingleCellEstimator(object):
 		self.fitting_progress[gene][group] = fitting_progress.copy()
 
 
+	def compute_2d_params(
+		self,
+		gene_1, 
+		gene_2, 
+		group='all',
+		search_num=200
+		):
+
+		if gene_1 > gene_2: # Flip for convention
+
+			temp = gene_1
+			gene_1 = gene_2
+			gene_2 = temp
+
+		if not (gene_1 in self.param_1d and group in self.param_1d[gene_1]):
+
+			print('Please run 1D parameter estimation first!')
+			raise
+
+		if not (gene_2 in self.param_1d and group in self.param_1d[gene_2]):
+
+			print('Please run 1D parameter estimation first!')
+			raise
+
+		if gene_1 + '*' + gene_2 in self.param_2d and group in self.param_2d[gene_1 + '*' + gene_2]:
+
+			print('Already computed!')
+			return
+
+		mu_1 = self.param_1d[gene_1][group][0]
+		mu_2 = self.param_1d[gene_2][group][0]
+		mu = np.array([mu_1, mu_2])
+		sigma_1 = self.param_1d[gene_1][group][1]
+		sigma_2 = self.param_1d[gene_2][group][1]
+		p = self.param_1d[gene_2][group][2]
+
+		max_magnitude = sigma_1 * sigma_2
+
+		search_parameters = np.linspace(-max_magnitude, max_magnitude, search_num)
+
+		cell_selector = (self.anndata.obs[self.group_label] == group).values if group != 'all' else np.arange(self.anndata.shape[0])
+		gene_selector = (self.anndata.var.index.values == gene_1) + (self.anndata.var.index.values == gene_2)
+		observed = self.anndata.X[cell_selector, :][:, gene_selector]
+
+		if type(self.anndata.X) != np.ndarray:
+			observed = observed.toarray().reshape(-1, 2)
+
+		observed_df = \
+			pd.DataFrame(observed, columns=[gene_1, gene_2])\
+			.groupby([gene_1, gene_2])\
+			.size()\
+			.reset_index(name='count')
+
+		ll_estimates = []
+		for cov_val in search_parameters:
+
+			cov_estimate = np.array([[sigma_1, cov_val], [cov_val, sigma_2]])
+
+			observed_df['ll'] = observed_df\
+				.apply(
+					lambda row: row['count'] * np.log(
+						self._calculate_px_2d(row[gene_1], row[gene_2], mu, cov_estimate, p, 'lognormal')) if row[gene_1] < self.max_latent and row[gene_2] < self.max_latent else 0, axis=1)
+			ll_estimates.append(observed_df['ll'].sum())
+		ll_estimates = np.array(ll_estimates)
+
+		cov_estimate = search_parameters[ll_estimates == ll_estimates.max()]
+		if len(cov_estimate) > 1:
+
+			cov_estimate = None
+
+		else:
+
+			cov_estimate = cov_estimate[0]
+
+		if gene_1 + '*' + gene_2 not in self.param_sweep_2d:
+			self.param_sweep_2d[gene_1 + '*' + gene_2] = {}
+		self.param_sweep_2d[gene_1 + '*' + gene_2][group] = search_parameters.copy()
+
+		if gene_1 + '*' + gene_2 not in self.log_likelihood_2d:
+			self.log_likelihood_2d[gene_1 + '*' + gene_2] = {}
+		self.log_likelihood_2d[gene_1 + '*' + gene_2][group] = ll_estimates.copy()
+
+		if gene_1 + '*' + gene_2 not in self.param_2d:
+			self.param_2d[gene_1 + '*' + gene_2] = {}		
+		self.param_2d[gene_1 + '*' + gene_2][group] = cov_estimate
+
+
 	def generate_reconstructed_obs(self, gene, group='all'):
 		""" Generate a dropped out distribution for qualitative check. """
 
@@ -219,7 +350,8 @@ class SingleCellEstimator(object):
 		"""
 
 		if not (gene in self.param_1d and groups[0] in self.param_1d[gene] and groups[1] in self.param_1d[gene]):
-			raise 'Please fit the parameters first!'
+			print('Please fit the parameters first!')
+			raise
 
 		# Get the parameters
 		mu_1, sigma_1, p_1, n_1 = self.param_1d[gene][groups[0]]
@@ -241,6 +373,47 @@ class SingleCellEstimator(object):
 			raise 'Not implemented!'
 
 
+	def compute_correlation(self, gene_1, gene_2, group):
+		"""
+			Compute the correlation from the covariance and variance measurements.
+		"""
 
+		corr = self.param_2d[gene_1 + '*' + gene_2][group] / (self.param_1d[gene_1][group][1]*self.param_1d[gene_2][group][1])
+
+		return corr
+
+
+	def export_model(self, save_path):
+		"""
+			Collect all of the properties into a dictionary and pickle it.
+		"""
+
+		model_info = {}
+		model_info['p'] = self.p
+		model_info['group_label'] = self.group_label
+		model_info['param_1d'] = self.param_1d
+		model_info['param_2d'] = self.param_2d
+		model_info['param_sweep_2d'] = self.param_sweep_2d
+		model_info['fitting_progress'] = self.fitting_progress
+		model_info['diff_exp'] = self.diff_exp
+
+		with open(save_path, 'wb') as f:
+			pkl.dump(model_info, f)
+
+	def import_model(self, model_path):
+		"""
+			Take a model export and re-populate the fields
+		"""
+
+		with open(model_path, 'rb') as f:
+			model_info = pkl.load(f)
+
+		self.p = model_info['p']
+		self.group_label = model_info['group_label']
+		self.param_1d = model_info['param_1d']
+		self.param_2d = model_info['param_2d']
+		self.param_sweep_2d = model_info['param_sweep_2d']
+		self.fitting_progress = model_info['fitting_progress']
+		self.diff_exp = model_info['diff_exp']
 
 

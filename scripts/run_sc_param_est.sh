@@ -9,7 +9,7 @@
 #$ -l mem_free=30G
 #$ -l arch=linux-x64             
 #$ -l netapp=5G,scratch=5G      
-#$ -l h_rt=3:00:00
+#$ -l h_rt=4:00:00
 ##$ -t 1-10    
 
 # If you used the -t option above, this same script will be run for each task,
@@ -23,12 +23,6 @@
 #input="${tasks[$SGE_TASK_ID]}"
 
 export PYTHONPATH=/netapp/home/mincheol/scrna-parameter-estimation/simplesc/
-# export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/netapp/home/mincheol/anaconda3/lib
-
-# export CUDA_PATH=/ye/yelabstore2/mincheol/cuda-8.0
-# export CUDA_HOME=$CUDA_PATH
-# export LD_LIBRARY_PATH=$CUDA_PATH/lib64:$LD_LIBRARY_PATH
-# export PATH=$PATH:/ye/yelabstore2/mincheol/cuda-8.0/bin
 
 source activate scvi
 
