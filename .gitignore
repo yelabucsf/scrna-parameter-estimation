@@ -107,3 +107,4 @@ venv.bak/
 *.png
 sftp-config.json
 *.tex
+*.pkl
