@@ -23,18 +23,17 @@ class SingleCellEstimator(object):
 	"""
 
 
-	# Initialize parameters containing dictionaries
-	self.observed_mean = {}
-	self.observed_cov = {}
-	self.estimated_mean = {}
-	self.estimated_cov = {}
-
-
 	def __init__(
 		self, 
 		adata, 
 		p=0.05,
 		group_label='leiden'):
+
+		# Initialize parameters containing dictionaries
+		self.observed_mean = {}
+		self.observed_cov = {}
+		self.estimated_mean = {}
+		self.estimated_cov = {}
 
 		self.anndata = adata
 		self.genes = adata.var.index
@@ -42,7 +41,6 @@ class SingleCellEstimator(object):
 		self.p = p
 		self.group_label = group_label
 		self.group_counts = dict(adata.obs[group_label].value_counts())
-
 
 
 	def compute_observed_statistics(self, group='all'):

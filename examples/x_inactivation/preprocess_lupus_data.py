@@ -9,3 +9,7 @@
 import scanpy.api as sc
 import pandas as pd
 
+data_path = '/ye/yelabstore3/mincheol/parameter_estimation/x_inactivation_data/'
+
+if __name__ == '__main__':
+
