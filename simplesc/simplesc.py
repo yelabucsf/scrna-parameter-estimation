@@ -63,7 +63,7 @@ class SingleCellEstimator(object):
 			np.arange(self.anndata.shape[0])
 		elif group[0] == '-': # Exclude this group
 			cell_selector = (self.anndata.obs[self.group_label] != group[1:])
-		else # Include this group
+		else: # Include this group
 			cell_selector = (self.anndata.obs[self.group_label] == group)
 
 		observed = self.anndata.X[cell_selector.values, :]
@@ -174,7 +174,7 @@ class SingleCellEstimator(object):
 				np.arange(self.anndata.shape[0])
 			elif group[0] == '-': # Exclude this group
 				cell_selector = (self.anndata.obs[self.group_label] != group[1:])
-			else # Include this group
+			else: # Include this group
 				cell_selector = (self.anndata.obs[self.group_label] == group)
 
 			observed = self.anndata.X[cell_selector.values, :]
@@ -227,7 +227,7 @@ class SingleCellEstimator(object):
 			null_s_delta_var = self.permutation_statistics[group_1]['var']/N_1 + self.permutation_statistics[group_2]['var']/N_2 
 			null_t_statistic = (self.permutation_statistics[group_1]['mean'] - self.permutation_statistics[group_2]['mean']) / np.sqrt(null_s_delta_var)
 
-			pvals = 2*np.array([(null_t_statistic > t).mean() if t > 0 else (null_t_statistic <= t).mean() for t in t_statistic])
+			pvals = np.array([(null_t_statistic > t) | (null_t_statistic <= t) for t in t_statistic])
 
 			return t_statistic, null_t_statistic, pvals
 
