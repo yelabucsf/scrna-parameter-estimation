@@ -5,10 +5,7 @@
 
 
 import pandas as pd
-import matplotlib.pyplot as plt
 import scipy.stats as stats
-import seaborn as sns
-from sklearn.preprocessing import StandardScaler
 import numpy as np
 import itertools
 import time
@@ -41,31 +38,71 @@ class SingleCellEstimator(object):
 		self.p = p
 		self.group_label = group_label
 		self.group_counts = dict(adata.obs[group_label].value_counts())
+		self.permutation_statistics = {}
 
-		self.MAX_LATENT = 300
-		self.binom_table = np.zeros(shape=(self.MAX_LATENT, self.MAX_LATENT))
+		# self.MAX_LATENT = 300
+		# self.binom_table = np.zeros(shape=(self.MAX_LATENT, self.MAX_LATENT))
 		    
-		for x in range(self.MAX_LATENT):
-		    for z in range(x, self.MAX_LATENT):
-		        self.binom_table[x, z] = stats.binom.pmf(x, z, self.p)
+		# for x in range(self.MAX_LATENT):
+		#     for z in range(x, self.MAX_LATENT):
+		#         self.binom_table[x, z] = stats.binom.pmf(x, z, self.p)
+
+
+	def _compute_statistics(self, observed, N):
+		""" Compute the statistics. """
+
+		return (
+			observed.mean(axis=0).A1,
+			((observed.T*observed -(sum(observed).T*sum(observed)/N))/(N-1)).todense())
 
 
 	def compute_observed_statistics(self, group='all'):
 		""" Compute the observed statistics. """
 
-		cell_selector = (self.anndata.obs[self.group_label] == group) if group != 'all' else np.arange(self.anndata.shape[0])
+		if group == 'all': # All cells
+			np.arange(self.anndata.shape[0])
+		elif group[0] == '-': # Exclude this group
+			cell_selector = (self.anndata.obs[self.group_label] != group[1:])
+		else # Include this group
+			cell_selector = (self.anndata.obs[self.group_label] == group)
 
 		observed = self.anndata.X[cell_selector.values, :]
 		N = observed.shape[0]
 
-		self.observed_mean[group] = observed.mean(axis=0).A1
-		self.observed_cov[group] = ((observed.T*observed -(sum(observed).T*sum(observed)/N))/(N-1)).todense()
+		self.observed_mean[group], self.observed_cov[group] = self._compute_statistics(observed, N)
 
 
 	def _tile_symmetric(self, A):
 		""" Tile the vector into a square matrix and turn it into a symmetric matrix. """
 
 		return np.tile(A.reshape(-1, 1), (1, A.shape[0])) + np.tile(A.reshape(-1, 1), (1, A.shape[0])).T
+
+
+	def _estimate_lognormal(self, observed_mean, observed_cov):
+		""" Estimate parameters assuming an underlying lognormal. """
+
+		estimated_mean = \
+			np.log(observed_mean) - \
+			np.log(np.ones(self.anndata.shape[1])*self.p) - \
+			(1/2) * np.log(
+				np.diag(observed_cov)/observed_mean**2 - \
+				(1-self.p) / observed_mean + 1)
+
+		variance_vector = \
+			np.log(
+				np.diag(observed_cov)/observed_mean**2 - \
+				(1-self.p) / observed_mean + 1)
+
+		# Estimate the covariance and fill in variance
+		estimated_sigma = np.log(
+			observed_cov / (
+				self.p**2 * np.exp(
+					self._tile_symmetric(estimated_mean) + \
+					(1/2)*self._tile_symmetric(variance_vector))
+				) + 1)
+		estimated_sigma[np.diag_indices_from(estimated_sigma)] = variance_vector
+
+		return estimated_mean, estimated_sigma
 
 
 	def compute_params(self, group='all'):
@@ -75,28 +112,10 @@ class SingleCellEstimator(object):
 		assert group in self.observed_mean and group in self.observed_cov
 
 		# Estimate the mean vector
-		self.estimated_mean[group] = \
-			np.log(self.observed_mean[group]) - \
-			np.log(np.ones(self.anndata.shape[1])*self.p) - \
-			(1/2) * np.log(
-				np.diag(self.observed_cov[group])/self.observed_mean[group]**2 - \
-				(1-self.p) / self.observed_mean[group] + 1)
-
-		# Estimate the variance vector
-		variance_vector = \
-			np.log(
-				np.diag(self.observed_cov[group])/self.observed_mean[group]**2 - \
-				(1-self.p) / self.observed_mean[group] + 1)
-
-		# Estimate the covariance and fill in variance
-		sigma = np.log(
-			self.observed_cov[group] / (
-				self.p**2 * np.exp(
-					self._tile_symmetric(self.estimated_mean[group]) + \
-					(1/2)*self._tile_symmetric(variance_vector))
-				) + 1)
-		sigma[np.diag_indices_from(sigma)] = variance_vector
-		self.estimated_cov[group] = sigma
+		self.estimated_mean[group], self.estimated_cov[group] = \
+			self._estimate_lognormal(
+				self.observed_mean[group],
+				self.observed_cov[group])
 
 		# Fill NaN's with 0s. These arise from genes with insufficient/no counts.
 		self.estimated_mean[group] = np.nan_to_num(self.estimated_mean[group])
@@ -138,7 +157,51 @@ class SingleCellEstimator(object):
 		return likelihoods
 
 
-	def differential_expression(self, group_1, group_2, method='ll'):
+	def compute_permuted_statistics(self, group='all', num_permute=1):
+		"""
+			Compute permuted statistics for a specified group.
+		"""
+
+		permuted_means = []
+		permuted_vars = []
+		permuted_covs = []
+
+		for i in range(num_permute):
+
+			self.anndata.obs['perm_group'] = np.random.permutation(self.anndata.obs[self.group_label])
+
+			if group == 'all': # All cells
+				np.arange(self.anndata.shape[0])
+			elif group[0] == '-': # Exclude this group
+				cell_selector = (self.anndata.obs[self.group_label] != group[1:])
+			else # Include this group
+				cell_selector = (self.anndata.obs[self.group_label] == group)
+
+			observed = self.anndata.X[cell_selector.values, :]
+			N = observed.shape[0]
+
+			observed_mean, observed_cov = self._compute_statistics(observed, N)
+			estimated_mean, estimated_cov = self._estimate_lognormal(observed_mean, observed_cov)
+
+			permuted_means.append(estimated_mean)
+			permuted_vars.append(np.diag(estimated_cov))
+
+			cov_vector = estimated_cov.copy()
+			cov_vector[np.diag_indices_from(cov_vector)] = np.nan
+			cov_vector = np.triu(cov_vector)
+			cov_vector = cov_vector.reshape(-1)
+			cov_vector = cov_vector[~np.isnan(cov_vector)]
+
+			permuted_covs.append(cov_vector)
+
+		self.permutation_statistics[group] = {
+			'num_permute':num_permute,
+			'mean':np.concatenate(permuted_means),
+			'var':np.concatenate(permuted_vars),
+			'cov':np.concatenate(permuted_covs)}
+
+
+	def differential_expression(self, group_1, group_2, method='ll', perm_count=None):
 		"""
 			Perform transcriptome wide differential expression analysis between two groups of cells.
 
@@ -153,6 +216,20 @@ class SingleCellEstimator(object):
 
 		var_1 = np.diag(self.estimated_cov[group_1])
 		var_2 = np.diag(self.estimated_cov[group_2])
+
+		if method == 'perm':
+
+			# Implements the t-test but with permuted null statistics.
+
+			s_delta_var = (var_1/N_1)+(var_2/N_2)
+			t_statistic = (mu_1 - mu_2) / np.sqrt(s_delta_var)
+
+			null_s_delta_var = self.permutation_statistics[group_1]['var']/N_1 + self.permutation_statistics[group_2]['var']/N_2 
+			null_t_statistic = (self.permutation_statistics[group_1]['mean'] - self.permutation_statistics[group_2]['mean']) / np.sqrt(null_s_delta_var)
+
+			pvals = 2*np.array([(null_t_statistic > t).mean() if t > 0 else (null_t_statistic <= t).mean() for t in t_statistic])
+
+			return t_statistic, null_t_statistic, pvals
 
 		if method == 't-test':
 
@@ -196,7 +273,7 @@ class SingleCellEstimator(object):
 
 		else:
 
-			print('This method is not yet implemented.')
+			logging.info('This method is not yet implemented.')
 
 
 	def differential_variance(self, group_1, group_2, method='levene'):
@@ -265,7 +342,7 @@ class SingleCellEstimator(object):
 
 		else:
 
-			print('Please pick an available option!')
+			logging.info('Please pick an available option!')
 			return
 
 
@@ -290,7 +367,7 @@ class SingleCellEstimator(object):
 
 		else:
 
-			print('Not yet implemented!')
+			logging.info('Not yet implemented!')
 			return
 
 
