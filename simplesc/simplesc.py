@@ -42,6 +42,13 @@ class SingleCellEstimator(object):
 		self.group_label = group_label
 		self.group_counts = dict(adata.obs[group_label].value_counts())
 
+		self.MAX_LATENT = 300
+		self.binom_table = np.zeros(shape=(self.MAX_LATENT, self.MAX_LATENT))
+		    
+		for x in range(self.MAX_LATENT):
+		    for z in range(x, self.MAX_LATENT):
+		        self.binom_table[x, z] = stats.binom.pmf(x, z, self.p)
+
 
 	def compute_observed_statistics(self, group='all'):
 		""" Compute the observed statistics. """
@@ -96,37 +103,46 @@ class SingleCellEstimator(object):
 		self.estimated_cov[group] = np.nan_to_num(self.estimated_cov[group])
 
 
-	def generate_transcriptome(self, group='all'):
-		""" 
+	def rv_pmf(self, x, mu, sigma):
+		""" PDF/PMF of the random variable under use. """
 
-			Generate a transcriptome for a specific group. 
-			WARNING: Does not accurately model the covariances.
-
-		"""
-
-		cell_selector = (self.anndata.obs[self.group_label] == group) if group != 'all' else np.arange(self.anndata.shape[0])
-
-		observed = self.anndata.X[cell_selector.values, :]
-		N = observed.shape[0]
-
-		continuous_normal = np.random.multivariate_normal(
-			mean=self.estimated_mean[group],
-			cov=self.estimated_cov[group],
-			size=N)
-
-		# If the count is exactly 0, this was generated from 0 mean 0 variance counts. The final expression should be zero.
-		#continuous_normal[continuous_normal == 0.00] -= 100
-
-		# Convert to lognormal
-		continuous_lognormal = np.exp(continuous_normal)
-
-		# Round and sample
-		return np.random.binomial(np.round(continuous_lognormal).astype(np.int64), p=self.p)
+		return stats.lognorm.pdf(x, scale=np.exp(mu), s=sigma)
 
 
-	def differential_expression(self, group_1, group_2):
+	def create_px_table(self, mu, sigma):
+
+		z_probs = np.tile(self.rv_pmf(np.arange(0, self.MAX_LATENT), mu, sigma).reshape(1, -1), [self.MAX_LATENT, 1])
+
+		return (z_probs * self.binom_table).sum(axis=1)
+
+
+	def log_likelihood(self, observed_mat, mu, sigma):
+		""" Compute the log likelihoods. """
+
+		observed_mat = observed_mat.toarray()
+		likelihoods = np.zeros(observed_mat.shape[1])
+
+		for i in range(observed_mat.shape[1]):
+
+			observed = observed_mat[:, i]
+			observed = observed[observed < 200]
+
+			observed_counts = pd.Series(observed).value_counts()
+			optimal_px_table = self.create_px_table(mu[i], sigma[i])
+
+			optimal_likelihood = np.array(
+				[count*np.log(optimal_px_table[int(val)]) for val,count in zip(
+					observed_counts.index, observed_counts)]).sum()
+
+			likelihoods[i] = optimal_likelihood
+		return likelihoods
+
+
+	def differential_expression(self, group_1, group_2, method='ll'):
 		"""
 			Perform transcriptome wide differential expression analysis between two groups of cells.
+
+			Perform permutation test.
 		"""
 
 		N_1 = self.group_counts[group_1]
@@ -138,31 +154,56 @@ class SingleCellEstimator(object):
 		var_1 = np.diag(self.estimated_cov[group_1])
 		var_2 = np.diag(self.estimated_cov[group_2])
 
-		s_delta_var = (var_1/N_1)+(var_2/N_2)
+		if method == 't-test':
 
-		t_statistic = (mu_1 - mu_2) / np.sqrt(s_delta_var)
+			s_delta_var = (var_1/N_1)+(var_2/N_2)
+			t_statistic = (mu_1 - mu_2) / np.sqrt(s_delta_var)
+			dof = s_delta_var**2 / (((var_1 / N_1)**2 / (N_1-1))+((var_2 / N_2)**2 / (N_2-1)))
+			pval = stats.t.sf(t_statistic, df=dof)*2 * (t_statistic > 0) + stats.t.cdf(t_statistic, df=dof)*2 * (t_statistic <= 0)
 
-		dof = s_delta_var**2 / (((var_1 / N_1)**2 / (N_1-1))+((var_2 / N_2)**2 / (N_2-1)))
+			return t_statistic, dof, pval
 
-		pval = stats.t.sf(t_statistic, df=dof)*2 * (t_statistic > 0) + stats.t.cdf(t_statistic, df=dof)*2 * (t_statistic <= 0)
+		elif method == 'll':
 
-		return t_statistic, dof, pval
+			cell_selector_1 = (self.anndata.obs[self.group_label] == group_1) if group_1 != 'all' else np.arange(self.anndata.shape[0])
+			observed_1 = self.anndata.X[cell_selector_1.values, :]
+
+			cell_selector_2 = (self.anndata.obs[self.group_label] == group_2) if group_2 != 'all' else np.arange(self.anndata.shape[0])
+			observed_2 = self.anndata.X[cell_selector_2.values, :]
+
+			mu_null = (mu_1 + mu_2)/2
+			var_1_null = (var_1 + mu_1**2) - 2*mu_null*mu_1 + mu_null**2
+			var_2_null = (var_2 + mu_2**2) - 2*mu_null*mu_2 + mu_null**2
+
+			alt_ll = \
+				self.log_likelihood(observed_1, mu_1, np.sqrt(var_1)) + \
+				self.log_likelihood(observed_2, mu_2, np.sqrt(var_2))
+
+			null_ll = \
+				self.log_likelihood(observed_1, mu_null, np.sqrt(var_1_null)) + \
+				self.log_likelihood(observed_2, mu_null, np.sqrt(var_2_null))
+
+			return alt_ll - null_ll
+
+		elif method == 'bayes':
+
+			prob = stats.norm.sf(
+			    0, 
+			    loc=self.estimated_mean[group_1] - self.estimated_mean[group_2],
+			    scale=np.sqrt(np.diag(self.estimated_cov[group_1]) + np.diag(self.estimated_cov[group_2])))
+
+			return np.log(prob / (1-prob)) * (self.estimated_mean[group_1] != 0.0) * (self.estimated_mean[group_2] != 0.0)
+
+		else:
+
+			print('This method is not yet implemented.')
 
 
-	def differential_expression_bayes(self, group_1, group_2):
-		""" Bayes factor for differential expression. """
-
-		prob = stats.norm.sf(
-		    0, 
-		    loc=self.estimated_mean[group_1] - self.estimated_mean[group_2],
-		    scale=np.sqrt(np.diag(self.estimated_cov[group_1]) + np.diag(self.estimated_cov[group_2])))
-
-		return np.log(prob / (1-prob)) * (self.estimated_mean[group_1] != 0.0) * (self.estimated_mean[group_2] != 0.0)
-
-
-	def differential_variance(self, group_1, group_2, method='f-test'):
+	def differential_variance(self, group_1, group_2, method='levene'):
 		"""
-			Perform transcriptome wide differential variance analysis between two groups of cells
+			Perform transcriptome wide differential variance analysis between two groups of cells.
+
+			Uses statistics from the folded Gaussian distribution.
 		"""
 
 		N_1 = self.group_counts[group_1]
@@ -179,41 +220,53 @@ class SingleCellEstimator(object):
 
 		elif method == 'levene':
 
-			print('Not implemented yet!')
+			folded_mean_1 = np.sqrt(var_1 * 2 / np.pi)
+			folded_mean_2 = np.sqrt(var_2 * 2 / np.pi)
+
+			folded_var_1 = var_1 - folded_mean_1**2
+			folded_var_2 = var_2 - folded_mean_1**2
+			
+			return stats.ttest_ind_from_stats(
+				folded_mean_1, 
+				folded_var_1, 
+				N_1, 
+				folded_mean_2,
+				folded_var_2,
+				N_2,
+				equal_var=False)
+
+		elif method == 'll':
+
 			return
+
+		elif method == 'bayes':
+
+			rotation_mat = np.array([[np.cos(-np.pi/4), -np.sin(-np.pi/4)], [np.sin(-np.pi/4), np.cos(-np.pi/4)]])
+
+			var_1 = np.diag(self.estimated_cov[group_1])
+			var_2 = np.diag(self.estimated_cov[group_2])
+
+			prob = np.zeros(var_1.shape[0])
+
+			idx = 0
+			for v1, v2 in zip(var_1, var_2):
+
+				if np.isnan(v1) or np.isnan(v2) or not (v1 > 0.0 and v2 > 0.0):
+					prob[idx] = 0.5
+					idx += 1
+					continue
+
+				cov_mat = np.array([[v1, 0], [0, v2]])
+				cov_mat_rotated = rotation_mat.dot(cov_mat).dot(rotation_mat.T)
+				prob[idx] = 2*stats.multivariate_normal.cdf([0, 0], mean=[0, 0], cov=cov_mat_rotated)
+				idx += 1
+
+			return prob, np.log(prob / (1-prob))
 
 		else:
 
 			print('Please pick an available option!')
 			return
-
-
-	def differential_variance_bayes(self, group_1, group_2, method='f-test'):
-		"""
-			Perform transcriptome wide differential variance analysis between two groups of cells in a Bayesian fashion.
-		"""
-
-		rotation_mat = np.array([[np.cos(-np.pi/4), -np.sin(-np.pi/4)], [np.sin(-np.pi/4), np.cos(-np.pi/4)]])
-
-		var_1 = np.diag(self.estimated_cov[group_1])
-		var_2 = np.diag(self.estimated_cov[group_2])
-
-		prob = np.zeros(var_1.shape[0])
-
-		idx = 0
-		for v1, v2 in zip(var_1, var_2):
-
-			if np.isnan(v1) or np.isnan(v2) or not (v1 > 0.0 and v2 > 0.0):
-				prob[idx] = 0.5
-				idx += 1
-				continue
-
-			cov_mat = np.array([[v1, 0], [0, v2]])
-			cov_mat_rotated = rotation_mat.dot(cov_mat).dot(rotation_mat.T)
-			prob[idx] = 2*stats.multivariate_normal.cdf([0, 0], mean=[0, 0], cov=cov_mat_rotated)
-			idx += 1
-
-		return prob, np.log(prob / (1-prob))
 
 
 	def differential_correlation(self, group_1, group_2, method='pearson'):
