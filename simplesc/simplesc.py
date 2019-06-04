@@ -22,7 +22,8 @@ class SingleCellEstimator(object):
 
 	def __init__(
 		self, 
-		adata, 
+		adata,
+		num_permute=5,
 		p=0.05,
 		group_label='leiden'):
 
@@ -31,13 +32,19 @@ class SingleCellEstimator(object):
 		self.observed_cov = {}
 		self.estimated_mean = {}
 		self.estimated_cov = {}
+		self.num_permute = num_permute
+		self.perm_group = [np.random.permutation(adata.obs[group_label]) for i in range(num_permute)]
 
-		self.anndata = adata
+		#adata.obs['perm_group'] = np.random.permutation(adata.obs[group_label])
+
+		self.anndata = adata.copy()
 		self.genes = adata.var.index
 		self.barcodes = adata.obs.index
 		self.p = p
 		self.group_label = group_label
 		self.group_counts = dict(adata.obs[group_label].value_counts())
+		for group in list(self.group_counts.keys()):
+			self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
 		self.permutation_statistics = {}
 
 		# self.MAX_LATENT = 300
@@ -102,7 +109,7 @@ class SingleCellEstimator(object):
 				) + 1)
 		estimated_sigma[np.diag_indices_from(estimated_sigma)] = variance_vector
 
-		return estimated_mean, estimated_sigma
+		return np.nan_to_num(estimated_mean), np.nan_to_num(estimated_sigma)
 
 
 	def compute_params(self, group='all'):
@@ -117,9 +124,8 @@ class SingleCellEstimator(object):
 				self.observed_mean[group],
 				self.observed_cov[group])
 
-		# Fill NaN's with 0s. These arise from genes with insufficient/no counts.
-		self.estimated_mean[group] = np.nan_to_num(self.estimated_mean[group])
-		self.estimated_cov[group] = np.nan_to_num(self.estimated_cov[group])
+		self.estimated_mean[group] = self.estimated_mean[group]
+		self.estimated_cov[group] = self.estimated_cov[group]
 
 
 	def rv_pmf(self, x, mu, sigma):
@@ -157,7 +163,7 @@ class SingleCellEstimator(object):
 		return likelihoods
 
 
-	def compute_permuted_statistics(self, group='all', num_permute=1):
+	def compute_permuted_statistics(self, group='all'):
 		"""
 			Compute permuted statistics for a specified group.
 		"""
@@ -166,18 +172,16 @@ class SingleCellEstimator(object):
 		permuted_vars = []
 		permuted_covs = []
 
-		for i in range(num_permute):
-
-			self.anndata.obs['perm_group'] = np.random.permutation(self.anndata.obs[self.group_label])
+		for i in range(self.num_permute):
 
 			if group == 'all': # All cells
 				np.arange(self.anndata.shape[0])
 			elif group[0] == '-': # Exclude this group
-				cell_selector = (self.anndata.obs[self.group_label] != group[1:])
+				cell_selector = (self.perm_group[i] != group[1:])
 			else: # Include this group
-				cell_selector = (self.anndata.obs[self.group_label] == group)
+				cell_selector = (self.perm_group[i] == group)
 
-			observed = self.anndata.X[cell_selector.values, :]
+			observed = self.anndata.X[cell_selector, :]
 			N = observed.shape[0]
 
 			observed_mean, observed_cov = self._compute_statistics(observed, N)
@@ -195,7 +199,6 @@ class SingleCellEstimator(object):
 			permuted_covs.append(cov_vector)
 
 		self.permutation_statistics[group] = {
-			'num_permute':num_permute,
 			'mean':np.concatenate(permuted_means),
 			'var':np.concatenate(permuted_vars),
 			'cov':np.concatenate(permuted_covs)}
@@ -224,11 +227,12 @@ class SingleCellEstimator(object):
 			s_delta_var = (var_1/N_1)+(var_2/N_2)
 			t_statistic = (mu_1 - mu_2) / np.sqrt(s_delta_var)
 
-			null_s_delta_var = self.permutation_statistics[group_1]['var']/N_1 + self.permutation_statistics[group_2]['var']/N_2 
+			null_s_delta_var = (self.permutation_statistics[group_1]['var']/N_1) + (self.permutation_statistics[group_2]['var']/N_2)
 			null_t_statistic = (self.permutation_statistics[group_1]['mean'] - self.permutation_statistics[group_2]['mean']) / np.sqrt(null_s_delta_var)
-
-			pvals = np.array([(null_t_statistic > t) | (null_t_statistic <= t) for t in t_statistic])
-
+			
+			median_null = np.median(null_t_statistic)
+			pvals = [(null_t_statistic > abs_t).mean() + (null_t_statistic < -abs_t).mean() for abs_t in np.absolute(median_null - t_statistic)]
+          
 			return t_statistic, null_t_statistic, pvals
 
 		if method == 't-test':
