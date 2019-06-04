@@ -109,7 +109,7 @@ class SingleCellEstimator(object):
 				) + 1)
 		estimated_sigma[np.diag_indices_from(estimated_sigma)] = variance_vector
 
-		return np.nan_to_num(estimated_mean), np.nan_to_num(estimated_sigma)
+		return estimated_mean, estimated_sigma
 
 
 	def compute_params(self, group='all'):
@@ -230,41 +230,10 @@ class SingleCellEstimator(object):
 			null_s_delta_var = (self.permutation_statistics[group_1]['var']/N_1) + (self.permutation_statistics[group_2]['var']/N_2)
 			null_t_statistic = (self.permutation_statistics[group_1]['mean'] - self.permutation_statistics[group_2]['mean']) / np.sqrt(null_s_delta_var)
 			
-			median_null = np.median(null_t_statistic)
-			pvals = [(null_t_statistic > abs_t).mean() + (null_t_statistic < -abs_t).mean() for abs_t in np.absolute(median_null - t_statistic)]
+			median_null = np.nanmedian(null_t_statistic)
+			pvals = np.array([(null_t_statistic > abs_t).mean() + (null_t_statistic < -abs_t).mean() for abs_t in np.absolute(median_null - t_statistic)])
           
 			return t_statistic, null_t_statistic, pvals
-
-		if method == 't-test':
-
-			s_delta_var = (var_1/N_1)+(var_2/N_2)
-			t_statistic = (mu_1 - mu_2) / np.sqrt(s_delta_var)
-			dof = s_delta_var**2 / (((var_1 / N_1)**2 / (N_1-1))+((var_2 / N_2)**2 / (N_2-1)))
-			pval = stats.t.sf(t_statistic, df=dof)*2 * (t_statistic > 0) + stats.t.cdf(t_statistic, df=dof)*2 * (t_statistic <= 0)
-
-			return t_statistic, dof, pval
-
-		elif method == 'll':
-
-			cell_selector_1 = (self.anndata.obs[self.group_label] == group_1) if group_1 != 'all' else np.arange(self.anndata.shape[0])
-			observed_1 = self.anndata.X[cell_selector_1.values, :]
-
-			cell_selector_2 = (self.anndata.obs[self.group_label] == group_2) if group_2 != 'all' else np.arange(self.anndata.shape[0])
-			observed_2 = self.anndata.X[cell_selector_2.values, :]
-
-			mu_null = (mu_1 + mu_2)/2
-			var_1_null = (var_1 + mu_1**2) - 2*mu_null*mu_1 + mu_null**2
-			var_2_null = (var_2 + mu_2**2) - 2*mu_null*mu_2 + mu_null**2
-
-			alt_ll = \
-				self.log_likelihood(observed_1, mu_1, np.sqrt(var_1)) + \
-				self.log_likelihood(observed_2, mu_2, np.sqrt(var_2))
-
-			null_ll = \
-				self.log_likelihood(observed_1, mu_null, np.sqrt(var_1_null)) + \
-				self.log_likelihood(observed_2, mu_null, np.sqrt(var_2_null))
-
-			return alt_ll - null_ll
 
 		elif method == 'bayes':
 
@@ -285,6 +254,7 @@ class SingleCellEstimator(object):
 			Perform transcriptome wide differential variance analysis between two groups of cells.
 
 			Uses statistics from the folded Gaussian distribution.
+			https://en.wikipedia.org/wiki/Folded_normal_distribution
 		"""
 
 		N_1 = self.group_counts[group_1]
@@ -293,13 +263,45 @@ class SingleCellEstimator(object):
 		var_1 = np.diag(self.estimated_cov[group_1])
 		var_2 = np.diag(self.estimated_cov[group_2])
 
-		if method == 'f-test':
+		if method == 'perm':
 
-			variance_ratio = var_1 / var_2
+			folded_mean_1 = np.sqrt(var_1 * 2 / np.pi)
+			folded_mean_2 = np.sqrt(var_2 * 2 / np.pi)
 
-			return variance_ratio, stats.f.sf(variance_ratio, N_1, N_2)*2 * (variance_ratio > 1) + stats.f.cdf(variance_ratio, N_1, N_2)*2 * (variance_ratio <= 1)
+			folded_var_1 = var_1 - folded_mean_1**2
+			folded_var_2 = var_2 - folded_mean_1**2
 
-		elif method == 'levene':
+			t_statistic, _ = stats.ttest_ind_from_stats(
+				folded_mean_1, 
+				folded_var_1, 
+				N_1, 
+				folded_mean_2,
+				folded_var_2,
+				N_2,
+				equal_var=False)
+
+			null_folded_mean_1 = np.sqrt(self.permutation_statistics[group_1]['var'] * 2 / np.pi)
+			null_folded_mean_2 = np.sqrt(self.permutation_statistics[group_2]['var'] * 2 / np.pi)
+
+			null_folded_var_1 = self.permutation_statistics[group_1]['var'] - self.permutation_statistics[group_1]['mean']**2
+			null_folded_var_2 = self.permutation_statistics[group_2]['var'] - self.permutation_statistics[group_2]['mean']**2
+
+			null_t_statistic, _ = stats.ttest_ind_from_stats(
+				null_folded_mean_1, 
+				null_folded_var_1, 
+				N_1, 
+				null_folded_mean_2,
+				null_folded_var_2,
+				N_2,
+				equal_var=False)
+
+			median_null = np.median(null_t_statistic)
+			pvals = [(null_t_statistic > abs_t).mean() + (null_t_statistic < -abs_t).mean() for abs_t in np.absolute(median_null - t_statistic)]
+          
+			return t_statistic, null_t_statistic, pvals
+
+
+		if method == 'levene':
 
 			folded_mean_1 = np.sqrt(var_1 * 2 / np.pi)
 			folded_mean_2 = np.sqrt(var_2 * 2 / np.pi)
@@ -315,34 +317,6 @@ class SingleCellEstimator(object):
 				folded_var_2,
 				N_2,
 				equal_var=False)
-
-		elif method == 'll':
-
-			return
-
-		elif method == 'bayes':
-
-			rotation_mat = np.array([[np.cos(-np.pi/4), -np.sin(-np.pi/4)], [np.sin(-np.pi/4), np.cos(-np.pi/4)]])
-
-			var_1 = np.diag(self.estimated_cov[group_1])
-			var_2 = np.diag(self.estimated_cov[group_2])
-
-			prob = np.zeros(var_1.shape[0])
-
-			idx = 0
-			for v1, v2 in zip(var_1, var_2):
-
-				if np.isnan(v1) or np.isnan(v2) or not (v1 > 0.0 and v2 > 0.0):
-					prob[idx] = 0.5
-					idx += 1
-					continue
-
-				cov_mat = np.array([[v1, 0], [0, v2]])
-				cov_mat_rotated = rotation_mat.dot(cov_mat).dot(rotation_mat.T)
-				prob[idx] = 2*stats.multivariate_normal.cdf([0, 0], mean=[0, 0], cov=cov_mat_rotated)
-				idx += 1
-
-			return prob, np.log(prob / (1-prob))
 
 		else:
 
