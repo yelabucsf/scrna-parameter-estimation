@@ -231,7 +231,7 @@ class SingleCellEstimator(object):
 			null_t_statistic = (self.permutation_statistics[group_1]['mean'] - self.permutation_statistics[group_2]['mean']) / np.sqrt(null_s_delta_var)
 			
 			median_null = np.nanmedian(null_t_statistic)
-			pvals = np.array([(null_t_statistic > abs_t).mean() + (null_t_statistic < -abs_t).mean() for abs_t in np.absolute(median_null - t_statistic)])
+			pvals = np.array([((null_t_statistic[~np.isnan(null_t_statistic)] > abs_t).mean() + (null_t_statistic[~np.isnan(null_t_statistic)] < -abs_t).mean()) if not np.isnan(abs_t) else np.nan for abs_t in np.absolute(median_null - t_statistic)])
           
 			return t_statistic, null_t_statistic, pvals
 
@@ -295,8 +295,8 @@ class SingleCellEstimator(object):
 				N_2,
 				equal_var=False)
 
-			median_null = np.median(null_t_statistic)
-			pvals = [(null_t_statistic > abs_t).mean() + (null_t_statistic < -abs_t).mean() for abs_t in np.absolute(median_null - t_statistic)]
+			median_null = np.nanmedian(null_t_statistic)
+			pvals = np.array([((null_t_statistic[~np.isnan(null_t_statistic)] > abs_t).mean() + (null_t_statistic[~np.isnan(null_t_statistic)] < -abs_t).mean()) if not np.isnan(abs_t) else np.nan for abs_t in np.absolute(median_null - t_statistic)])
           
 			return t_statistic, null_t_statistic, pvals
 
