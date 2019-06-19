@@ -8,6 +8,7 @@ import pandas as pd
 import scipy.stats as stats
 import numpy as np
 import itertools
+import scipy as sp
 import time
 import logging
 from scipy.stats import multivariate_normal
@@ -25,7 +26,8 @@ class SingleCellEstimator(object):
 		adata,
 		num_permute=5,
 		p=0.05,
-		group_label='leiden'):
+		group_label='leiden',
+		perm_use_t=True):
 
 		# Initialize parameters containing dictionaries
 		self.observed_mean = {}
@@ -34,6 +36,7 @@ class SingleCellEstimator(object):
 		self.estimated_cov = {}
 		self.num_permute = num_permute
 		self.perm_group = [np.random.permutation(adata.obs[group_label]) for i in range(num_permute)]
+		self.perm_use_t = perm_use_t
 
 		#adata.obs['perm_group'] = np.random.permutation(adata.obs[group_label])
 
@@ -47,33 +50,45 @@ class SingleCellEstimator(object):
 			self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
 		self.permutation_statistics = {}
 
-		# self.MAX_LATENT = 300
-		# self.binom_table = np.zeros(shape=(self.MAX_LATENT, self.MAX_LATENT))
-		    
-		# for x in range(self.MAX_LATENT):
-		#     for z in range(x, self.MAX_LATENT):
-		#         self.binom_table[x, z] = stats.binom.pmf(x, z, self.p)
-
 
 	def _compute_statistics(self, observed, N):
 		""" Compute the statistics. """
 
-		return (
-			observed.mean(axis=0).A1,
-			((observed.T*observed -(sum(observed).T*sum(observed)/N))/(N-1)).todense())
+		# Turn the highest value into a 0
+		observed[observed == observed.max()] = 0
+
+		if type(observed) == sp.sparse.csr_matrix:
+
+			mean = observed.mean(axis=0).A1
+			cov = ((observed.T*observed -(sum(observed).T*sum(observed)/N))/(N-1)).todense()
+
+		else:
+
+			mean = observed.mean(axis=0)
+			cov = np.cov(observed.T)
+
+		return mean, cov
 
 
-	def compute_observed_statistics(self, group='all'):
-		""" Compute the observed statistics. """
+	def _select_cells(self, group):
+		""" Select the cells. """
 
 		if group == 'all': # All cells
-			np.arange(self.anndata.shape[0])
+			cell_selector = np.arange(self.anndata.shape[0])
 		elif group[0] == '-': # Exclude this group
 			cell_selector = (self.anndata.obs[self.group_label] != group[1:])
 		else: # Include this group
 			cell_selector = (self.anndata.obs[self.group_label] == group)
 
-		observed = self.anndata.X[cell_selector.values, :]
+		return cell_selector
+
+
+	def compute_observed_statistics(self, group='all'):
+		""" Compute the observed statistics. """
+
+		cell_selector = self._select_cells(group)
+
+		observed = self.anndata.X[cell_selector.values, :].copy()
 		N = observed.shape[0]
 
 		self.observed_mean[group], self.observed_cov[group] = self._compute_statistics(observed, N)
@@ -128,41 +143,6 @@ class SingleCellEstimator(object):
 		self.estimated_cov[group] = self.estimated_cov[group]
 
 
-	def rv_pmf(self, x, mu, sigma):
-		""" PDF/PMF of the random variable under use. """
-
-		return stats.lognorm.pdf(x, scale=np.exp(mu), s=sigma)
-
-
-	def create_px_table(self, mu, sigma):
-
-		z_probs = np.tile(self.rv_pmf(np.arange(0, self.MAX_LATENT), mu, sigma).reshape(1, -1), [self.MAX_LATENT, 1])
-
-		return (z_probs * self.binom_table).sum(axis=1)
-
-
-	def log_likelihood(self, observed_mat, mu, sigma):
-		""" Compute the log likelihoods. """
-
-		observed_mat = observed_mat.toarray()
-		likelihoods = np.zeros(observed_mat.shape[1])
-
-		for i in range(observed_mat.shape[1]):
-
-			observed = observed_mat[:, i]
-			observed = observed[observed < 200]
-
-			observed_counts = pd.Series(observed).value_counts()
-			optimal_px_table = self.create_px_table(mu[i], sigma[i])
-
-			optimal_likelihood = np.array(
-				[count*np.log(optimal_px_table[int(val)]) for val,count in zip(
-					observed_counts.index, observed_counts)]).sum()
-
-			likelihoods[i] = optimal_likelihood
-		return likelihoods
-
-
 	def compute_permuted_statistics(self, group='all'):
 		"""
 			Compute permuted statistics for a specified group.
@@ -204,7 +184,7 @@ class SingleCellEstimator(object):
 			'cov':np.concatenate(permuted_covs)}
 
 
-	def differential_expression(self, group_1, group_2, method='ll', perm_count=None):
+	def differential_expression(self, group_1, group_2, method='perm'):
 		"""
 			Perform transcriptome wide differential expression analysis between two groups of cells.
 
@@ -249,12 +229,15 @@ class SingleCellEstimator(object):
 			logging.info('This method is not yet implemented.')
 
 
-	def differential_variance(self, group_1, group_2, method='levene'):
+	def differential_variance(self, group_1, group_2, method='perm', safe_estimation=True):
 		"""
 			Perform transcriptome wide differential variance analysis between two groups of cells.
 
 			Uses statistics from the folded Gaussian distribution.
-			https://en.wikipedia.org/wiki/Folded_normal_distribution
+			https://en.wikipedia.org/wiki/Folded_normal_distribution.
+
+			```safe_estimation``` parameter ensures robust differential variance calculation - otherwise,
+			we may see a strong mean-variance anticorrelation. 
 		"""
 
 		N_1 = self.group_counts[group_1]
@@ -295,9 +278,34 @@ class SingleCellEstimator(object):
 				N_2,
 				equal_var=False)
 
+			null_t_statistic = null_t_statistic[self.permutation_statistics[group_1]['mean'] > 0]
+
 			median_null = np.nanmedian(null_t_statistic)
 			pvals = np.array([((null_t_statistic[~np.isnan(null_t_statistic)] > abs_t).mean() + (null_t_statistic[~np.isnan(null_t_statistic)] < -abs_t).mean()) if not np.isnan(abs_t) else np.nan for abs_t in np.absolute(median_null - t_statistic)])
-          
+
+			if safe_estimation:
+
+				# Select the cells
+				cell_selector_1 = self._select_cells(group_1)
+				cell_selector_2 = self._select_cells(group_2)
+
+				# Compute the cell counts in each group that has > 0 expression
+				if type(self.anndata.X) == sp.sparse.csr_matrix:
+					nonzero_cell_count_1 = (self.anndata.X[cell_selector_1, :] > 0).sum(axis=0).A1
+					nonzero_cell_count_2 = (self.anndata.X[cell_selector_2, :] > 0).sum(axis=0).A1
+				else:
+					nonzero_cell_count_1 = (self.anndata.X[cell_selector_1, :] > 0).sum(axis=0)
+					nonzero_cell_count_2 = (self.anndata.X[cell_selector_2, :] > 0).sum(axis=0)					
+
+				# Get masks for genes with insufficient cells
+				insufficient_cells_1 = (nonzero_cell_count_1 < self.p*N_1)
+				insufficient_cells_2 = (nonzero_cell_count_2 < self.p*N_2)
+				insufficient_cells = insufficient_cells_1 | insufficient_cells_2
+
+				# Insert NaNs where we don't have enough cells
+				t_statistic[insufficient_cells] = np.nan
+				pvals[insufficient_cells] = np.nan
+
 			return t_statistic, null_t_statistic, pvals
 
 
