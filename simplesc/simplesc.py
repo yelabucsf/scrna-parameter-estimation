@@ -14,6 +14,8 @@ import logging
 from scipy.stats import multivariate_normal
 import pickle as pkl
 from statsmodels.stats.moment_helpers import cov2corr
+from statsmodels.stats.multitest import fdrcorrection
+
 
 class SingleCellEstimator(object):
 	"""
@@ -26,10 +28,11 @@ class SingleCellEstimator(object):
 		adata,
 		group_label,
 		n_umis_column,
+		num_permute=10000,
 		p=0.1):
 
 		self.anndata = adata.copy()
-		self.genes = adata.var.index
+		self.genes = adata.var.index.values
 		self.barcodes = adata.obs.index
 		self.p = p
 		self.group_label = group_label
@@ -37,12 +40,19 @@ class SingleCellEstimator(object):
 		for group in list(self.group_counts.keys()):
 			self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
 		self.n_umis = adata.obs[n_umis_column].values
+		self.num_permute = num_permute
 
 		# Initialize parameter containing dictionaries
 		self.observed_moments = {}
 		self.estimated_moments = {}
 		self.estimated_central_moments = {}
 		self.parameters = {}
+
+		# dictionaries for hypothesis testing
+		self.null_parameters_1d = {}
+		self.null_parameters_2d = {}
+		self.hypothesis_test_result_1d = {}
+		self.hypothesis_test_result_2d = {}
 
 
 	def _compute_statistics(self, observed, N):
@@ -123,6 +133,177 @@ class SingleCellEstimator(object):
 			'prod': true_prod - self.estimated_moments[group]['first'].reshape(-1, 1).dot(self.estimated_moments[group]['first'].reshape(1, -1))
 		}
 
+
+	def compute_params(self, group='all'):
+		""" 
+			Use the estimated moments to compute the parameters of marginal distributions as 
+			well as the estimated correlation. 
+		"""
+
+		self.parameters[group] = {
+			'mean': self.estimated_central_moments[group]['first'],
+			'dispersion': self.estimated_central_moments[group]['second'] / self.estimated_central_moments[group]['first'],
+			'corr': cov2corr(self.estimated_central_moments[group]['prod'])}
+
+		self.parameters[group]['log_mean'] = np.log(self.parameters[group]['mean'])
+		self.parameters[group]['log_dispersion'] = np.log(self.parameters[group]['dispersion'])
+
+
+	def compute_null_parameters_1d(self, group_1, group_2):
+
+		group_key = frozenset([group_1, group_2])
+
+		if group_key in self.null_parameters_1d:
+
+			print('Null distribution already computed')
+			return
+
+		cell_selector = self._select_cells(group_1) | self._select_cells(group_2)
+		data = self.anndata.X[cell_selector, :].toarray()
+
+		all_counts = set()
+		gene_counts = []
+
+		mean_inv_numis = self.p * (self.n_umis[cell_selector]**2).mean() / self.n_umis[cell_selector].mean()**3
+
+		for gene_idx in range(self.anndata.var.shape[0]):
+
+			hist = np.bincount(data[:, gene_idx].reshape(-1).astype(int))
+			gene_counts.append(hist)
+			all_counts |= set(hist)
+		all_counts = np.array(sorted(list(all_counts)))
+
+		gamma_rvs_1 = stats.gamma.rvs(
+			a=(all_counts+1e-10)*(self.group_counts[group_1] / (self.group_counts[group_1] + self.group_counts[group_2])), 
+			size=(self.num_permute, all_counts.shape[0]))
+		gamma_rvs_2 = stats.gamma.rvs(
+			a=(all_counts+1e-10)*(self.group_counts[group_2] / (self.group_counts[group_1] + self.group_counts[group_2])), 
+			size=(self.num_permute, all_counts.shape[0]))
+
+		for gene_idx in range(self.anndata.var.shape[0]):
+
+			gene_gamma_rvs_1 = gamma_rvs_1[:, np.nonzero(gene_counts[gene_idx][:, None] == all_counts)[1]]
+			gene_gamma_rvs_2 = gamma_rvs_2[:, np.nonzero(gene_counts[gene_idx][:, None] == all_counts)[1]]
+
+			gene_dir_rvs_1 = gene_gamma_rvs_1/gene_gamma_rvs_1.sum(axis=1)[:,None]
+			gene_dir_rvs_2 = gene_gamma_rvs_2/gene_gamma_rvs_2.sum(axis=1)[:,None]
+
+			values = np.tile(np.arange(0, gene_counts[gene_idx].shape[0]).reshape(1, -1), (self.num_permute, 1))
+
+			mean_1 = ((gene_dir_rvs_1) * values).sum(axis=1)
+			second_moments_1 = ((gene_dir_rvs_1) * values**2).sum(axis=1)
+
+			mean_2 = ((gene_dir_rvs_2) * values).sum(axis=1)
+			second_moments_2 = ((gene_dir_rvs_2) * values**2).sum(axis=1)
+
+			# TODO: Reuse code from the parameter estimation section
+			moment_map = np.linalg.inv(np.array([[self.p, 0], [self.p - self.p**2, self.p**2 - self.p*mean_inv_numis]]))
+			moments_1 = moment_map.dot(np.vstack([mean_1, second_moments_1]))
+			moments_2 = moment_map.dot(np.vstack([mean_2, second_moments_2]))
+
+			self.null_parameters_1d[group_key] = {
+				'mean':moments_2[0, :] - moments_1[0, :],
+				'dispersion':(moments_2[1, :] - moments_2[0, :]**2)/moments_2[0, :] - (moments_1[1, :] - moments_1[0, :]**2)/moments_1[0, :]
+			}
+
+
+	def _compute_pval(self, statistics, null_statistics, method='two-tailed'):
+		""" 
+			Compute empirical pvalues from the given null statistics. To protect against asymmetric distributions, double the smaller one sided statistic.
+		"""
+
+		if method == 'two-tailed':
+
+			median_null = np.nanmedian(null_statistics)
+			pvals = np.array([((null_statistics > abs_t).mean() + (null_statistics < -abs_t).mean()) if not np.isnan(abs_t) else np.nan for abs_t in np.absolute(median_null - statistics)])
+
+		elif method == 'one-tailed':
+
+			pvals = 2*np.array([min((null_statistics > s).mean(), (null_statistics < -s).mean()) if not np.isnan(s) else np.nan for s in statistics])
+
+		return statistics, pvals
+
+
+	def _fdrcorrect(self, pvals):
+		"""
+			Perform FDR correction with nan's.
+		"""
+
+		fdr = np.ones(pvals.shape[0])
+		_, fdr[~np.isnan(pvals)] = fdrcorrection(pvals[~np.isnan(pvals)])
+		return fdr
+
+
+	def hypothesis_test_1d(self, group_1, group_2):
+		"""
+			Compute a p value via permutation testing for difference in mean and difference in dispersion.
+		"""
+
+		# Define the group key
+		group_key = frozenset([group_1, group_2])
+
+		# Compute the null parameters
+		self.compute_null_parameters_1d(group_1, group_2)
+
+		# Perform differential expression
+		de_diff, de_pvals = self._compute_pval(
+			statistics=self.parameters[group_2]['mean'] - self.parameters[group_1]['mean'],
+			null_statistics=self.null_parameters_1d[group_key]['mean'],
+			method='two-tailed')
+
+		# Perform differential variability
+		dv_diff, dv_pvals = self._compute_pval(
+			statistics=self.parameters[group_2]['dispersion'] - self.parameters[group_1]['dispersion'],
+			null_statistics=self.null_parameters_1d[group_key]['dispersion'],
+			method='two-tailed')
+
+		self.hypothesis_test_result_1d[group_key] = {
+			'de_diff': de_diff,
+			'de_pval': de_pvals,
+			'de_fdr': self._fdrcorrect(de_pvals),
+			'dv_diff': dv_diff,
+			'dv_pval': dv_pvals,
+			'dv_fdr': self._fdrcorrect(dv_pvals),		
+		}
+
+
+	def get_increased_exp_genes(self, group_1, group_2, sig=0.01, num_genes=50):
+		"""
+			Get genes that are increased in expression in group 2 compared to group 1, sorted in order of significance.
+		"""
+
+		group_key = frozenset([group_1, group_2])
+
+		num_sig_genes = ((self.hypothesis_test_result_1d[group_key]['de_fdr'] < sig) & (self.hypothesis_test_result_1d[group_key]['de_diff'] > 0)).sum()
+		order = np.argsort(self.hypothesis_test_result_1d[group_key]['de_diff'])[::-1][:min(num_sig_genes, num_genes)]
+
+		return self.hypothesis_test_result_1d[group_key]['de_diff'][order], self.genes[order]
+
+
+	def get_decreased_exp_genes(self, group_1, group_2, sig=0.01, num_genes=50):
+		"""
+			Get genes that are decreased in expression in group 2 compared to group 1, sorted in order of significance.
+		"""
+
+		group_key = frozenset([group_1, group_2])
+
+		num_sig_genes = ((self.hypothesis_test_result_1d[group_key]['de_fdr'] < sig) & (self.hypothesis_test_result_1d[group_key]['de_diff'] < 0)).sum()
+		order = np.argsort(self.hypothesis_test_result_1d[group_key]['de_diff'])[:min(num_sig_genes, num_genes)]
+
+		return self.hypothesis_test_result_1d[group_key]['de_diff'][order], self.genes[order]
+
+
+	def get_increased_var_genes(self, group_1, group_2, sig=0.01, num_genes=50):
+		"""
+			Get genes that are increased in expression in group 2 compared to group 1, sorted in order of significance.
+		"""
+
+		group_key = frozenset([group_1, group_2])
+
+		num_sig_genes = ((self.hypothesis_test_result_1d[group_key]['dv_fdr'] < sig) & (self.hypothesis_test_result_1d[group_key]['dv_diff'] > 0)).sum()
+		order = np.argsort(self.hypothesis_test_result_1d[group_key]['dv_diff'])[::-1][:min(num_sig_genes, num_genes)]
+
+		return self.hypothesis_test_result_1d[group_key]['dv_diff'][order], self.genes[order]
 
 	# def _tile_symmetric(self, A):
 	# 	""" Tile the vector into a square matrix and turn it into a symmetric matrix. """
