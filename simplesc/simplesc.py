@@ -219,7 +219,9 @@ class SingleCellEstimator(object):
 
 		elif method == 'one-tailed':
 
-			pvals = 2*np.array([min((null_statistics > s).mean(), (null_statistics < -s).mean()) if not np.isnan(s) else np.nan for s in statistics])
+			pvals = np.array([(null_statistics[null_statistics > 0] > s).mean()*(s > 0) + (null_statistics[null_statistics < 0] < s).mean()*(s < 0) if not np.isnan(s) else np.nan for s in statistics])
+
+			#pvals = 2*np.array([min((null_statistics > s).mean(), (null_statistics < -s).mean()) if not np.isnan(s) else np.nan for s in statistics])
 
 		return statistics, pvals
 
@@ -248,14 +250,12 @@ class SingleCellEstimator(object):
 		# Perform differential expression
 		de_diff, de_pvals = self._compute_pval(
 			statistics=self.parameters[group_2]['mean'] - self.parameters[group_1]['mean'],
-			null_statistics=self.null_parameters_1d[group_key]['mean'],
-			method='two-tailed')
+			null_statistics=self.null_parameters_1d[group_key]['mean'])
 
 		# Perform differential variability
 		dv_diff, dv_pvals = self._compute_pval(
 			statistics=self.parameters[group_2]['dispersion'] - self.parameters[group_1]['dispersion'],
-			null_statistics=self.null_parameters_1d[group_key]['dispersion'],
-			method='two-tailed')
+			null_statistics=self.null_parameters_1d[group_key]['dispersion'])
 
 		self.hypothesis_test_result_1d[group_key] = {
 			'de_diff': de_diff,
@@ -295,13 +295,26 @@ class SingleCellEstimator(object):
 
 	def get_increased_var_genes(self, group_1, group_2, sig=0.01, num_genes=50):
 		"""
-			Get genes that are increased in expression in group 2 compared to group 1, sorted in order of significance.
+			Get genes that are increased in variability in group 2 compared to group 1, sorted in order of significance.
 		"""
 
 		group_key = frozenset([group_1, group_2])
 
 		num_sig_genes = ((self.hypothesis_test_result_1d[group_key]['dv_fdr'] < sig) & (self.hypothesis_test_result_1d[group_key]['dv_diff'] > 0)).sum()
 		order = np.argsort(self.hypothesis_test_result_1d[group_key]['dv_diff'])[::-1][:min(num_sig_genes, num_genes)]
+
+		return self.hypothesis_test_result_1d[group_key]['dv_diff'][order], self.genes[order]
+
+
+	def get_decreased_var_genes(self, group_1, group_2, sig=0.01, num_genes=50):
+		"""
+			Get genes that are decreased in variability in group 2 compared to group 1, sorted in order of significance.
+		"""
+
+		group_key = frozenset([group_1, group_2])
+
+		num_sig_genes = ((self.hypothesis_test_result_1d[group_key]['dv_fdr'] < sig) & (self.hypothesis_test_result_1d[group_key]['dv_diff'] < 0)).sum()
+		order = np.argsort(self.hypothesis_test_result_1d[group_key]['dv_diff'])[:min(num_sig_genes, num_genes)]
 
 		return self.hypothesis_test_result_1d[group_key]['dv_diff'][order], self.genes[order]
 
