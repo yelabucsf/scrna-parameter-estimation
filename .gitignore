@@ -104,6 +104,8 @@ venv.bak/
 .mypy_cache/
 
 # Files
+*.txt
+*.pdf
 *.png
 sftp-config.json
 *.tex
