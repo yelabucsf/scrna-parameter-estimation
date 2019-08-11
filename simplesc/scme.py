@@ -1,5 +1,8 @@
 """
-	simplesc.py
+	scme.py
+
+	Single Cell Moment Estimator
+
 	This file contains code for implementing the empirical bayes estimator for the Gaussian assumption for true single cell RNA sequencing counts.
 """
 
@@ -199,9 +202,6 @@ class SingleCellEstimator(object):
 			(y/x**2 - 1/x)[y > x], 
 			q=tolerance)
 
-		# Estimate the mean-var relationship
-		slope, inter, _, _, _ = stats.linregress(np.log(x), np.log(y))
-
 		self.all_group_obs_means = x
 		self.all_group_obs_var = y
 		self.all_group_obs_cv_sq = y/x**2
@@ -258,7 +258,7 @@ class SingleCellEstimator(object):
 		y = y[condition]
 
 		# Estimate the mean-var relationship
-		slope, inter, _, _, _ = stats.linregress(np.log(x), np.log(y))
+		slope, inter, _, _, _ = robust_linregress(np.log(x), np.log(y))
 		self.mean_var_slope = slope
 		self.mean_var_inter = inter
 
@@ -334,7 +334,7 @@ class SingleCellEstimator(object):
 			'corr': cov2corr(self.estimated_central_moments[group]['prod'])}
 
 
-	def compute_confidence_intervals(self, group='all'):
+	def compute_confidence_intervals_1d(self, groups='all'):
 		"""
 			Compute 95% confidence intervals around the estimated parameters. 
 
@@ -346,72 +346,117 @@ class SingleCellEstimator(object):
 			So the result might be slightly off.
 		"""
 
-		mean_inv_numis = self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3
+		groups_to_iter = self.group_counts.keys() if groups == 'all' else groups
 
-		cell_selector = self._select_cells(group)
-		data = self.anndata.X[cell_selector, :].toarray()
+		mean_inv_numis = {group:(self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3) \
+			for group in groups_to_iter}
 
-		all_counts = set()
-		gene_counts = []
+		all_counts = {group:set() for group in groups_to_iter}
+		gene_counts = {}
 
 		# Collect all unique counts in this group
 		for gene_idx in range(self.anndata.var.shape[0]):
 
-			hist = np.bincount(data[:, gene_idx].reshape(-1).astype(int))
-			gene_counts.append(hist)
-			all_counts |= set(hist)
-		all_counts = np.array(sorted(list(all_counts)))
+			gene_counts[gene_idx] = {}
+
+			for group in groups_to_iter:
+
+				cell_selector = self._select_cells(group)
+				data = self.anndata.X[cell_selector, :].toarray()
+
+				hist = np.bincount(data[:, gene_idx].reshape(-1).astype(int))
+				gene_counts[gene_idx][group] = hist
+				all_counts[group] |= set(hist)
+
+		# All unique counts from all groups across all genes
+		all_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_counts.items()}
 
 		# Define the gamma variales to be later used to construct the Dirichlet
-		gamma_rvs = stats.gamma.rvs(
-			a=(all_counts+1e-10), 
-			size=(self.num_permute, all_counts.shape[0]))
+		gamma_rvs = {group:stats.gamma.rvs(
+			a=(counts+1e-10), 
+			size=(self.num_permute, counts.shape[0])) for group, counts in all_counts_sorted.items()}
+
+		print('Gamma RVs generated..')
 
 		# Declare placeholders for gene confidence intervals
-		mean_conf_interval = np.zeros(self.anndata.var.shape[0])
-		residual_var_conf_interval = np.zeros(self.anndata.var.shape[0])
-		log_mean_conf_interval = np.zeros(self.anndata.var.shape[0])
-		log_residual_var_conf_interval = np.zeros(self.anndata.var.shape[0])
-		log1p_mean_conf_interval = np.zeros(self.anndata.var.shape[0])
-		log1p_residual_var_conf_interval = np.zeros(self.anndata.var.shape[0])
+		parameters = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
+		ci_dict = {
+			group:{param:np.zeros(self.anndata.var.shape[0]) for param in parameters} \
+				for group in groups_to_iter}
+
+		# Declare placeholders for group comparison results
+		hypothesis_test_parameters = ['de_diff', 'de_pval', 'de_fdr', 'dv_diff', 'dv_pval', 'dv_fdr']
+		hypothesis_test_dict = {
+			(group_1, group_2):{param:np.zeros(self.anndata.var.shape[0]) for param \
+				in hypothesis_test_parameters} for group_1, group_2 in itertools.combinations(groups_to_iter, 2)}
 
 		# Iterate through each gene and compute a standard error for each gene
 		for gene_idx in range(self.anndata.var.shape[0]):
 
 			# Grab the appropriate Gamma variables given the bincounts of this particular gene
-			gene_gamma_rvs = gamma_rvs[:, np.nonzero(gene_counts[gene_idx][:, None] == all_counts)[1]]
+			gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(gene_counts[gene_idx][group][:, None] == all_counts_sorted[group])[1]]) \
+				for group in groups_to_iter}
 
 			# Sample dirichlet from the Gamma variables
-			gene_dir_rvs = gene_gamma_rvs/gene_gamma_rvs.sum(axis=1)[:,None]
+			gene_dir_rvs = {group:(gene_gamma_rvs[group]/gene_gamma_rvs[group].sum(axis=1)[:,None]) for group in groups_to_iter}
 
 			# Construct the repeated values matrix
-			values = np.tile(np.arange(0, gene_counts[gene_idx].shape[0]).reshape(1, -1), (self.num_permute, 1))
+			values = {group:np.tile(
+				np.arange(0, gene_counts[gene_idx][group].shape[0]).reshape(1, -1), (self.num_permute, 1)) for group in groups_to_iter}
 
 			# Compute the permuted, observed mean/dispersion
-			mean = ((gene_dir_rvs) * values).sum(axis=1)
-			second_moments = ((gene_dir_rvs) * values**2).sum(axis=1)
+			mean = {group:((gene_dir_rvs[group]) * values[group]).sum(axis=1) for group in groups_to_iter}
+			second_moments = {group:((gene_dir_rvs[group]) * values[group]**2).sum(axis=1) for group in groups_to_iter}
 
 			# Compute the permuted, estimated moments for both groups
-			estimated_means = self._estimate_mean(mean)
-			estimated_vars = self._estimate_variance(mean, second_moments, mean_inv_numis)
-			estimated_residual_vars = self._estimate_residual_variance(estimated_means, estimated_vars)
+			estimated_means = {group:self._estimate_mean(mean[group]) for group in groups_to_iter}
+			estimated_vars = {group:self._estimate_variance(mean[group], second_moments[group], mean_inv_numis[group]) for group in groups_to_iter}
+			estimated_residual_vars = {group:self._estimate_residual_variance(estimated_means[group], estimated_vars[group])[0] for group in groups_to_iter}
 
 			# Store the S.E. of the parameter, log(param), and log1p(param)
-			mean_conf_interval[gene_idx] = np.nanstd(estimated_means)
-			residual_var_conf_interval[gene_idx] = np.nanstd(estimated_residual_vars)
-			log_mean_conf_interval[gene_idx] = np.nanstd(np.log(estimated_means))
-			log_residual_var_conf_interval[gene_idx] = np.nanstd(np.log(estimated_residual_vars))
-			log1p_mean_conf_interval[gene_idx] = np.nanstd(np.log(estimated_means+1))
-			log1p_residual_var_conf_interval[gene_idx] = np.nanstd(np.log(estimated_residual_vars+1))
+			for group in groups_to_iter:
 
-		# Update the attribute dictionary
-		self.parameters_confidence_intervals[group] = {
-			'mean':mean_conf_interval,
-			'residual_var':residual_var_conf_interval,
-			'log_mean':log_mean_conf_interval,
-			'log_residual_var':log_residual_var_conf_interval,
-			'log1p_mean':log1p_mean_conf_interval,
-			'log1p_residual_var':log1p_residual_var_conf_interval}
+				ci_dict[group]['mean'][gene_idx] = np.nanstd(estimated_means[group])
+				ci_dict[group]['residual_var'][gene_idx] = np.nanstd(estimated_residual_vars[group])
+				ci_dict[group]['log_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]))
+				ci_dict[group]['log_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]))
+				ci_dict[group]['log1p_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]+1))
+				ci_dict[group]['log1p_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]+1))
+
+
+			# Perform hypothesis testing
+			for group_1, group_2 in itertools.combinations(groups_to_iter, 2):
+
+				# For difference of log means
+				boot_log_mean_diff = np.log(estimated_means[group_2]) - np.log(estimated_means[group_1])
+				observed_log_mean_diff = self.parameters[group_2]['log_mean'][gene_idx] - self.parameters[group_1]['log_mean'][gene_idx]
+				hypothesis_test_dict[(group_1, group_2)]['de_diff'][gene_idx]  = observed_log_mean_diff
+				if np.isfinite(observed_log_mean_diff):
+
+					asl = (boot_log_mean_diff > 0).mean()
+					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = 2*asl if asl < 0.5 else 2*(1-asl)
+				else:
+					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = np.nan
+
+				# For difference of log residual variances
+				boot_log_residual_var_diff = np.log(estimated_residual_vars[group_2]) - np.log(estimated_residual_vars[group_1])
+				observed_log_residual_var_diff = self.parameters[group_2]['log_residual_var'][gene_idx] - self.parameters[group_1]['log_residual_var'][gene_idx]
+				hypothesis_test_dict[(group_1, group_2)]['dv_diff'][gene_idx]  = observed_log_residual_var_diff
+				if np.isfinite(observed_log_residual_var_diff):
+					asl = (boot_log_residual_var_diff > 0).mean()
+					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = 2*asl if asl < 0.5 else 2*(1-asl)
+				else:
+					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = np.nan
+
+		# Perform FDR correction
+		for group_1, group_2 in itertools.combinations(groups_to_iter, 2):
+
+			hypothesis_test_dict[(group_1, group_2)]['de_fdr'] = self._fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['de_pval'])
+			hypothesis_test_dict[(group_1, group_2)]['dv_fdr'] = self._fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dv_pval'])
+
+		# Update the attribute dictionaries
+		self.parameters_confidence_intervals.update(ci_dict)
+		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
 
 
 	def _compute_pval(self, statistic, null_statistics, method='two-tailed'):

@@ -26,7 +26,7 @@ class SingleCellEstimator(object):
 		self, 
 		adata, 
 		p=0.1, 
-		group_label='leiden'):
+		group_label='group'):
 
 		self.anndata = adata
 		self.genes = adata.var.index
