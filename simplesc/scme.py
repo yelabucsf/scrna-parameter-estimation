@@ -46,7 +46,7 @@ def depair(z):
 
 
 def robust_linregress(a, b):
-	""" Wrapper for scipy linregress function. """
+	""" Wrapper for scipy linregress function that ignores non-finite values. """
 
 	condition = (np.isfinite(a) & np.isfinite(b))
 	x = a[condition]
@@ -86,7 +86,7 @@ class SingleCellEstimator(object):
 		self.barcodes = adata.obs.index
 		self.beta = beta
 		self.group_label = group_label
-		self.groups = self.anndata.obs[self.group_label].drop_duplicates()
+		self.groups = self.anndata.obs[self.group_label].drop_duplicates().tolist()
 		self.group_counts = dict(adata.obs[group_label].value_counts())
 		for group in list(self.group_counts.keys()):
 			self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
@@ -125,12 +125,12 @@ class SingleCellEstimator(object):
 		# Turn the highest value into a 0
 		# observed[observed == observed.max()] = 0
 
-		if type(observed) == sp.sparse.csr_matrix or type(observed) == sp.sparse.csc.csc_matrix:
+		if type(observed) != np.ndarray: # Some sparse matrix
 
 			mean = observed.mean(axis=0).A1
 			cov = ((observed.T*observed -(sum(observed).T*sum(observed)/N))/(N-1)).todense()
 
-		else:
+		else: # Numpy ndarray
 
 			mean = observed.mean(axis=0)
 			cov = np.cov(observed, rowvar=False)
@@ -344,7 +344,7 @@ class SingleCellEstimator(object):
 			'corr': cov2corr(self.estimated_central_moments[group]['prod'])}
 
 
-	def compute_confidence_intervals_1d(self, groups='all', groups_to_compare=None):
+	def compute_confidence_intervals_1d(self, groups=None, groups_to_compare=None):
 		"""
 			Compute 95% confidence intervals around the estimated parameters. 
 
@@ -356,7 +356,9 @@ class SingleCellEstimator(object):
 			So the result might be slightly off.
 		"""
 
-		groups_to_iter = self.group_counts.keys() if groups == 'all' else groups
+		start = time.time()
+
+		groups_to_iter = self.group_counts.keys() if groups is None else groups
 		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
 
 		mean_inv_numis = {group:(self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3) \
@@ -379,6 +381,8 @@ class SingleCellEstimator(object):
 				gene_counts[gene_idx][group] = hist
 				all_counts[group] |= set(hist)
 
+				print(hist.shape, (hist==0).sum())
+
 		# All unique counts from all groups across all genes
 		all_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_counts.items()}
 
@@ -387,7 +391,8 @@ class SingleCellEstimator(object):
 			a=(counts+1e-10), 
 			size=(self.num_permute, counts.shape[0])) for group, counts in all_counts_sorted.items()}
 
-		print('Gamma RVs generated..')
+		gamma_time = time.time()
+		print('Gamma RVs generated..', gamma_time-start)
 
 		# Declare placeholders for gene confidence intervals
 		parameters = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
@@ -410,6 +415,7 @@ class SingleCellEstimator(object):
 
 			# Sample dirichlet from the Gamma variables
 			gene_dir_rvs = {group:(gene_gamma_rvs[group]/gene_gamma_rvs[group].sum(axis=1)[:,None]) for group in groups_to_iter}
+			del gene_gamma_rvs
 
 			# Construct the repeated values matrix
 			values = {group:np.tile(
@@ -418,6 +424,7 @@ class SingleCellEstimator(object):
 			# Compute the permuted, observed mean/dispersion
 			mean = {group:((gene_dir_rvs[group]) * values[group]).sum(axis=1) for group in groups_to_iter}
 			second_moments = {group:((gene_dir_rvs[group]) * values[group]**2).sum(axis=1) for group in groups_to_iter}
+			del gene_dir_rvs
 
 			# Compute the permuted, estimated moments for both groups
 			estimated_means = {group:self._estimate_mean(mean[group]) for group in groups_to_iter}
@@ -433,7 +440,6 @@ class SingleCellEstimator(object):
 				ci_dict[group]['log_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]))
 				ci_dict[group]['log1p_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]+1))
 				ci_dict[group]['log1p_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]+1))
-
 
 			# Perform hypothesis testing
 			for group_1, group_2 in comparison_groups:
@@ -469,8 +475,10 @@ class SingleCellEstimator(object):
 		self.parameters_confidence_intervals.update(ci_dict)
 		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
 
+		print(time.time()-gamma_time)
 
-	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups='all', groups_to_compare=None):
+
+	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None):
 		"""
 			Compute 95% confidence intervals around the estimated parameters. 
 
@@ -482,7 +490,7 @@ class SingleCellEstimator(object):
 			So the result might be slightly off.
 		"""
 
-		groups_to_iter = self.group_counts.keys() if groups == 'all' else groups
+		groups_to_iter = self.group_counts.keys() if groups is None else groups
 		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
 
 		mean_inv_numis = {group:(self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3) \
@@ -502,6 +510,9 @@ class SingleCellEstimator(object):
 
 			for gene_idx_2 in genes_idxs_2:
 
+				if gene_idx_1 == gene_idx_2:
+					continue
+
 				pair_counts[gene_idx_1][gene_idx_2] = {}
 
 				for group in groups_to_iter:
@@ -516,6 +527,8 @@ class SingleCellEstimator(object):
 					pair_counts[gene_idx_1][gene_idx_2][group] = hist
 
 					all_pair_counts[group] |= set(hist)
+
+					print(hist.shape, (hist==0).sum())
 
 		# All unique counts from all groups across all genes
 		all_pair_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_pair_counts.items()}
@@ -547,12 +560,16 @@ class SingleCellEstimator(object):
 
 			for gene_idx_2 in genes_idxs_2:
 
+				if gene_idx_2 == gene_idx_1:
+					continue
+
 				# Grab the appropriate Gamma variables given the bincounts of this particular gene
 				gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(pair_counts[gene_idx_1][gene_idx_2][group][:, None] == all_pair_counts_sorted[group])[1]]) \
 					for group in groups_to_iter}
 
 				# Sample dirichlet from the Gamma variables
 				gene_dir_rvs = {group:(gene_gamma_rvs[group]/gene_gamma_rvs[group].sum(axis=1)[:,None]) for group in groups_to_iter}
+				del gene_gamma_rvs
 
 				# Construct the repeated values matrix
 				cantor_code = {group:np.arange(0, pair_counts[gene_idx_1][gene_idx_2][group].shape[0]) for group in groups_to_iter}
@@ -570,6 +587,7 @@ class SingleCellEstimator(object):
 				mean_2 = {group:((gene_dir_rvs[group]) * values_2[group]).sum(axis=1) for group in groups_to_iter}
 				second_moments_2 = {group:((gene_dir_rvs[group]) * values_2[group]**2).sum(axis=1) for group in groups_to_iter}
 				prod = {group:((gene_dir_rvs[group]) * values_1[group] * values_2[group]).sum(axis=1) for group in groups_to_iter}
+				del gene_dir_rvs
 
 				# Compute the permuted, estimated moments for both groups
 				estimated_means_1 = {group:self._estimate_mean(mean_1[group]) for group in groups_to_iter}
@@ -628,7 +646,7 @@ class SingleCellEstimator(object):
 		"""
 
 		# Setup keys
-		group_key = frozenset([group_1, group_2])
+		group_key = (group_1, group_2)
 		param_key = 'de' if which == 'mean' else 'dv'
 
 		# Find the number of genes to return
@@ -644,3 +662,4 @@ class SingleCellEstimator(object):
 		order = np.argsort(relevant_fdr)[:min(num_sig_genes, num_genes)]
 
 		return relevant_fdr[order], self.genes[order]
+
