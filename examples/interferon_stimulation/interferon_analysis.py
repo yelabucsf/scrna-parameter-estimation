@@ -62,7 +62,7 @@ def cell_type_markers(adata):
 		pkl.dump(estimator.hypothesis_test_result_1d, f)
 
 
-def stim_effect(adata):
+def stim_effect_1d(adata):
 	"""
 		IFN-beta stimulation effect on PBMCs.
 	"""
@@ -77,13 +77,41 @@ def stim_effect(adata):
 	estimator.estimate_beta_sq(tolerance=3)
 	estimator.estimate_parameters()
 
-	# estimator.compute_confidence_intervals_1d(
-	# 	groups=estimator.groups,
-	# 	groups_to_compare=[(ct + ' - ctrl', ct + ' - stim') for ct in adata.obs['cell'].drop_duplicates()])
+	estimator.compute_confidence_intervals_1d(
+		groups=estimator.groups,
+		groups_to_compare=[(ct + ' - ctrl', ct + ' - stim') for ct in adata.obs['cell'].drop_duplicates()])
 	
-	# # Save the 1D hypothesis test result
-	# with open(data_path + 'stim_effect_1d.pkl', 'wb') as f:
-	# 	pkl.dump(estimator.hypothesis_test_result_1d, f)
+	# Save the 1D hypothesis test result
+	with open(data_path + 'stim_effect_1d.pkl', 'wb') as f:
+		pkl.dump(estimator.hypothesis_test_result_1d, f)
+
+	# Save the 1d parameters
+	with open(data_path + 'stim_effect_1d_params.pkl', 'wb') as f:
+		param_dict = {group:{k:v for k, v in estimator.parameters[group].items() if k != 'corr'} for group in estimator.parameters}
+		pkl.dump(param_dict, f)
+
+	# Save the 1d parameters
+	with open(data_path + 'stim_effect_ci_1d.pkl', 'wb') as f:
+		pkl.dump(estimator.parameters_confidence_intervals, f)
+
+
+def stim_effect_2d(adata):
+	"""
+		IFN-beta stimulation effect on PBMCs.
+	"""
+
+	estimator = scme.SingleCellEstimator(
+		adata=adata, 
+		group_label='cell_type',
+		n_umis_column='n_counts',
+		num_permute=10000,
+		beta=0.1)
+
+	estimator.estimate_beta_sq(tolerance=3)
+	estimator.estimate_parameters()
+
+	with open(data_path + 'immune_genes.pkl', 'rb') as f:
+		immune_genes = pkl.load(f)
 
 	for ct in adata.obs['cell'].drop_duplicates():
 
@@ -91,7 +119,7 @@ def stim_effect(adata):
 		start = time.time()
 		estimator.compute_confidence_intervals_2d(
 			gene_list_1=['STAT3', 'STAT4', 'STAT6', 'IRF1', 'IRF8', 'IRF9'],
-			gene_list_2=adata.var.index.tolist(),
+			gene_list_2=immune_genes,
 			groups=[ct + ' - ctrl', ct + ' - stim'],
 			groups_to_compare=[(ct + ' - ctrl', ct + ' - stim')])
 		print('This cell type took', time.time()-start)
@@ -101,6 +129,14 @@ def stim_effect(adata):
 	with open(data_path + 'stim_effect_2d.pkl', 'wb') as f:
 		pkl.dump(estimator.hypothesis_test_result_2d, f)
 
+	idxs_1 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_1']
+	idxs_2 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_2']
+
+	with open(data_path + 'stim_effect_ci_2d.pkl', 'wb') as f:
+		ci_dict = {}
+		for group, val in estimator.parameters_confidence_intervals.items():
+			ci_dict[group] = {'corr':val['corr'][idxs_1, :][:, idxs_2]}
+		pkl.dump(ci_dict, f)
 
 if __name__ == '__main__':
 
@@ -109,11 +145,9 @@ if __name__ == '__main__':
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	# Find cell type markers
-	#cell_type_markers(adata)
+	#stim_effect_1d(adata)
 
-	# Find the cell type specific effect of IFN-B stimulation
-	stim_effect(adata)
+	stim_effect_2d(adata)
 
 
 

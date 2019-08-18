@@ -24,6 +24,39 @@ matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 
 
+def compute_asl(perm_diff):
+	""" 
+		Use the generalized pareto distribution to model the tail of the permutation distribution. 
+	"""
+
+	extreme_count = (perm_diff > 0).sum()
+	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
+
+	if extreme_count > 2: # We do not need to use the GDP approximation. 
+
+		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+	else: # We use the GDP approximation
+
+		perm_mean = perm_diff.mean()
+		perm_dist = np.sort(perm_diff) if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+		N_exec = 300 # Starting value for number of exceendences
+
+		while N_exec > 50:
+
+			tail_data = perm_dist[-N_exec:]
+			params = stats.genextreme.fit(tail_data)
+			_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+			if ks_pval > 0.05: # roughly a genpareto distribution
+				return 2 * (N_exec/perm_diff.shape[0]) * stats.genextreme.sf(1, *params)
+			else: # Failed to fit genpareto
+				N_exec -= 30
+
+		# Failed to fit genpareto, return the upper bound
+		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+
 def pair(k1, k2, safe=True):
     """
     Cantor pairing function
@@ -356,8 +389,6 @@ class SingleCellEstimator(object):
 			So the result might be slightly off.
 		"""
 
-		start = time.time()
-
 		groups_to_iter = self.group_counts.keys() if groups is None else groups
 		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
 
@@ -377,11 +408,11 @@ class SingleCellEstimator(object):
 				cell_selector = self._select_cells(group)
 				data = self.anndata.X[cell_selector, :].toarray()
 
-				hist = np.bincount(data[:, gene_idx].reshape(-1).astype(int))
-				gene_counts[gene_idx][group] = hist
-				all_counts[group] |= set(hist)
+				expr_values, counts = np.unique(data[:, gene_idx].reshape(-1).astype(int), return_counts=True)
 
-				print(hist.shape, (hist==0).sum())
+				gene_counts[gene_idx][group] = (expr_values, counts)
+
+				all_counts[group] |= set(counts)
 
 		# All unique counts from all groups across all genes
 		all_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_counts.items()}
@@ -391,8 +422,7 @@ class SingleCellEstimator(object):
 			a=(counts+1e-10), 
 			size=(self.num_permute, counts.shape[0])) for group, counts in all_counts_sorted.items()}
 
-		gamma_time = time.time()
-		print('Gamma RVs generated..', gamma_time-start)
+		print('Gamma RVs generated..')
 
 		# Declare placeholders for gene confidence intervals
 		parameters = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
@@ -401,7 +431,12 @@ class SingleCellEstimator(object):
 				for group in groups_to_iter}
 
 		# Declare placeholders for group comparison results
-		hypothesis_test_parameters = ['de_diff', 'de_pval', 'de_fdr', 'dv_diff', 'dv_pval', 'dv_fdr']
+		hypothesis_test_parameters = [
+			'log_mean_1', 'log_mean_2', 
+			'log_residual_var_1', 'log_residual_var_2', 
+			'de_diff', 'de_pval', 
+			'de_fdr', 'dv_diff', 
+			'dv_pval', 'dv_fdr']
 		hypothesis_test_dict = {
 			(group_1, group_2):{param:np.zeros(self.anndata.var.shape[0]) for param \
 				in hypothesis_test_parameters} for group_1, group_2 in comparison_groups}
@@ -410,7 +445,7 @@ class SingleCellEstimator(object):
 		for gene_idx in range(self.anndata.var.shape[0]):
 
 			# Grab the appropriate Gamma variables given the bincounts of this particular gene
-			gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(gene_counts[gene_idx][group][:, None] == all_counts_sorted[group])[1]]) \
+			gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(gene_counts[gene_idx][group][1][:, None] == all_counts_sorted[group])[1]]) \
 				for group in groups_to_iter}
 
 			# Sample dirichlet from the Gamma variables
@@ -419,7 +454,7 @@ class SingleCellEstimator(object):
 
 			# Construct the repeated values matrix
 			values = {group:np.tile(
-				np.arange(0, gene_counts[gene_idx][group].shape[0]).reshape(1, -1), (self.num_permute, 1)) for group in groups_to_iter}
+				gene_counts[gene_idx][group][0].reshape(1, -1), (self.num_permute, 1)) for group in groups_to_iter}
 
 			# Compute the permuted, observed mean/dispersion
 			mean = {group:((gene_dir_rvs[group]) * values[group]).sum(axis=1) for group in groups_to_iter}
@@ -447,21 +482,26 @@ class SingleCellEstimator(object):
 				# For difference of log means
 				boot_log_mean_diff = np.log(estimated_means[group_2]) - np.log(estimated_means[group_1])
 				observed_log_mean_diff = self.parameters[group_2]['log_mean'][gene_idx] - self.parameters[group_1]['log_mean'][gene_idx]
+				hypothesis_test_dict[(group_1, group_2)]['log_mean_1'][gene_idx]  = self.parameters[group_1]['log_mean'][gene_idx]
+				hypothesis_test_dict[(group_1, group_2)]['log_mean_2'][gene_idx]  = self.parameters[group_2]['log_mean'][gene_idx]
 				hypothesis_test_dict[(group_1, group_2)]['de_diff'][gene_idx]  = observed_log_mean_diff
 				if np.isfinite(observed_log_mean_diff):
 
-					asl = (boot_log_mean_diff > 0).mean()
-					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = 2*asl if asl < 0.5 else 2*(1-asl)
+					asl = compute_asl(boot_log_mean_diff)
+
+					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = asl
 				else:
 					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = np.nan
 
 				# For difference of log residual variances
 				boot_log_residual_var_diff = np.log(estimated_residual_vars[group_2]) - np.log(estimated_residual_vars[group_1])
 				observed_log_residual_var_diff = self.parameters[group_2]['log_residual_var'][gene_idx] - self.parameters[group_1]['log_residual_var'][gene_idx]
+				hypothesis_test_dict[(group_1, group_2)]['log_residual_var_1'][gene_idx]  = self.parameters[group_1]['log_residual_var'][gene_idx]
+				hypothesis_test_dict[(group_1, group_2)]['log_residual_var_2'][gene_idx]  = self.parameters[group_2]['log_residual_var'][gene_idx]
 				hypothesis_test_dict[(group_1, group_2)]['dv_diff'][gene_idx]  = observed_log_residual_var_diff
 				if np.isfinite(observed_log_residual_var_diff):
-					asl = (boot_log_residual_var_diff > 0).mean()
-					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = 2*asl if asl < 0.5 else 2*(1-asl)
+					asl = compute_asl(boot_log_residual_var_diff)
+					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = asl
 				else:
 					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = np.nan
 
@@ -474,9 +514,7 @@ class SingleCellEstimator(object):
 		# Update the attribute dictionaries
 		self.parameters_confidence_intervals.update(ci_dict)
 		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
-
-		print(time.time()-gamma_time)
-
+		
 
 	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None):
 		"""
@@ -522,13 +560,11 @@ class SingleCellEstimator(object):
 
 					cantor_code = pair(data[:, gene_idx_1], data[:, gene_idx_2])
 
-					hist = np.bincount(cantor_code)
+					expr_values, counts = np.unique(cantor_code, return_counts=True)
 
-					pair_counts[gene_idx_1][gene_idx_2][group] = hist
+					pair_counts[gene_idx_1][gene_idx_2][group] = (expr_values, counts)
 
-					all_pair_counts[group] |= set(hist)
-
-					print(hist.shape, (hist==0).sum())
+					all_pair_counts[group] |= set(counts)
 
 		# All unique counts from all groups across all genes
 		all_pair_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_pair_counts.items()}
@@ -547,7 +583,7 @@ class SingleCellEstimator(object):
 				for group in groups_to_iter}
 
 		# Declare placeholders for group comparison results
-		hypothesis_test_parameters = ['dc_diff', 'dc_pval', 'dc_fdr']
+		hypothesis_test_parameters = ['dc_diff', 'dc_pval', 'dc_fdr', 'corr_1', 'corr_2']
 		hypothesis_test_dict = {
 			(group_1, group_2):{param:np.zeros(self.parameters[group_1]['corr'].shape)*np.nan for param \
 				in hypothesis_test_parameters} for group_1, group_2 in comparison_groups}
@@ -564,7 +600,7 @@ class SingleCellEstimator(object):
 					continue
 
 				# Grab the appropriate Gamma variables given the bincounts of this particular gene
-				gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(pair_counts[gene_idx_1][gene_idx_2][group][:, None] == all_pair_counts_sorted[group])[1]]) \
+				gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(pair_counts[gene_idx_1][gene_idx_2][group][1][:, None] == all_pair_counts_sorted[group])[1]]) \
 					for group in groups_to_iter}
 
 				# Sample dirichlet from the Gamma variables
@@ -572,7 +608,7 @@ class SingleCellEstimator(object):
 				del gene_gamma_rvs
 
 				# Construct the repeated values matrix
-				cantor_code = {group:np.arange(0, pair_counts[gene_idx_1][gene_idx_2][group].shape[0]) for group in groups_to_iter}
+				cantor_code = {group:pair_counts[gene_idx_1][gene_idx_2][group][0] for group in groups_to_iter}
 				values_1 = {}
 				values_2 = {}
 
@@ -597,9 +633,11 @@ class SingleCellEstimator(object):
 
 				# Compute estimated correlations
 				estimated_corrs = {}
+				estimated_covs = {}
 				for group in groups_to_iter:
 					denom = self.beta_sq - (self.beta - self.beta_sq)*mean_inv_numis[group]
-					cov = prod[group] / denom - (estimated_means_1[group] * estimated_means_2[group])/self.beta**2
+					cov = prod[group] / denom - (mean_1[group] * mean_2[group])/self.beta**2
+					estimated_covs[group] = cov
 					estimated_corrs[group] = cov / np.sqrt(estimated_vars_1[group]*estimated_vars_2[group]) 
 
 				# Store the S.E. of the correlation
@@ -612,17 +650,21 @@ class SingleCellEstimator(object):
 					# For difference of log means
 					boot_corr_diff = estimated_corrs[group_2] - estimated_corrs[group_1]
 					observed_corr_diff = self.parameters[group_2]['corr'][gene_idx_1, gene_idx_2] - self.parameters[group_1]['corr'][gene_idx_1, gene_idx_2]
+					hypothesis_test_dict[(group_1, group_2)]['corr_1'][gene_idx_1, gene_idx_2]  = self.parameters[group_1]['corr'][gene_idx_1, gene_idx_2]
+					hypothesis_test_dict[(group_1, group_2)]['corr_2'][gene_idx_1, gene_idx_2]  = self.parameters[group_2]['corr'][gene_idx_1, gene_idx_2]
 					hypothesis_test_dict[(group_1, group_2)]['dc_diff'][gene_idx_1, gene_idx_2]  = observed_corr_diff
 
 					if np.isfinite(observed_corr_diff):
 
-						asl = (boot_corr_diff > 0).mean()
-						hypothesis_test_dict[(group_1, group_2)]['dc_pval'][gene_idx_1, gene_idx_2] = 2*asl if asl < 0.5 else 2*(1-asl)
+						asl = compute_asl(boot_corr_diff)
+						hypothesis_test_dict[(group_1, group_2)]['dc_pval'][gene_idx_1, gene_idx_2] = asl
 
 		# Perform FDR correction
 		for group_1, group_2 in comparison_groups:
 
-			hypothesis_test_dict[(group_1, group_2)]['dc_diff'] = self.parameters[group_2]['corr'][genes_idxs_1, :][:, genes_idxs_2] - self.parameters[group_1]['corr'][genes_idxs_1, :][:, genes_idxs_2]
+			hypothesis_test_dict[(group_1, group_2)]['corr_1'] = hypothesis_test_dict[(group_1, group_2)]['corr_1'][genes_idxs_1, :][:, genes_idxs_2]
+			hypothesis_test_dict[(group_1, group_2)]['corr_2'] = hypothesis_test_dict[(group_1, group_2)]['corr_2'][genes_idxs_1, :][:, genes_idxs_2]
+			hypothesis_test_dict[(group_1, group_2)]['dc_diff'] = hypothesis_test_dict[(group_1, group_2)]['dc_diff'][genes_idxs_1, :][:, genes_idxs_2]
 			hypothesis_test_dict[(group_1, group_2)]['dc_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dc_pval'][genes_idxs_1, :][:, genes_idxs_2].reshape(-1))\
 				.reshape(genes_idxs_1.shape[0], genes_idxs_2.shape[0])
 			hypothesis_test_dict[(group_1, group_2)]['dc_pval'] = hypothesis_test_dict[(group_1, group_2)]['dc_pval'][genes_idxs_1, :][:, genes_idxs_2]
@@ -634,32 +676,4 @@ class SingleCellEstimator(object):
 			else:
 				self.parameters_confidence_intervals[group] = ci_dict[group]
 		self.hypothesis_test_result_2d.update(hypothesis_test_dict)
-
-
-	def get_differential_genes(self, group_1, group_2, which, direction, sig=0.1, num_genes=50):
-		"""
-			Get genes that are increased in expression in group 2 compared to group 1, sorted in order of significance.
-			:which: should be either "mean" or "dispersion"
-			:direction: should be either "increase" or "decrease"
-			:sig: defines the threshold
-			:num_genes: defines the number of genes to be returned. If bigger than the number of significant genes, then return only the significant ones.
-		"""
-
-		# Setup keys
-		group_key = (group_1, group_2)
-		param_key = 'de' if which == 'mean' else 'dv'
-
-		# Find the number of genes to return
-		sig_condition = self.hypothesis_test_result_1d[group_key][param_key + '_fdr'] < sig
-		dir_condition = ((1 if direction == 'increase' else -1)*self.hypothesis_test_result_1d[group_key][param_key + '_diff']) > 0
-		num_sig_genes = (sig_condition & dir_condition).sum()
-		
-		# We will order the output by significance. Just turn the FDR of the other half into 1's to remove them from the ordering.
-		relevant_fdr = self.hypothesis_test_result_1d[group_key][param_key + '_fdr'].copy()
-		relevant_fdr[~dir_condition] = 1
-
-		# Get the order of the genes in terms of FDR.
-		order = np.argsort(relevant_fdr)[:min(num_sig_genes, num_genes)]
-
-		return relevant_fdr[order], self.genes[order]
 
