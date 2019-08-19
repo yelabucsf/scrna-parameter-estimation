@@ -90,6 +90,11 @@ def stim_effect_1d(adata):
 		param_dict = {group:{k:v for k, v in estimator.parameters[group].items() if k != 'corr'} for group in estimator.parameters}
 		pkl.dump(param_dict, f)
 
+	# Save the central moments	
+	with open(data_path + 'stim_effect_1d_moments.pkl', 'wb') as f:
+		moment_dict = {group:{k:v for k, v in estimator.estimated_central_moments[group].items() if k != 'prod'} for group in estimator.estimated_central_moments}
+		pkl.dump(moment_dict, f)
+
 	# Save the 1d parameters
 	with open(data_path + 'stim_effect_ci_1d.pkl', 'wb') as f:
 		pkl.dump(estimator.parameters_confidence_intervals, f)
@@ -125,6 +130,7 @@ def stim_effect_2d(adata):
 		print('This cell type took', time.time()-start)
 
 	print('Saving 2D comparison results...')
+
 	# Save the 2D hypothesis test result
 	with open(data_path + 'stim_effect_2d.pkl', 'wb') as f:
 		pkl.dump(estimator.hypothesis_test_result_2d, f)
@@ -132,6 +138,7 @@ def stim_effect_2d(adata):
 	idxs_1 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_1']
 	idxs_2 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_2']
 
+	# Save the correlation confidence intervals
 	with open(data_path + 'stim_effect_ci_2d.pkl', 'wb') as f:
 		ci_dict = {}
 		for group, val in estimator.parameters_confidence_intervals.items():
@@ -145,9 +152,9 @@ if __name__ == '__main__':
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	#stim_effect_1d(adata)
+	stim_effect_1d(adata)
 
-	stim_effect_2d(adata)
+	#stim_effect_2d(adata)
 
 
 
