@@ -75,12 +75,11 @@ def simulate_dropout(
 		Simulate the beta-binomial dropout.
 	"""
 
-	print('lol')
 	m = q
 	v = q_sq - q**2
 	alpha = m*(m*(1-m)/v - 1)
 	beta = (1-m)*(m*(1-m)/v - 1)
-	qs = stats.beta.rvs(alpha, beta, size=true_counts.shape[0])
+	qs = stats.beta.rvs(alpha, beta, size=true_counts.shape)
 
-	return qs#, stats.binom.rvs(true_counts, qs)
+	return stats.binom.rvs(true_counts, qs)
 

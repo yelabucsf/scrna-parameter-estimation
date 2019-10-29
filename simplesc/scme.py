@@ -406,7 +406,7 @@ class SingleCellEstimator(object):
 			for group in groups_to_iter:
 
 				cell_selector = self._select_cells(group)
-				data = self.anndata.X[cell_selector, :].toarray()
+				data = self.anndata.X[cell_selector, :].toarray() if type(self.anndata.X) != np.ndarray else self.anndata.X[cell_selector, :]
 
 				expr_values, counts = np.unique(data[:, gene_idx].reshape(-1).astype(int), return_counts=True)
 
@@ -556,7 +556,7 @@ class SingleCellEstimator(object):
 				for group in groups_to_iter:
 
 					cell_selector = self._select_cells(group)
-					data = self.anndata.X[cell_selector, :].toarray()
+					data = self.anndata.X[cell_selector, :].toarray() if type(self.anndata.X) != np.ndarray else self.anndata.X[cell_selector, :]
 
 					cantor_code = pair(data[:, gene_idx_1], data[:, gene_idx_2])
 
