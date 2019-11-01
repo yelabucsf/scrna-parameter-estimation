@@ -7,13 +7,14 @@
 
 import scanpy.api as sc
 import time
-import scme
 import pickle as pkl
-import sys
 import os
+import sys
+sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/simplesc')
+import scme, utils
 
 # Global variable with the data path relevant for this analysis
-data_path = '/wynton/group/ye/mincheol/parameter_estimation/cd4_cropseq_data/'
+data_path = '/data/parameter_estimation/cd4_cropseq_data/'
 
 
 class ForceIOStream:
@@ -36,7 +37,7 @@ sys.stderr = ForceIOStream(sys.stderr)
 
 def corr_ko_effect(adata):
     """
-        IFN-beta stimulation effect on PBMCs.
+        CRISPR KO effect on correlation of gene expression in PBMCs.
     """
 
     estimator = scme.SingleCellEstimator(
@@ -50,31 +51,29 @@ def corr_ko_effect(adata):
     estimator.estimate_beta_sq(tolerance=3)
     estimator.estimate_parameters()
 
-    with open(data_path + 'genes_to_test.pkl', 'rb') as f:
-        genes_to_test = pkl.load(f)
+    with open(data_path + 'ko_genes_to_test.pkl', 'rb') as f:
+        ko_genes_to_test = pkl.load(f)
 
-    with open(data_path + '../interferon_data/immune_genes.pkl', 'rb') as f:
-        immune_genes = pkl.load(f)
+    with open(data_path + '../interferon_data/immune_genes_to_test.pkl', 'rb') as f:
+        immune_genes_to_test = pkl.load(f)
 
     for group in adata.obs['group'].drop_duplicates():
 
         if group == 'WT':
             continue
 
-        if group.split('.')[0] not in genes_to_test:
+        if group.split('.')[0] not in ko_genes_to_test:
             continue
 
         print('Correlation testing for', group)
-        start = time.time()
         estimator.compute_confidence_intervals_2d(
-            gene_list_1=genes_to_test,
-            gene_list_2=immune_genes,
+            gene_list_1=ko_genes_to_test,
+            gene_list_2=immune_genes_to_test,
             groups=['WT', group],
             groups_to_compare=[('WT', group)])
-        print('This cell type took', time.time()-start)
 
         with open(data_path + 'diff_cor/{}.pkl'.format(group), 'wb') as f:
-            pkl.dump(estimator.hypothesis_test_result_2d, f)
+            pkl.dump(estimator.hypothesis_test_result_2d[('WT', group)], f)
 
         idxs_1 = estimator.hypothesis_test_result_2d[('WT', group)]['gene_idx_1']
         idxs_2 = estimator.hypothesis_test_result_2d[('WT', group)]['gene_idx_2']
@@ -90,5 +89,13 @@ if __name__ == '__main__':
 
     # Read the AnnData object and filter out hemoglobin genes
     adata = sc.read(data_path + 'guide_singlets.h5ad')
+
+    with open(data_path + 'ko_genes_to_test.pkl', 'rb') as f:
+        ko_genes_to_test = pkl.load(f)
+
+    adata.obs['target_regulator'] = adata.obs['group']\
+        .apply(lambda x: x.split('.')[0])
+
+    adata = adata[adata.obs['target_regulator'].isin(ko_genes_to_test) | (adata.obs['group'] == 'WT')].copy()
 
     corr_ko_effect(adata)

@@ -111,6 +111,7 @@ class SingleCellEstimator(object):
 		adata,
 		group_label,
 		n_umis_column,
+		leave_one_out=False,
 		num_permute=10000,
 		beta=0.1):
 
@@ -121,8 +122,10 @@ class SingleCellEstimator(object):
 		self.group_label = group_label
 		self.groups = self.anndata.obs[self.group_label].drop_duplicates().tolist()
 		self.group_counts = dict(adata.obs[group_label].value_counts())
-		for group in list(self.group_counts.keys()):
-			self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
+		self.leave_one_out = leave_one_out
+		if leave_one_out:
+			for group in list(self.group_counts.keys()):
+				self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
 		self.n_umis = adata.obs[n_umis_column].values
 		self.num_permute = num_permute
 
@@ -229,7 +232,7 @@ class SingleCellEstimator(object):
 
 			print('Computing observed moments for:', group)
 			self.compute_observed_moments(group)
-			self.compute_observed_moments('-' + group)
+			#self.compute_observed_moments('-' + group) This is the leave one out part.
 
 		# Combine all observed moments from every group
 		x = np.concatenate([self.observed_central_moments[group]['first'] for group in self.groups])

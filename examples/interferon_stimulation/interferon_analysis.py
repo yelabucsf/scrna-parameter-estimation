@@ -7,27 +7,28 @@
 
 import scanpy.api as sc
 import time
-import scme
 import pickle as pkl
 import sys
 import os
+sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/simplesc')
+import scme, utils
 
 # Global variable with the data path relevant for this analysis
-data_path = '/wynton/group/ye/mincheol/parameter_estimation/interferon_data/'
+data_path = '/data/parameter_estimation/interferon_data/'
 
 
 class ForceIOStream:
-    def __init__(self, stream):
-        self.stream = stream
+	def __init__(self, stream):
+		self.stream = stream
 
-    def write(self, data):
-        self.stream.write(data)
-        self.stream.flush()
-        if not self.stream.isatty():
-            os.fsync(self.stream.fileno())
+	def write(self, data):
+		self.stream.write(data)
+		self.stream.flush()
+		if not self.stream.isatty():
+			os.fsync(self.stream.fileno())
 
-    def __getattr__(self, attr):
-        return getattr(self.stream, attr)
+	def __getattr__(self, attr):
+		return getattr(self.stream, attr)
 
 
 sys.stdout = ForceIOStream(sys.stdout)
@@ -115,16 +116,18 @@ def stim_effect_2d(adata):
 	estimator.estimate_beta_sq(tolerance=3)
 	estimator.estimate_parameters()
 
-	with open(data_path + 'immune_genes.pkl', 'rb') as f:
-		immune_genes = pkl.load(f)
+	with open(data_path + '../cd4_cropseq_data/ko_genes_to_test.pkl', 'rb') as f:
+		ko_genes_to_test = pkl.load(f)
 
-	for ct in adata.obs['cell'].drop_duplicates():
+	with open(data_path + 'immune_genes_to_test.pkl', 'rb') as f:
+		immune_genes_to_test = pkl.load(f)
 
+	for ct in adata.obs['cell'].drop_duplicates().tolist():
 		print('Correlation testing for', ct)
 		start = time.time()
 		estimator.compute_confidence_intervals_2d(
-			gene_list_1=['STAT3', 'STAT4', 'STAT6', 'IRF1', 'IRF8', 'IRF9'],
-			gene_list_2=immune_genes,
+			gene_list_1=ko_genes_to_test,
+			gene_list_2=immune_genes_to_test,
 			groups=[ct + ' - ctrl', ct + ' - stim'],
 			groups_to_compare=[(ct + ' - ctrl', ct + ' - stim')])
 		print('This cell type took', time.time()-start)
@@ -152,13 +155,7 @@ if __name__ == '__main__':
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	stim_effect_1d(adata)
+	#stim_effect_1d(adata)
 
-	#stim_effect_2d(adata)
-
-
-
-
-
-
+	stim_effect_2d(adata)
 
