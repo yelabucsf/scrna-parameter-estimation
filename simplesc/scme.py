@@ -9,6 +9,7 @@
 
 import pandas as pd
 import scipy.stats as stats
+import scipy.sparse as sparse
 import numpy as np
 import time
 import itertools
@@ -158,8 +159,13 @@ class SingleCellEstimator(object):
 	def _compute_statistics(self, observed, N):
 		""" Compute some non central moments of the observed data. """
 
-		# Turn the highest value into a 0
-		# observed[observed == observed.max()] = 0
+		# if type(observed) != np.ndarray: # Change this later
+
+		# 	observed = observed.toarray()
+
+		# # Turn the highest value into a 0 for each gene
+		# max_idx = observed.argmax(axis=0)
+		# observed[max_idx, np.arange(observed.shape[1])] = 0
 
 		if type(observed) != np.ndarray: # Some sparse matrix
 

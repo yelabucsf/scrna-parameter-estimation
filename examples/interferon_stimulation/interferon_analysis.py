@@ -148,6 +148,7 @@ def stim_effect_2d(adata):
 			ci_dict[group] = {'corr':val['corr'][idxs_1, :][:, idxs_2]}
 		pkl.dump(ci_dict, f)
 
+
 if __name__ == '__main__':
 
 	# Read the AnnData object and filter out hemoglobin genes
@@ -155,7 +156,7 @@ if __name__ == '__main__':
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	#stim_effect_1d(adata)
+	stim_effect_1d(adata)
 
 	stim_effect_2d(adata)
 
