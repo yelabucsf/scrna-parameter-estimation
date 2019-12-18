@@ -10,11 +10,14 @@ import time
 import pickle as pkl
 import sys
 import os
-sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/simplesc')
+sys.path.append('/wynton/group/ye/mincheol/Github/scrna-parameter-estimation/simplesc')
+#sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/simplesc')
 import scme, utils
 
 # Global variable with the data path relevant for this analysis
-data_path = '/data/parameter_estimation/interferon_data/'
+#data_path = '/data/parameter_estimation/interferon_data/'
+data_path = '/wynton/group/ye/mincheol/parameter_estimation/interferon_data/20191218/'
+
 
 
 class ForceIOStream:
@@ -116,7 +119,7 @@ def stim_effect_2d(adata):
 	estimator.estimate_beta_sq(tolerance=3)
 	estimator.estimate_parameters()
 
-	with open(data_path + '../cd4_cropseq_data/ko_genes_to_test.pkl', 'rb') as f:
+	with open(data_path + 'ko_genes_to_test.pkl', 'rb') as f:
 		ko_genes_to_test = pkl.load(f)
 
 	with open(data_path + 'immune_genes_to_test.pkl', 'rb') as f:
@@ -156,7 +159,7 @@ if __name__ == '__main__':
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	stim_effect_1d(adata)
+	#stim_effect_1d(adata)
 
 	stim_effect_2d(adata)
 

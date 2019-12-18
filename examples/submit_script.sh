@@ -6,7 +6,7 @@
 #$ -cwd                          
 #$ -r y                          
 #$ -j y                          
-#$ -l mem_free=35G             
+#$ -l mem_free=20G             
 #$ -l h_rt=12:00:00
 
 # If you used the -t option above, this same script will be run for each task,

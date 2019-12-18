@@ -131,6 +131,7 @@ class SingleCellEstimator(object):
 		self.num_permute = num_permute
 
 		# Initialize parameter containing dictionaries
+		self.mean_inv_numis = {}
 		self.observed_moments = {}
 		self.observed_central_moments = {}
 		self.estimated_moments = {}
@@ -222,6 +223,27 @@ class SingleCellEstimator(object):
 		log_residual_variance = np.log(estimated_var) - (self.mean_var_slope*np.log(estimated_mean) + self.mean_var_inter)
 
 		return np.exp(log_residual_variance), log_residual_variance
+
+
+	def _compute_mean_inv_numis(self, group):
+		"""
+			Compute the expected value of inverse of N-1.
+		"""
+
+		if group in self.mean_inv_numis:
+			return self.mean_inv_numis[group]
+
+		denom = self.observed_moments[group]['allgenes_first']**3 / self.beta**3
+
+		numer = \
+			self.observed_central_moments[group]['allgenes_second']/self.beta_sq + \
+			self.observed_moments[group]['allgenes_first']/self.beta_sq + \
+			self.observed_moments[group]['allgenes_first']/self.beta + \
+			self.observed_moments[group]['allgenes_first']**2/self.beta**2
+
+		self.mean_inv_numis[group] = numer/denom
+
+		return self.mean_inv_numis[group]
 
 
 	def estimate_beta_sq(self, tolerance=5):
@@ -351,7 +373,7 @@ class SingleCellEstimator(object):
 	def compute_estimated_moments(self, group='all'):
 		""" Use the observed moments to compute the moments of the underlying distribution. """
 
-		mean_inv_numis = self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3
+		mean_inv_numis = self._compute_mean_inv_numis(group)
 
 		estimated_mean = self._estimate_mean(self.observed_moments[group]['first'])
 
@@ -401,8 +423,7 @@ class SingleCellEstimator(object):
 		groups_to_iter = self.group_counts.keys() if groups is None else groups
 		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
 
-		mean_inv_numis = {group:(self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3) \
-			for group in groups_to_iter}
+		mean_inv_numis = {group:self._compute_mean_inv_numis(group) for group in groups_to_iter}
 
 		all_counts = {group:set() for group in groups_to_iter}
 		gene_counts = {}
@@ -540,7 +561,7 @@ class SingleCellEstimator(object):
 		groups_to_iter = self.group_counts.keys() if groups is None else groups
 		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
 
-		mean_inv_numis = {group:(self.beta * self.observed_moments[group]['allgenes_second'] / self.observed_moments[group]['allgenes_first']**3) \
+		mean_inv_numis = {group:self._compute_mean_inv_numis(group) \
 			for group in groups_to_iter}
 
 		# Get the gene idx for the two gene lists
