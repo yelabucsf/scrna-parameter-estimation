@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import scipy as sp
-
+from mixedvines.copula import Copula, GaussianCopula, ClaytonCopula, FrankCopula
+from mixedvines.mixedvine import MixedVine
 
 def convert_params(mu, theta):
 	"""
@@ -51,8 +52,10 @@ def simulate_true_counts(
 	df = pd.DataFrame()
 	df['condition'] = condition_cov
 	df['batch'] = batch_cov
-	design_matrix = pd.get_dummies(df, columns=['batch']).values
+	df = pd.get_dummies(df, columns=['batch'], drop_first=True)
+	df['intercept'] = 1
 
+	design_matrix = df.values
 	# Get the mean and variances
 	mean_vector = np.exp(design_matrix@mean_coef.reshape(-1, 1))
 	var_vector = np.exp(design_matrix@(var_coef + mean_coef).reshape(-1, 1))
@@ -80,6 +83,79 @@ def simulate_dropout(
 	alpha = m*(m*(1-m)/v - 1)
 	beta = (1-m)*(m*(1-m)/v - 1)
 	qs = stats.beta.rvs(alpha, beta, size=true_counts.shape)
-
+	print('hi')
 	return stats.binom.rvs(true_counts, qs)
+
+
+def simulate_correlated_transcriptome(num_cells, num_genes, num_eig, p=1.5):
+	"""
+		Simulate two groups of cells.
+	"""
+
+	while(True):
+		try:
+			# Get the correlation matrix
+			eigen_values = stats.poisson.rvs(50, size=num_eig)
+			eigen_values = eigen_values/eigen_values.sum()*num_genes
+			eigen_values = np.concatenate([eigen_values, np.zeros(num_genes-num_eig)])
+			corr = stats.random_correlation.rvs(eigen_values)
+			corr[corr > 0.99] = 0.95
+			corr[corr < -0.99] = -0.95
+			break
+		except:
+			continue
+
+	# Get the means
+	means = stats.lognorm.rvs(s=1, scale=15, size=num_genes)
+
+	# Get the variances
+	mean_independent_variance_1 = stats.lognorm.rvs(s=0.5, scale=15, size=num_genes)
+
+	# Get the variances for the second group
+	mean_independent_variance_2 = mean_independent_variance_1
+	mean_independent_variance_2[:int(num_genes/2)] = mean_independent_variance_2[:int(num_genes/2)] + \
+		stats.lognorm.rvs(s=0.5, scale=4, size=int(num_genes/2))
+	variances_1 = mean_independent_variance_1 * (means**p)
+	variances_2 = mean_independent_variance_2 * (means**p)
+
+	# Get dispersions
+	dispersions_1 = (variances_1-means)/means**2
+	dispersions_2 = (variances_2-means)/means**2
+
+	# Get the thetas
+	thetas_1 = 1/dispersions_2
+	thetas_2 = 1/dispersions_2
+
+	# Set up vines
+	vine_1 = MixedVine(num_genes)
+	vine_2 = MixedVine(num_genes)
+
+	# Set up marginals
+	for i in range(num_genes):
+		vine_1.set_marginal(i, stats.nbinom(*convert_params(means[i], dispersions_1[i])))
+		vine_2.set_marginal(i, stats.nbinom(*convert_params(means[i], dispersions_2[i])))
+
+	# Set up copulas
+	for i in range(1, num_genes+1):
+		for j in range(num_genes-i):
+			vine_1.set_copula(i, j, GaussianCopula(corr[i, j]))
+			vine_2.set_copula(i, j, GaussianCopula(corr[i, j]))
+
+	data_1 = vine_1.rvs(num_cells)
+	data_2 = vine_2.rvs(num_cells)
+
+	metadata = {
+		'means':means,
+		'var1':variances_1,
+		'var2':variances_2,
+		'mean_ind_var1':mean_independent_variance_1,
+		'mean_ind_var2':mean_independent_variance_2,
+		'disp1':dispersions_1,
+		'disp2':dispersions_2,
+		'corr':corr
+	}
+
+	return metadata,data_1, data_2
+
+
 
