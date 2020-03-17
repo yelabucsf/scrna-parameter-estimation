@@ -11,11 +11,11 @@ import pickle as pkl
 import sys
 import os
 #sys.path.append('/wynton/group/ye/mincheol/Github/scrna-parameter-estimation/simplesc')
-sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/simplesc')
-import scme, utils
+sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/scmemo')
+import scmemo, utils
 
 # Global variable with the data path relevant for this analysis
-data_path = '/data/parameter_estimation/interferon_data/20191218/'
+data_path = '/data/parameter_estimation/interferon_data/20200316/'
 #data_path = '/wynton/group/ye/mincheol/parameter_estimation/interferon_data/20191218/'
 
 
@@ -71,11 +71,11 @@ def stim_effect_1d(adata):
 		IFN-beta stimulation effect on PBMCs.
 	"""
 
-	estimator = scme.SingleCellEstimator(
+	estimator = scmemo.SingleCellEstimator(
 		adata=adata, 
 		group_label='cell_type',
 		n_umis_column='n_counts',
-		num_permute=10000,
+		num_permute=50000,
 		beta=0.1)
 
 	estimator.estimate_beta_sq(tolerance=3)
@@ -104,12 +104,12 @@ def stim_effect_1d(adata):
 		pkl.dump(estimator.parameters_confidence_intervals, f)
 
 
-def stim_effect_2d(adata):
+def stim_effect_2d(adata, gene_list):
 	"""
 		IFN-beta stimulation effect on PBMCs.
 	"""
 
-	estimator = scme.SingleCellEstimator(
+	estimator = scmemo.SingleCellEstimator(
 		adata=adata, 
 		group_label='cell_type',
 		n_umis_column='n_counts',
@@ -119,17 +119,16 @@ def stim_effect_2d(adata):
 	estimator.estimate_beta_sq(tolerance=3)
 	estimator.estimate_parameters()
 
-	with open(data_path + 'ko_genes_to_test.pkl', 'rb') as f:
-		ko_genes_to_test = pkl.load(f)
-
-	with open(data_path + 'immune_genes_to_test.pkl', 'rb') as f:
+	with open(data_path + 'immune_genes.pkl', 'rb') as f:
 		immune_genes_to_test = pkl.load(f)
+	print(len(immune_genes_to_test))
 
-	for ct in adata.obs['cell'].drop_duplicates().tolist():
+	for ct in ['CD4 T cells']:#adata.obs['cell'].drop_duplicates().tolist():
+
 		print('Correlation testing for', ct)
 		start = time.time()
 		estimator.compute_confidence_intervals_2d(
-			gene_list_1=ko_genes_to_test,
+			gene_list_1=['STAT1', 'STAT2', 'STAT3','JAK1', 'IFNAR1', 'IFNAR2'],
 			gene_list_2=immune_genes_to_test,
 			groups=[ct + ' - ctrl', ct + ' - stim'],
 			groups_to_compare=[(ct + ' - ctrl', ct + ' - stim')])
@@ -141,25 +140,27 @@ def stim_effect_2d(adata):
 	with open(data_path + 'stim_effect_2d.pkl', 'wb') as f:
 		pkl.dump(estimator.hypothesis_test_result_2d, f)
 
-	idxs_1 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_1']
-	idxs_2 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_2']
+	# idxs_1 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_1'].astype(int)
+	# idxs_2 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_2'].astype(int)
 
 	# Save the correlation confidence intervals
-	with open(data_path + 'stim_effect_ci_2d.pkl', 'wb') as f:
-		ci_dict = {}
-		for group, val in estimator.parameters_confidence_intervals.items():
-			ci_dict[group] = {'corr':val['corr'][idxs_1, :][:, idxs_2]}
-		pkl.dump(ci_dict, f)
+	# with open(data_path + 'stim_effect_ci_2d.pkl', 'wb') as f:
+	# 	ci_dict = {}
+	# 	for group, val in estimator.parameters_confidence_intervals.items():
+	# 		ci_dict[group] = {'corr':val['corr'][idxs_1, :][:, idxs_2], 'cov':val['cov'][idxs_1:][:, idxs_2]}
+	# 	pkl.dump(ci_dict, f)
 
 
 if __name__ == '__main__':
 
 	# Read the AnnData object and filter out hemoglobin genes
-	adata = sc.read(data_path + 'interferon.raw.h5ad')
+	adata = sc.read(data_path + 'interferon_highcount.raw.h5ad')
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	stim_effect_1d(adata)
+	gene_list = adata.var.index.tolist()
 
-	stim_effect_2d(adata)
+	#stim_effect_1d(adata)
+
+	stim_effect_2d(adata, gene_list)
 
