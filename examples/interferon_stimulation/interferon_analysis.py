@@ -113,7 +113,7 @@ def stim_effect_2d(adata, gene_list):
 		adata=adata, 
 		group_label='cell_type',
 		n_umis_column='n_counts',
-		num_permute=10000,
+		num_permute=100000,
 		beta=0.1)
 
 	estimator.estimate_beta_sq(tolerance=3)
@@ -123,13 +123,13 @@ def stim_effect_2d(adata, gene_list):
 		immune_genes_to_test = pkl.load(f)
 	print(len(immune_genes_to_test))
 
-	for ct in ['CD4 T cells']:#adata.obs['cell'].drop_duplicates().tolist():
+	for ct in adata.obs['cell'].drop_duplicates().tolist():
 
 		print('Correlation testing for', ct)
 		start = time.time()
 		estimator.compute_confidence_intervals_2d(
-			gene_list_1=['STAT1', 'STAT2', 'STAT3','JAK1', 'IFNAR1', 'IFNAR2'],
-			gene_list_2=immune_genes_to_test,
+			gene_list_1=['STAT1', 'STAT2', 'STAT3'],
+			gene_list_2=['OAS1', 'OAS2', 'OAS3', 'MX1', 'IRF1', 'CXCL10', 'BST2', 'IFNAR1', 'IFNAR2'],
 			groups=[ct + ' - ctrl', ct + ' - stim'],
 			groups_to_compare=[(ct + ' - ctrl', ct + ' - stim')])
 		print('This cell type took', time.time()-start)
@@ -137,9 +137,10 @@ def stim_effect_2d(adata, gene_list):
 	print('Saving 2D comparison results...')
 
 	# Save the 2D hypothesis test result
-	with open(data_path + 'stim_effect_2d.pkl', 'wb') as f:
+	with open(data_path + 'stim_effect_2d_ifn_pathway.pkl', 'wb') as f:
 		pkl.dump(estimator.hypothesis_test_result_2d, f)
-
+	with open(data_path + 'stim_effect_2d_parameters_ifn_pathway.pkl', 'wb') as f:
+		pkl.dump(estimator.parameters, f)
 	# idxs_1 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_1'].astype(int)
 	# idxs_2 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_2'].astype(int)
 

@@ -680,7 +680,7 @@ class SingleCellEstimator(object):
 			hypothesis_test_dict[(group_1, group_2)]['cov_1'] = hypothesis_test_dict[(group_1, group_2)]['cov_1'][genes_idxs_1, :][:, genes_idxs_2]
 			hypothesis_test_dict[(group_1, group_2)]['cov_2'] = hypothesis_test_dict[(group_1, group_2)]['cov_2'][genes_idxs_1, :][:, genes_idxs_2]
 			hypothesis_test_dict[(group_1, group_2)]['dcov_diff'] = hypothesis_test_dict[(group_1, group_2)]['dcov_diff'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['dcov_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dcov_fdr'][genes_idxs_1, :][:, genes_idxs_2].reshape(-1))\
+			hypothesis_test_dict[(group_1, group_2)]['dcov_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dcov_pval'][genes_idxs_1, :][:, genes_idxs_2].reshape(-1))\
 				.reshape(genes_idxs_1.shape[0], genes_idxs_2.shape[0])
 			hypothesis_test_dict[(group_1, group_2)]['dcov_pval'] = hypothesis_test_dict[(group_1, group_2)]['dcov_pval'][genes_idxs_1, :][:, genes_idxs_2]
 
