@@ -582,6 +582,7 @@ class SingleCellEstimator(object):
 		iter_2 = 0
 		for gene_idx_1 in genes_idxs_1:
 
+			iter_2 = 0
 			for gene_idx_2 in genes_idxs_2:
 
 				if gene_idx_2 == gene_idx_1:

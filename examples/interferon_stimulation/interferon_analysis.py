@@ -15,7 +15,7 @@ sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/scmemo')
 import scmemo, utils
 
 # Global variable with the data path relevant for this analysis
-data_path = '/data/parameter_estimation/interferon_data/20200316/'
+data_path = '/data/parameter_estimation/interferon_data/20200324/'
 #data_path = '/wynton/group/ye/mincheol/parameter_estimation/interferon_data/20191218/'
 
 
@@ -75,7 +75,7 @@ def stim_effect_1d(adata):
 		adata=adata, 
 		group_label='cell_type',
 		n_umis_column='n_counts',
-		num_permute=50000,
+		num_permute=200000,
 		beta=0.1)
 
 	estimator.estimate_beta_sq(tolerance=3)
@@ -113,7 +113,7 @@ def stim_effect_2d(adata, gene_list):
 		adata=adata, 
 		group_label='cell_type',
 		n_umis_column='n_counts',
-		num_permute=100000,
+		num_permute=10000,
 		beta=0.1)
 
 	estimator.estimate_beta_sq(tolerance=3)
@@ -123,33 +123,67 @@ def stim_effect_2d(adata, gene_list):
 		immune_genes_to_test = pkl.load(f)
 	print(len(immune_genes_to_test))
 
+	# with open(data_path + 'tfs_to_consider.pkl', 'rb') as f:
+	#     tfs_in_highcount = pkl.load(f)
+
+	# tfs = ['JUN',
+	# 	'ATF3',
+	# 	'STAT1',
+	# 	'STAT4',
+	# 	'FOXP1',
+	# 	'ATF6B',
+	# 	'ATF1',
+	# 	'STAT2',
+	# 	'STAT6',
+	# 	'FOS',
+	# 	'BATF',
+	# 	'AATF',
+	# 	'STAT3',
+	# 	'JUNB',
+	# 	'JUND',
+	# 	'ATF5',
+	# 	'ATF4']
+
+	tfs = ['RAD21',
+		'CEBPB',
+		'SMARCB1',
+		'CEBPZ',
+		'H2AFZ',
+		'IRF1',
+		'ETS1', 
+		'REST',
+		'BACH1',
+		'NELFE',
+		'BDP1',
+		'YY1',
+		'MEF2A',
+		'IRF3',
+		'HMGN3',
+		'BHLHE40',
+		'GATA3',
+		'SMARCC1',
+		'MAX',
+		'SMC3']
+
 	for ct in adata.obs['cell'].drop_duplicates().tolist():
 
 		print('Correlation testing for', ct)
 		start = time.time()
 		estimator.compute_confidence_intervals_2d(
-			gene_list_1=['STAT1', 'STAT2', 'STAT3'],
-			gene_list_2=['OAS1', 'OAS2', 'OAS3', 'MX1', 'IRF1', 'CXCL10', 'BST2', 'IFNAR1', 'IFNAR2'],
+			gene_list_1=tfs,
+			gene_list_2=immune_genes_to_test,
 			groups=[ct + ' - ctrl', ct + ' - stim'],
 			groups_to_compare=[(ct + ' - ctrl', ct + ' - stim')])
 		print('This cell type took', time.time()-start)
 
+		with open(data_path + 'stim_effect_2d_random_{}.pkl'.format(ct), 'wb') as f:
+			pkl.dump(estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')], f)
+
 	print('Saving 2D comparison results...')
 
 	# Save the 2D hypothesis test result
-	with open(data_path + 'stim_effect_2d_ifn_pathway.pkl', 'wb') as f:
-		pkl.dump(estimator.hypothesis_test_result_2d, f)
-	with open(data_path + 'stim_effect_2d_parameters_ifn_pathway.pkl', 'wb') as f:
+	with open(data_path + 'stim_effect_2d_parameters_random.pkl', 'wb') as f:
 		pkl.dump(estimator.parameters, f)
-	# idxs_1 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_1'].astype(int)
-	# idxs_2 = estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')]['gene_idx_2'].astype(int)
-
-	# Save the correlation confidence intervals
-	# with open(data_path + 'stim_effect_ci_2d.pkl', 'wb') as f:
-	# 	ci_dict = {}
-	# 	for group, val in estimator.parameters_confidence_intervals.items():
-	# 		ci_dict[group] = {'corr':val['corr'][idxs_1, :][:, idxs_2], 'cov':val['cov'][idxs_1:][:, idxs_2]}
-	# 	pkl.dump(ci_dict, f)
 
 
 if __name__ == '__main__':
