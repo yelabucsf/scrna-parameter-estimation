@@ -350,42 +350,11 @@ class SingleCellEstimator(object):
 			CAVEAT: Uses the same expectation of 1/N as the true value, does not compute this from the permutations. 
 			So the result might be slightly off.
 		"""
-
+		
 		groups_to_iter = self.group_counts.keys() if groups is None else groups
 		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
 
 		mean_inv_numis = {group:self._compute_mean_inv_numis(group) for group in groups_to_iter}
-
-		#all_counts = {group:set() for group in groups_to_iter}
-		#gene_counts = {}
-
-		# # Collect all unique counts in this group
-		# for gene_idx in range(self.anndata.var.shape[0]):
-
-		# 	#print(gene_idx)
-
-		# 	gene_counts[gene_idx] = {}
-
-		# 	for group in groups_to_iter:
-
-		# 		cell_selector = self._select_cells(group)
-		# 		data = self.anndata.X[cell_selector, :].toarray() if type(self.anndata.X) != np.ndarray else self.anndata.X[cell_selector, :]
-
-		# 		expr_values, counts = np.unique(data[:, gene_idx].reshape(-1).astype(int), return_counts=True)
-
-		# 		gene_counts[gene_idx][group] = (expr_values, counts)
-
-		# 		all_counts[group] |= set(counts)
-
-		# # All unique counts from all groups across all genes
-		# all_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_counts.items()}
-
-		# # Define the gamma variales to be later used to construct the Dirichlet
-		# gamma_rvs = {group:stats.gamma.rvs(
-		# 	a=(counts+1e-10), 
-		# 	size=(self.num_permute, counts.shape[0])) for group, counts in all_counts_sorted.items()}
-
-		# print('Gamma RVs generated..')
 
 		# Declare placeholders for gene confidence intervals
 		parameters = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
@@ -407,20 +376,15 @@ class SingleCellEstimator(object):
 
 		# Iterate through each gene and compute a standard error for each gene
 		for gene_idx in range(self.anndata.var.shape[0]):
+			
+			start_time = time.time()
 
-			# # Grab the appropriate Gamma variables given the bincounts of this particular gene
-			# gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(gene_counts[gene_idx][group][1][:, None] == all_counts_sorted[group])[1]]) \
-			# 	for group in groups_to_iter}
-
-			# # Sample dirichlet from the Gamma variables
-			# gene_dir_rvs = {group:(gene_gamma_rvs[group]/gene_gamma_rvs[group].sum(axis=1)[:,None]) for group in groups_to_iter}
-			# del gene_gamma_rvs
-
-			if gene_idx % gene_tracker_count == 0: 
+			if gene_tracker_count and gene_idx % gene_tracker_count == 0: 
 				print('Computing the {}st/th gene'.format(gene_idx))
 
 			gene_dir_rvs = {}
 			gene_counts = {}
+			gene_freqs = {}
 			for group in groups_to_iter:
 
 				# Grab the values
@@ -430,9 +394,12 @@ class SingleCellEstimator(object):
 				expr_values = np.arange(counts.shape[0])
 				expr_values = expr_values[counts != 0]
 				counts = counts[counts != 0]
-
+				gene_freqs[group] = counts
 				gene_counts[group] = expr_values
-				gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=counts, size=self.num_permute)
+			
+			counting_time = time.time()
+			for group in groups_to_iter:
+				gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=gene_freqs[group], size=self.num_permute)
 
 			# Construct the repeated values matrix
 			values = {group:np.tile(
@@ -487,6 +454,13 @@ class SingleCellEstimator(object):
 					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = asl
 				else:
 					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = np.nan
+			
+			storing_time = time.time()
+			
+# 			print('There was {} unique values in A'.format(values['A'].shape[1]))
+# 			print('There was {} unique value in B'.format(values['B'].shape[1]))
+# 			print('it took {} to count'.format())
+# 			print('it took {} to compute/store'.format())
 
 		# Perform FDR correction
 		for group_1, group_2 in comparison_groups:
@@ -497,6 +471,8 @@ class SingleCellEstimator(object):
 		# Update the attribute dictionaries
 		self.parameters_confidence_intervals.update(ci_dict)
 		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
+		
+		return counting_time - start_time, storing_time - counting_time
 		
 
 	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None, gene_tracker_count=100):
@@ -523,41 +499,6 @@ class SingleCellEstimator(object):
 
 		# all_pair_counts = {group:set() for group in groups_to_iter}
 		pair_counts = {}
-
-		# Collect all unique counts in this group
-		# for gene_idx_1 in genes_idxs_1:
-
-		# 	pair_counts[gene_idx_1] = {}
-
-		# 	for gene_idx_2 in genes_idxs_2:
-
-		# 		if gene_idx_1 == gene_idx_2:
-		# 			continue
-
-		# 		pair_counts[gene_idx_1][gene_idx_2] = {}
-
-		# 		for group in groups_to_iter:
-
-		# 			cell_selector = self._select_cells(group)
-		# 			data = self.anndata.X[cell_selector, :].toarray() if type(self.anndata.X) != np.ndarray else self.anndata.X[cell_selector, :]
-
-		# 			cantor_code = pair(data[:, gene_idx_1], data[:, gene_idx_2])
-
-		# 			expr_values, counts = np.unique(cantor_code, return_counts=True)
-
-		# 			pair_counts[gene_idx_1][gene_idx_2][group] = (expr_values, counts)
-
-		# 			all_pair_counts[group] |= set(counts)
-
-		# # All unique counts from all groups across all genes
-		# all_pair_counts_sorted = {group:np.array(sorted(list(counts))) for group,counts in all_pair_counts.items()}
-
-		# # Define the gamma variales to be later used to construct the Dirichlet
-		# gamma_rvs = {group:stats.gamma.rvs(
-		# 	a=(counts+1e-10), 
-		# 	size=(self.num_permute, counts.shape[0])) for group, counts in all_pair_counts_sorted.items()}
-
-		# print('Gamma RVs generated..')
 
 		# Declare placeholders for gene confidence intervals
 		parameters = ['cov', 'corr']
