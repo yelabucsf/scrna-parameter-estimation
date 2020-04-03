@@ -339,7 +339,7 @@ class SingleCellEstimator(object):
 			'corr': cov2corr(self.estimated_central_moments[group]['prod'])}
 
 
-	def compute_confidence_intervals_1d(self, groups=None, groups_to_compare=None, gene_tracker_count=100):
+	def compute_confidence_intervals_1d(self, groups=None, groups_to_compare=None, gene_tracker_count=100, timer='off'):
 		"""
 			Compute 95% confidence intervals around the estimated parameters. 
 
@@ -398,6 +398,7 @@ class SingleCellEstimator(object):
 				gene_counts[group] = expr_values
 			
 			counting_time = time.time()
+			
 			for group in groups_to_iter:
 				gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=gene_freqs[group], size=self.num_permute)
 
@@ -456,11 +457,6 @@ class SingleCellEstimator(object):
 					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = np.nan
 			
 			storing_time = time.time()
-			
-# 			print('There was {} unique values in A'.format(values['A'].shape[1]))
-# 			print('There was {} unique value in B'.format(values['B'].shape[1]))
-# 			print('it took {} to count'.format())
-# 			print('it took {} to compute/store'.format())
 
 		# Perform FDR correction
 		for group_1, group_2 in comparison_groups:
@@ -472,7 +468,8 @@ class SingleCellEstimator(object):
 		self.parameters_confidence_intervals.update(ci_dict)
 		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
 		
-		return counting_time - start_time, storing_time - counting_time
+		if timer == 'on':
+			return counting_time - start_time, storing_time - counting_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
 		
 
 	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None, gene_tracker_count=100):
