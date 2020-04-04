@@ -104,7 +104,7 @@ def stim_effect_1d(adata):
 		pkl.dump(estimator.parameters_confidence_intervals, f)
 
 
-def stim_effect_2d(adata, gene_list):
+def stim_effect_2d(adata, job_num):
 	"""
 		IFN-beta stimulation effect on PBMCs.
 	"""
@@ -116,73 +116,43 @@ def stim_effect_2d(adata, gene_list):
 		num_permute=10000,
 		beta=0.1)
 
+	estimator.compute_observed_moments(verbose=False)
 	estimator.estimate_beta_sq(tolerance=3)
-	estimator.estimate_parameters()
+	estimator.estimate_1d_parameters()
 
-	with open(data_path + 'immune_genes.pkl', 'rb') as f:
-		immune_genes_to_test = pkl.load(f)
-	print(len(immune_genes_to_test))
+	# with open(data_path + 'immune_genes.pkl', 'rb') as f:
+	# 	immune_genes_to_test = pkl.load(f)
+	# print(len(immune_genes_to_test))
 
-	# with open(data_path + 'tfs_to_consider.pkl', 'rb') as f:
-	#     tfs_in_highcount = pkl.load(f)
-
-	# tfs = ['JUN',
-	# 	'ATF3',
-	# 	'STAT1',
-	# 	'STAT4',
-	# 	'FOXP1',
-	# 	'ATF6B',
-	# 	'ATF1',
-	# 	'STAT2',
-	# 	'STAT6',
-	# 	'FOS',
-	# 	'BATF',
-	# 	'AATF',
-	# 	'STAT3',
-	# 	'JUNB',
-	# 	'JUND',
-	# 	'ATF5',
-	# 	'ATF4']
-
-	tfs = ['RAD21',
-		'CEBPB',
-		'SMARCB1',
-		'CEBPZ',
-		'H2AFZ',
-		'IRF1',
-		'ETS1', 
-		'REST',
-		'BACH1',
-		'NELFE',
-		'BDP1',
-		'YY1',
-		'MEF2A',
-		'IRF3',
-		'HMGN3',
-		'BHLHE40',
-		'GATA3',
-		'SMARCC1',
-		'MAX',
-		'SMC3']
+	# Get the TFs for this job
+	with open(data_path + 'all_highcount_tfs.pkl', 'rb') as f:
+		tfs = pkl.load(f)
+	num_tfs_per_job = 5
+	tfs = tfs[(job_num*num_tfs_per_job):(job_num+1)*num_tfs_per_job]
+	print(tfs)
+	candidate_genes = adata.var.index.tolist()[:5]
 
 	for ct in adata.obs['cell'].drop_duplicates().tolist():
 
+
 		print('Correlation testing for', ct)
 		start = time.time()
+		estimator.estimate_2d_parameters(
+			gene_list_1=tfs, 
+			gene_list_2=candidate_genes,
+			groups=[ct + ' - ctrl', ct + ' - stim'])
 		estimator.compute_confidence_intervals_2d(
 			gene_list_1=tfs,
-			gene_list_2=immune_genes_to_test,
+			gene_list_2=candidate_genes,
 			groups=[ct + ' - ctrl', ct + ' - stim'],
 			groups_to_compare=[(ct + ' - ctrl', ct + ' - stim')])
 		print('This cell type took', time.time()-start)
 
-		with open(data_path + 'stim_effect_2d_random_{}.pkl'.format(ct), 'wb') as f:
+		with open(data_path + 'tf_correlations/stim_effect_2d_{}_{}.pkl'.format(ct, job_num), 'wb') as f:
 			pkl.dump(estimator.hypothesis_test_result_2d[(ct + ' - ctrl', ct + ' - stim')], f)
 
-	print('Saving 2D comparison results...')
-
 	# Save the 2D hypothesis test result
-	with open(data_path + 'stim_effect_2d_parameters_random.pkl', 'wb') as f:
+	with open(data_path + 'tf_correlations/stim_effect_2d_parameters_{}.pkl'.format(job_num), 'wb') as f:
 		pkl.dump(estimator.parameters, f)
 
 
@@ -193,9 +163,8 @@ if __name__ == '__main__':
 	adata = adata[:, adata.var.index.map(lambda x: x[:2] != 'HB')].copy()
 	adata.obs['cell_type'] = (adata.obs['cell'].astype(str) + ' - ' + adata.obs['stim'].astype(str)).astype('category')
 
-	gene_list = adata.var.index.tolist()
-
 	#stim_effect_1d(adata)
 
-	stim_effect_2d(adata, gene_list)
+	job_num = int(sys.argv[1])
+	stim_effect_2d(adata, job_num)
 

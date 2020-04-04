@@ -19,6 +19,22 @@ from statsmodels.stats.moment_helpers import cov2corr
 from statsmodels.stats.multitest import fdrcorrection
 
 
+def cross_covariance(X, Y):
+	""" Return the expectation of the product as well as the cross covariance. """
+
+	if type(X) != np.ndarray or type(X) != np.matrix:
+		X = X.toarray()
+		Y = Y.toarray()
+
+	X_mean = X.mean(axis=0)[:, np.newaxis]
+	Y_mean = Y.mean(axis=0)[np.newaxis, :]
+
+	cov = np.dot(X.T - X_mean, Y - Y_mean) / (X.shape[0]-1)
+	prod = cov + np.dot(X_mean, Y_mean)
+
+	return cov, prod
+
+
 def get_differential_genes(
 	gene_list,
 	hypothesis_test_dict, 
