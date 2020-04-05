@@ -130,7 +130,7 @@ def stim_effect_2d(adata, job_num):
 	num_tfs_per_job = 5
 	tfs = tfs[(job_num*num_tfs_per_job):(job_num+1)*num_tfs_per_job]
 	print(tfs)
-	candidate_genes = adata.var.index.tolist()[:5]
+	candidate_genes = adata.var.index.tolist()
 
 	for ct in adata.obs['cell'].drop_duplicates().tolist():
 
