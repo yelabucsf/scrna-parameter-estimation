@@ -22,7 +22,7 @@ from statsmodels.stats.multitest import fdrcorrection
 def cross_covariance(X, Y):
 	""" Return the expectation of the product as well as the cross covariance. """
 
-	if type(X) != np.ndarray or type(X) != np.matrix:
+	if type(X) != np.ndarray and type(X) != np.matrix:
 		X = X.toarray()
 		Y = Y.toarray()
 

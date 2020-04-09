@@ -17,7 +17,6 @@ import scipy as sp
 import logging
 from scipy.stats import multivariate_normal
 import pickle as pkl
-from statsmodels.stats.moment_helpers import cov2corr
 from statsmodels.stats.multitest import fdrcorrection
 import sklearn.decomposition as decomp
 import matplotlib
@@ -375,7 +374,7 @@ class SingleCellEstimator(object):
 			self.parameters[group]['corr'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_corr
 
 
-	def compute_confidence_intervals_1d(self, groups=None, groups_to_compare=None, gene_tracker_count=100, timer='off'):
+	def compute_confidence_intervals_1d(self, groups=None, groups_to_compare=None, gene_tracker_count=100, verbose=False, timer='off'):
 		"""
 			Compute 95% confidence intervals around the estimated parameters. 
 
@@ -410,36 +409,37 @@ class SingleCellEstimator(object):
 			(group_1, group_2):{param:np.zeros(self.anndata.var.shape[0]) for param \
 				in hypothesis_test_parameters} for group_1, group_2 in comparison_groups}
 
-		start = time.time()
-
 		# Iterate through each gene and compute a standard error for each gene
-		for gene_idx in range(self.anndata.var.shape[0]):
+		for gene_idx in range(self.anndata.var.shape[0])[:-1]:
 			
-			# start_time = time.time()
-
-			if gene_tracker_count > 0 and gene_idx % gene_tracker_count == 0: 
+			if verbose and gene_tracker_count > 0 and gene_idx % gene_tracker_count == 0: 
 				print('Computing the {}st/th gene, {}'.format(gene_idx, time.time()-start))
 
 			gene_dir_rvs = {}
 			gene_counts = {}
-			# gene_freqs = {}
+			gene_freqs = {}
 			for group in groups_to_iter:
 
 				# Grab the values
 				cell_selector = self._select_cells(group)
 				data = self.anndata.X[cell_selector, :].toarray() if type(self.anndata.X) != np.ndarray else self.anndata.X[cell_selector, :]
+				
+				count_start_time = time.time()
 				counts = np.bincount(data[:, gene_idx].reshape(-1).astype(int))
+				count_time = time.time() - count_start_time
+				
 				expr_values = np.arange(counts.shape[0])
 				expr_values = expr_values[counts != 0]
 				counts = counts[counts != 0]
 				gene_counts[group] = expr_values
+				gene_freqs[group] = counts.copy()
 
-				gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=counts, size=self.num_permute)
+# 				gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=counts, size=self.num_permute)
 			
-			# counting_time = time.time()
+			compute_start_time = time.time()
 			
-			# for group in groups_to_iter:
-			# 	gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=gene_freqs[group], size=self.num_permute)
+			for group in groups_to_iter:
+				gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=gene_freqs[group], size=self.num_permute)
 
 			# Construct the repeated values matrix
 			values = {group:np.tile(
@@ -456,7 +456,11 @@ class SingleCellEstimator(object):
 			estimated_vars = {group:self._estimate_variance(mean[group], second_moments[group], mean_inv_numis[group]) for group in groups_to_iter}
 			estimated_residual_vars = {group:self._estimate_residual_variance(estimated_means[group], estimated_vars[group])[0] for group in groups_to_iter}
 
+			compute_time = time.time()-compute_start_time
+			
 			# Store the S.E. of the parameter, log(param), and log1p(param)
+			
+# 			return estimated_means, estimated_residual_vars
 			for group in groups_to_iter:
 
 				ci_dict[group]['mean'][gene_idx] = np.nanstd(estimated_means[group])
@@ -495,8 +499,6 @@ class SingleCellEstimator(object):
 				else:
 					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = np.nan
 			
-			# storing_time = time.time()
-
 		# Perform FDR correction
 		for group_1, group_2 in comparison_groups:
 
@@ -507,11 +509,11 @@ class SingleCellEstimator(object):
 		self.parameters_confidence_intervals.update(ci_dict)
 		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
 		
-		# if timer == 'on':
-		# 	return counting_time - start_time, storing_time - counting_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
+		if timer == 'on':
+			return count_time, compute_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
 		
 
-	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None, gene_tracker_count=100):
+	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None, gene_tracker_count=100, verbose=False):
 		"""
 			Compute 95% confidence intervals around the estimated parameters. 
 
@@ -565,7 +567,7 @@ class SingleCellEstimator(object):
 				if gene_idx_2 == gene_idx_1:
 					continue
 
-				if gene_tracker_count > 0 and (iter_1*genes_idxs_2.shape[0] + iter_2) % gene_tracker_count == 0: 
+				if verbose and gene_tracker_count > 0 and (iter_1*genes_idxs_2.shape[0] + iter_2) % gene_tracker_count == 0: 
 					print('Computing the {}st/th gene of {}'.format((iter_1*genes_idxs_2.shape[0] + iter_2), genes_idxs_1.shape[0]*genes_idxs_2.shape[0]))
 
 				gene_dir_rvs = {}

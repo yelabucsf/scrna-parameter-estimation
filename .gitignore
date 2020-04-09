@@ -111,3 +111,7 @@ sftp-config.json
 *.tex
 *.pkl
 .DS_Store
+*.bed
+*.eps
+*.xlsx
+*.csv
