@@ -56,6 +56,10 @@ class SingleCellEstimator(object):
 				self.group_counts['-' + group] = self.anndata.shape[0] - self.group_counts[group]
 		self.n_umis = adata.obs[n_umis_column].values
 		self.num_permute = num_permute
+		
+		# Initialize mean-var relationship params
+		self.mean_var_slope = None
+		self.mean_var_inter = None
 
 		# Initialize parameter containing dictionaries
 		self.mean_inv_numis = {}
@@ -325,9 +329,10 @@ class SingleCellEstimator(object):
 		y = y[condition]
 
 		# Estimate the mean-var relationship
-		slope, inter, _, _, _ = robust_linregress(np.log(x), np.log(y))
-		self.mean_var_slope = slope
-		self.mean_var_inter = inter
+		if not self.mean_var_slope and not self.mean_var_inter:
+			slope, inter, _, _, _ = robust_linregress(np.log(x), np.log(y))
+			self.mean_var_slope = slope
+			self.mean_var_inter = inter
 
 		# Compute final parameters
 		for group in self.group_counts:
@@ -460,7 +465,8 @@ class SingleCellEstimator(object):
 			
 			# Store the S.E. of the parameter, log(param), and log1p(param)
 			
-# 			return estimated_means, estimated_residual_vars
+			return estimated_means, estimated_residual_vars
+		
 			for group in groups_to_iter:
 
 				ci_dict[group]['mean'][gene_idx] = np.nanstd(estimated_means[group])
@@ -469,7 +475,7 @@ class SingleCellEstimator(object):
 				ci_dict[group]['log_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]))
 				ci_dict[group]['log1p_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]+1))
 				ci_dict[group]['log1p_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]+1))
-
+				
 			# Perform hypothesis testing
 			for group_1, group_2 in comparison_groups:
 
