@@ -15,7 +15,7 @@ sys.path.append('/home/mkim7/Github/scrna-parameter-estimation/scmemo')
 import scmemo, utils
 
 # Global variable with the data path relevant for this analysis
-data_path = '/data/parameter_estimation/interferon_data/20200324/'
+data_path = '/data/parameter_estimation/interferon_data/20200412/'
 #data_path = '/wynton/group/ye/mincheol/parameter_estimation/interferon_data/20191218/'
 
 
@@ -78,7 +78,7 @@ def stim_effect_1d(adata):
 		num_permute=200000,
 		beta=0.1)
 
-	estimator.estimate_beta_sq(tolerance=3)
+	estimator.estimate_beta_sq(tolerance=0)
 	estimator.estimate_parameters()
 
 	estimator.compute_confidence_intervals_1d(
@@ -117,7 +117,7 @@ def stim_effect_2d(adata, job_num):
 		beta=0.1)
 
 	estimator.compute_observed_moments(verbose=False)
-	estimator.estimate_beta_sq(tolerance=3)
+	estimator.estimate_beta_sq(tolerance=0)
 	estimator.estimate_1d_parameters()
 
 	# with open(data_path + 'immune_genes.pkl', 'rb') as f:

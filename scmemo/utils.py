@@ -19,6 +19,25 @@ from statsmodels.stats.moment_helpers import cov2corr
 from statsmodels.stats.multitest import fdrcorrection
 
 
+def estimated_mean_disp_corr(param, estimator, frac=0.3):
+
+	estimator.q_sq = param
+	estimator.estimate_1d_parameters()
+	x = np.log(estimator.estimated_central_moments['all']['first'])
+	y = np.log(estimator.estimated_central_moments['all']['second'])
+
+	condition = np.isfinite(x) & np.isfinite(y)
+	x = x[condition]
+	y = y[condition]
+
+	k = int(frac*x.shape[0])
+	k_largest_idx = np.argpartition(x, -k)[-k:]
+	x = x[k_largest_idx]
+	y = y[k_largest_idx]
+
+	return np.abs(stats.pearsonr(x,y-x)[0])
+
+
 def cross_covariance(X, Y):
 	""" Return the expectation of the product as well as the cross covariance. """
 
@@ -29,7 +48,7 @@ def cross_covariance(X, Y):
 	X_mean = X.mean(axis=0)[:, np.newaxis]
 	Y_mean = Y.mean(axis=0)[np.newaxis, :]
 
-	cov = np.dot(X.T - X_mean, Y - Y_mean) / (X.shape[0]-1)
+	cov = np.dot(X.T - X_mean, Y - Y_mean) / X.shape[0]
 	prod = cov + np.dot(X_mean, Y_mean)
 
 	return cov, prod
@@ -146,6 +165,26 @@ def robust_linregress(a, b):
 	y = b[condition]
 
 	return stats.linregress(x,y)
+
+
+def robust_corr(a, b, pearson=True):
+	""" Wrapper for scipy pearsonr function that ignores non-finite values. """
+
+	condition = (np.isfinite(a) & np.isfinite(b))
+	x = a[condition]
+	y = b[condition]
+
+	return stats.pearsonr(x,y) if pearson else stats.spearmanr(x,y)
+
+
+def tail_residual_correlation(a, b, k, pearson=True):
+
+	m, i, _, _, _ = robust_linregress(a,b)
+	residual = b - (m*a+i)
+
+	k_largest_idx = np.argpartition(a, -k)[-k:]
+
+	return a[k_largest_idx], residual[k_largest_idx], robust_corr(a[k_largest_idx], residual[k_largest_idx], pearson=pearson)
 
 
 def fdrcorrect(pvals):
