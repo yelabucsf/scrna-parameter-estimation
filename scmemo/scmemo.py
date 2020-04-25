@@ -17,11 +17,11 @@ import scipy as sp
 import logging
 from scipy.stats import multivariate_normal
 import pickle as pkl
-from statsmodels.stats.multitest import fdrcorrection
 import sklearn.decomposition as decomp
 import matplotlib
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
+import sklearn as sk
 
 from utils import *
 
@@ -97,6 +97,20 @@ def _compute_mean_inv_numis(observed_allgenes_mean, observed_allgenes_variance, 
     return numer/denom
 
 
+def _mean_substitution(mat):
+	""" Perform mean substition. Get the percentage of missing values. This will lower the power, but should still be unbiased. """
+
+	to_return = mat.copy()
+	col_mean = np.nanmean(mat, axis=0)
+	col_mean[np.isnan(col_mean)] = 0
+	isnan_mat = np.isnan(mat)
+	inds = np.where(isnan_mat)
+	perc_nans = np.isnan(mat).sum(axis=0)/mat.shape[0]
+	to_return[inds] = np.take(col_mean, inds[1])
+
+	return perc_nans, to_return
+
+
 class SingleCellEstimator(object):
 	"""
 		SingleCellEstimator is the class for fitting univariate and bivariate single cell data. 
@@ -117,7 +131,8 @@ class SingleCellEstimator(object):
 		label_delimiter='^',
 		covariate_converter={},
 		q=0.1,
-		smooth=True):
+		smooth=True,
+		use_hat_matrix=False):
 
 		# Copy over the anndata object
 		self.anndata = adata.copy()
@@ -126,21 +141,22 @@ class SingleCellEstimator(object):
 		# Keep q and labels
 		self.q = q
 		self.group_label = 'scmemo_group'
-		self.covariate_label = covariate_label
-		self.replicate_label = replicate_label
-		self.batch_label = batch_label
+		self.covariate_label = covariate_label if covariate_label else 'default_cov'
+		self.replicate_label = replicate_label if replicate_label else 'default_rep'
+		self.batch_label = batch_label if batch_label else 'default_batch'
 		self.subsection_label = subsection_label
 		self.label_delimiter = label_delimiter
 
 		# Form discrete groups
-		if not self.covariate_label:
+		if covariate_label is None:
 			self.anndata.obs[self.covariate_label] = 'default_cov'
-		if not self.replicate_label:
+		if replicate_label is None:
 			self.anndata.obs[self.replicate_label] = 'default_rep'
-		if not self.batch_label:
+		if batch_label is None:
 			self.anndata.obs[self.batch_label] = 'default_batch'
-		if not self.subsection_label:
+		if subsection_label is None:
 			self.anndata.obs[self.subsection_label] = 'default_subsection'
+
 		self.anndata.obs[self.group_label] = 'sg' + self.label_delimiter + \
 			self.anndata.obs[self.covariate_label].astype(str) + self.label_delimiter + \
 			self.anndata.obs[self.replicate_label].astype(str) + self.label_delimiter + \
@@ -166,12 +182,29 @@ class SingleCellEstimator(object):
 		self.parameters = {}
 		self.parameters_confidence_intervals = {}
 
-		# dictionaries for hypothesis testing
-		self.hypothesis_test_result_1d = {}
+		# Attributes for hypothesis testing
+		self.use_hat_matrix = use_hat_matrix
+		self.hypothesis_test_result = {}
 		self.hypothesis_test_result_2d = {}
 
 		# Cache for selecting cells
 		self.group_cells = {}
+
+
+	def _get_covariate(self, group):
+		return group.split(self.label_delimiter)[1]
+
+
+	def _get_replicate(self, group):
+		return group.split(self.label_delimiter)[2]
+
+
+	def _get_batch(self, group):
+		return group.split(self.label_delimiter)[3]
+
+
+	def _get_subsection(self, group):
+		return group.split(self.label_delimiter)[4]
 
 
 	def _select_cells(self, group, n_umis=False):
@@ -252,6 +285,7 @@ class SingleCellEstimator(object):
 			mean_inv_numis,
 			self.q,
 			self.q_sq)
+		estimated_var[estimated_var < 0] = np.nan
 
 		self.estimated_central_moments[group] = {
 			'first': estimated_mean,
@@ -259,6 +293,23 @@ class SingleCellEstimator(object):
 			'prod': sparse.lil_matrix(
 				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
 		}
+
+
+	def _get_effect_size(self, response_variable, test_dict, nan_thresh=0.5):
+		""" Perform the regression for a particular subsection. """
+
+		percent_missing, response_variable = _mean_substitution(response_variable)
+
+		if self.use_hat_matrix:
+			effect_sizes = test_dict['hat_matrix'].dot(response_variable)[0, :]
+		else:
+			effect_sizes = \
+				sk.linear_model.LinearRegression(fit_intercept=False)\
+				.fit(test_dict['design_matrix'], response_variable, test_dict['cell_count']).coef_[:, 0]
+
+		effect_sizes[percent_missing > nan_thresh] = np.nan
+
+		return effect_sizes
 
 
 	def compute_observed_moments(self, verbose=False):
@@ -373,12 +424,12 @@ class SingleCellEstimator(object):
 		    alpha=0.5
 		)
 
-		plt.scatter(
-		    np.log(obs_mean)[self.k_largest_indices],
-		    (np.log(obs_var)/2-np.log(obs_mean))[self.k_largest_indices],
-		    s=2,
-		    alpha=0.5
-		)
+		# plt.scatter(
+		#     np.log(obs_mean)[self.k_largest_indices],
+		#     (np.log(obs_var)/2-np.log(obs_mean))[self.k_largest_indices],
+		#     s=2,
+		#     alpha=0.5
+		# )
 
 		bound_x = np.arange(
 		    np.nanmin(obs_mean),
@@ -463,6 +514,8 @@ class SingleCellEstimator(object):
 			vars_1 = self.estimated_central_moments[group]['second'][gene_idxs_1]
 			vars_2 = self.estimated_central_moments[group]['second'][gene_idxs_2]
 			estimated_corr = estimated_cov / np.sqrt(vars_1[:, np.newaxis]).dot(np.sqrt(vars_2[np.newaxis, :]))
+			estimated_corr[estimated_corr > 1] = 1
+			estimated_corr[estimated_corr < -1] = -1
 
 			# Update the estimated dictionaries
 			self.estimated_central_moments[group]['prod'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_cov
@@ -470,11 +523,98 @@ class SingleCellEstimator(object):
 			self.parameters[group]['corr'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_corr
 
 
-	def compute_confidence_intervals_1d(self, subsections=None, gene_tracker_count=100, verbose=False, timer='off'):
+	def setup_hypothesis_testing(self, subsections=[]):
 		"""
-			Compute 95% confidence intervals around the estimated parameters. 
+			Perform operations necessarily to set up hypothesis testing for both 1D and 2D. 
 
-			Use the Gamma -> Dirichlet framework to speed up the process.
+			Construct the design matrix. If applicable, compute the hat matrix for each subsection.
+		"""
+
+		for subsection in subsections:
+
+			# Setup the hypothesis result dict
+			self.hypothesis_test_result[subsection] = {}
+
+			# List of meta observations to construct DF later
+			covariate_list = []
+
+			# Get all the appropriate groups
+			subsection_groups = [group for group in self.groups if group != 'all' and self._get_subsection(group) == subsection]
+			self.hypothesis_test_result[subsection]['groups'] = subsection_groups
+
+			# Iterate through each group
+			for group in subsection_groups:
+
+				# Ignore the groups in other subsections
+				if self._get_subsection(group) != subsection:
+					continue
+
+				covariate, replicate, batch = self._get_covariate(group), self._get_replicate(group), self._get_batch(group)
+				covariate_list.append((
+					self.covariate_converter[covariate], # Numerical covariate
+					replicate, # Replicate (e.g., individual)
+					batch, # Batch
+					1, # Constant for fitting the intercept
+					self.group_cells[group].shape[0], # Number of cells in this group for weighting
+					))
+			
+			subsection_design_df = pd.DataFrame(covariate_list, columns=['covariate', 'replicate', 'batch', 'constant', 'cell_count'])
+			self.hypothesis_test_result[subsection]['design_df'] = subsection_design_df.copy()
+
+			# Save the cell counts
+			cell_count = subsection_design_df['cell_count'].values
+			self.hypothesis_test_result[subsection]['cell_count'] = cell_count
+
+			# Construct the design matrix
+			if subsection_design_df['batch'].nunique() < 2:
+				design_matrix = subsection_design_df[['covariate', 'constant']].values
+			else:
+				design_matrix = pd.get_dummies(subsection_design_df[['covariate', 'batch', 'constant']], columns=['batch'], drop_first=True).values
+			self.hypothesis_test_result[subsection]['design_matrix'] = design_matrix
+
+			# Compute the hat matrix
+			if self.use_hat_matrix:
+				hat_matrix = np.linalg.inv(design_matrix.T.dot(cell_count.reshape(-1,1)*design_matrix)).dot(design_matrix.T*cell_count)
+				self.hypothesis_test_result[subsection]['hat_matrix'] = hat_matrix
+
+
+	def compute_effect_sizes_1d(self):
+		""" 
+			Compute the effect sizes for mean and variability. 
+			This function does not compute p-values or FDR.
+			Assumes that the 1D parameters have been estimated.
+			Assumes that the setup_hypothesis_testing function has been run already.
+		"""
+
+		for subsection, test_dict in self.hypothesis_test_result.items():
+
+			log_means = np.vstack([self.parameters[group]['log_mean'] for group in test_dict['groups']])
+			log_residual_vars = np.vstack([self.parameters[group]['log_residual_var'] for group in test_dict['groups']])
+
+			mean_es = self._get_effect_size(log_means, test_dict)
+			var_es = self._get_effect_size(log_residual_vars, test_dict)
+
+			test_dict['de_effect_size'], test_dict['dv_effect_size'] = mean_es, var_es
+
+
+	def compute_effect_sizes_2d(self, gene_list_1, gene_list_2):
+		"""
+			Compute the effect sizes for correlations.
+			This function does not compute p-values or FDR.
+			Assumes that the 2D parameters for the same gene_lists have been estimated. 
+			Assumes that the setup_hypothesis_testing function has been run already.
+		"""
+
+		# for subsection, test_dict in self.hypothesis_test_result.items():
+
+		# 	correlations = 
+
+
+	def compute_confidence_intervals_1d(self, hypothesis_test=True, gene_tracker_count=100, verbose=False, timer='off'):
+		"""
+			Compute confidence intervals and p-values for estimate and effect sizes. 
+
+			Use the multinomial resampling.
 
 			Uses self.num_permute attribute, same as in hypothesis testing.
 
@@ -482,10 +622,21 @@ class SingleCellEstimator(object):
 			So the result might be slightly off.
 		"""
 
+		# Get the starting time
+		start_time = time.time()
+
+		# Calculate the pseudocount, so that the demonimator is N+1
 		pseudocount = 1/self.anndata.shape[1] if self.smooth else 0
 		
-		groups_to_iter = [group if _get_subsection(group) in subsections] if subsections else self.groups
+		# Get the relevant groups to iterate over. 
+		if hypothesis_test:
+			groups_to_iter = []
+			for subsection, test_dict in self.hypothesis_test_result.items():
+				groups_to_iter += test_dict['groups']
+		else: 
+			groups_to_iter = self.groups
 
+		# Compute the inverse of N
 		mean_inv_numis = {
 			group:_compute_mean_inv_numis(
 				self.observed_central_moments[group]['allgenes_first'], 
@@ -499,25 +650,19 @@ class SingleCellEstimator(object):
 			group:{param:np.zeros(self.anndata.var.shape[0]) for param in parameters} \
 				for group in groups_to_iter}
 
-		# Declare placeholders for group comparison results
-		hypothesis_test_parameters = [
-			'log_mean_1', 'log_mean_2', 
-			'log_residual_var_1', 'log_residual_var_2', 
-			'de_diff', 'de_pval', 
-			'de_fdr', 'dv_diff', 
-			'dv_pval', 'dv_fdr']
-
-		hypothesis_test_dict = {
-			(group_1, group_2):{param:np.zeros(self.anndata.var.shape[0]) for param \
-				in hypothesis_test_parameters} for group_1, group_2 in comparison_groups}
+		# Declare placeholders for hypothesis testing result
+		parameters = ['de_pval', 'de_fdr', 'de_es_ci', 'dv_pval', 'dv_fdr', 'dv_es_ci']
+		for subsection, test_dict in self.hypothesis_test_result.items():
+			for parameter in parameters:
+				test_dict[parameter] = np.full(self.anndata.var.shape[0], np.nan)
 
 		# Iterate through each gene and compute a standard error for each gene
 		for gene_idx in range(self.anndata.var.shape[0]):
 			
 			if verbose and gene_tracker_count > 0 and gene_idx % gene_tracker_count == 0: 
-				print('Computing the {}st/th gene, {}'.format(gene_idx, time.time()-start))
+				print('Computing the {}st/th gene, {:.5f} seconds have passed.'.format(gene_idx, time.time()-start_time))
 
-			gene_dir_rvs = {}
+			gene_mult_rvs = {}
 			gene_counts = {}
 			gene_freqs = {}
 			for group in groups_to_iter:
@@ -559,10 +704,7 @@ class SingleCellEstimator(object):
 
 			compute_time = time.time()-compute_start_time
 			
-			# Store the S.E. of the parameter, log(param), and log1p(param)
-			
-			return estimated_means, estimated_residual_vars
-		
+			# Store the S.E. of the parameter, log(param), and log1p(param)		
 			for group in groups_to_iter:
 
 				ci_dict[group]['mean'][gene_idx] = np.nanstd(estimated_means[group])
@@ -571,46 +713,34 @@ class SingleCellEstimator(object):
 				ci_dict[group]['log_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]))
 				ci_dict[group]['log1p_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]+1))
 				ci_dict[group]['log1p_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]+1))
-				
-			# Perform hypothesis testing
-			for group_1, group_2 in comparison_groups:
-
-				# For difference of log means
-				boot_log_mean_diff = np.log(estimated_means[group_2]) - np.log(estimated_means[group_1])
-				observed_log_mean_diff = self.parameters[group_2]['log_mean'][gene_idx] - self.parameters[group_1]['log_mean'][gene_idx]
-				hypothesis_test_dict[(group_1, group_2)]['log_mean_1'][gene_idx]  = self.parameters[group_1]['log_mean'][gene_idx]
-				hypothesis_test_dict[(group_1, group_2)]['log_mean_2'][gene_idx]  = self.parameters[group_2]['log_mean'][gene_idx]
-				hypothesis_test_dict[(group_1, group_2)]['de_diff'][gene_idx]  = observed_log_mean_diff
-				if np.isfinite(observed_log_mean_diff):
-
-					asl = compute_asl(boot_log_mean_diff)
-
-					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = asl
-				else:
-					hypothesis_test_dict[(group_1, group_2)]['de_pval'][gene_idx] = np.nan
-
-				# For difference of log residual variances
-				boot_log_residual_var_diff = np.log(estimated_residual_vars[group_2]) - np.log(estimated_residual_vars[group_1])
-				observed_log_residual_var_diff = self.parameters[group_2]['log_residual_var'][gene_idx] - self.parameters[group_1]['log_residual_var'][gene_idx]
-				hypothesis_test_dict[(group_1, group_2)]['log_residual_var_1'][gene_idx]  = self.parameters[group_1]['log_residual_var'][gene_idx]
-				hypothesis_test_dict[(group_1, group_2)]['log_residual_var_2'][gene_idx]  = self.parameters[group_2]['log_residual_var'][gene_idx]
-				hypothesis_test_dict[(group_1, group_2)]['dv_diff'][gene_idx]  = observed_log_residual_var_diff
-				if np.isfinite(observed_log_residual_var_diff):
-					asl = compute_asl(boot_log_residual_var_diff)
-					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = asl
-				else:
-					hypothesis_test_dict[(group_1, group_2)]['dv_pval'][gene_idx] = np.nan
 			
-		# Perform FDR correction
-		for group_1, group_2 in comparison_groups:
+			# Perform hypothesis testing
+			for subsection, test_dict in self.hypothesis_test_result.items():
 
-			hypothesis_test_dict[(group_1, group_2)]['de_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['de_pval'])
-			hypothesis_test_dict[(group_1, group_2)]['dv_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dv_pval'])
+				# Organize the data into format for meta-analysis
+				boot_log_means = np.vstack([np.log(estimated_means[group]) for group in test_dict['groups']])
+				boot_log_residual_vars = np.vstack([np.log(estimated_residual_vars[group]) for group in test_dict['groups']])
+
+				# Compute the effect sizes
+				mean_es = self._get_effect_size(boot_log_means, test_dict)
+				var_es = self._get_effect_size(boot_log_residual_vars, test_dict)
+
+				# Update the test dict
+				if np.isfinite(self.hypothesis_test_result[subsection]['de_effect_size'][gene_idx]):
+					test_dict['de_es_ci'][gene_idx] = np.nanstd(mean_es)
+					test_dict['de_pval'][gene_idx] = compute_asl(mean_es)
+				if np.isfinite(self.hypothesis_test_result[subsection]['dv_effect_size'][gene_idx]):
+					test_dict['dv_es_ci'][gene_idx] = np.nanstd(var_es)
+					test_dict['dv_pval'][gene_idx] = compute_asl(var_es)
+
+		# Perform FDR correction
+		for subsection, test_dict in self.hypothesis_test_result.items():
+			test_dict['de_fdr'] = fdrcorrect(test_dict['de_pval'])
+			test_dict['dv_fdr'] = fdrcorrect(test_dict['dv_pval'])
 
 		# Update the attribute dictionaries
 		self.parameters_confidence_intervals.update(ci_dict)
-		self.hypothesis_test_result_1d.update(hypothesis_test_dict)
-		
+
 		if timer == 'on':
 			return count_time, compute_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
 		
@@ -690,14 +820,6 @@ class SingleCellEstimator(object):
 
 					pair_counts[group] = expr_values
 					gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=counts, size=self.num_permute)
-
-				# # Grab the appropriate Gamma variables given the bincounts of this particular gene
-				# gene_gamma_rvs = {group:(gamma_rvs[group][:, np.nonzero(pair_counts[gene_idx_1][gene_idx_2][group][1][:, None] == all_pair_counts_sorted[group])[1]]) \
-				# 	for group in groups_to_iter}
-
-				# # Sample dirichlet from the Gamma variables
-				# gene_dir_rvs = {group:(gene_gamma_rvs[group]/gene_gamma_rvs[group].sum(axis=1)[:,None]) for group in groups_to_iter}
-				# del gene_gamma_rvs
 
 				# Construct the repeated values matrix
 				cantor_code = {group:pair_counts[group] for group in groups_to_iter}
