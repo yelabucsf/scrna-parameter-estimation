@@ -474,6 +474,13 @@ class SingleCellEstimator(object):
 		for group in self.groups:
 			self._compute_params(group)
 
+		# Create blanks for the confidence intervals
+		attributes = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
+		for group in self.groups:
+			self.parameters_confidence_intervals[group] = {}
+			for attribute in attributes:
+				self.parameters_confidence_intervals[group][attribute] = np.full(self.anndata.shape[1], np.nan)
+
 
 	def estimate_2d_parameters(self, gene_list_1, gene_list_2, groups='all'):
 		""" Perform 2D parameter estimation. """
@@ -522,6 +529,10 @@ class SingleCellEstimator(object):
 			self.parameters[group]['cov'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_cov
 			self.parameters[group]['corr'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_corr
 
+		# Create blanks for the confidence intervals
+		for group in self.groups:
+			self.parameters_confidence_intervals[group]['corr'] = sparse.lil_matrix(
+				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
 
 	def setup_hypothesis_testing(self, subsections=[]):
 		"""
@@ -529,6 +540,12 @@ class SingleCellEstimator(object):
 
 			Construct the design matrix. If applicable, compute the hat matrix for each subsection.
 		"""
+
+		attributes_1d = [
+			'de_effect_size', 'de_pval', 'de_fdr', 'de_es_ci', 
+			'dv_effect_size', 'dv_pval', 'dv_fdr', 'dv_es_ci']
+		attributes_2d = ['dc_effect_size', 'dc_pval', 'dc_fdr', 'dc_es_ci']
+
 
 		for subsection in subsections:
 
@@ -577,6 +594,13 @@ class SingleCellEstimator(object):
 				hat_matrix = np.linalg.inv(design_matrix.T.dot(cell_count.reshape(-1,1)*design_matrix)).dot(design_matrix.T*cell_count)
 				self.hypothesis_test_result[subsection]['hat_matrix'] = hat_matrix
 
+			# Create empty data structures for hypothesis test results
+			for attribute in attributes_1d:
+				self.hypothesis_test_result[subsection][attribute] = np.full(self.anndata.var.shape[0], np.nan)
+			for attribute in attributes_2d:
+				self.hypothesis_test_result[subsection][attribute] = sparse.lil_matrix(
+				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
+
 
 	def compute_effect_sizes_1d(self):
 		""" 
@@ -605,9 +629,18 @@ class SingleCellEstimator(object):
 			Assumes that the setup_hypothesis_testing function has been run already.
 		"""
 
-		# for subsection, test_dict in self.hypothesis_test_result.items():
+		gene_idxs_1 = self._get_gene_idxs(gene_list_1)
+		gene_idxs_2 = self._get_gene_idxs(gene_list_2)
 
-		# 	correlations = 
+		for subsection, test_dict in self.hypothesis_test_result.items():
+
+			correlations = np.vstack([self.parameters[group]['corr'][gene_idxs_1, :][:, gene_idxs_2].toarray().ravel()
+					for group in test_dict['groups']])
+
+			corr_es = self._get_effect_size(correlations, test_dict)
+
+			test_dict['dc_effect_size'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = \
+				corr_es.reshape(gene_idxs_1.shape[0], gene_idxs_2.shape[0])
 
 
 	def compute_confidence_intervals_1d(self, hypothesis_test=True, gene_tracker_count=100, verbose=False, timer='off'):
@@ -644,18 +677,6 @@ class SingleCellEstimator(object):
 				self.q,
 				self.q_sq) for group in groups_to_iter}
 
-		# Declare placeholders for gene confidence intervals
-		parameters = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
-		ci_dict = {
-			group:{param:np.zeros(self.anndata.var.shape[0]) for param in parameters} \
-				for group in groups_to_iter}
-
-		# Declare placeholders for hypothesis testing result
-		parameters = ['de_pval', 'de_fdr', 'de_es_ci', 'dv_pval', 'dv_fdr', 'dv_es_ci']
-		for subsection, test_dict in self.hypothesis_test_result.items():
-			for parameter in parameters:
-				test_dict[parameter] = np.full(self.anndata.var.shape[0], np.nan)
-
 		# Iterate through each gene and compute a standard error for each gene
 		for gene_idx in range(self.anndata.var.shape[0]):
 			
@@ -685,34 +706,34 @@ class SingleCellEstimator(object):
 			compute_start_time = time.time()
 			
 			for group in groups_to_iter:
-				gene_mult_rvs[group] = stats.multinomial.rvs(n=data.shape[0], p=gene_freqs[group], size=self.num_permute)
+				gene_mult_rvs[group] = stats.multinomial.rvs(n=self.group_cells[group].shape[0], p=gene_freqs[group], size=self.num_permute)
 
 			# Construct the repeated values matrix
 			values = {group:np.tile(
 				gene_counts[group].reshape(1, -1), (self.num_permute, 1)) for group in groups_to_iter}
 
 			# Compute the permuted, observed mean/dispersion
-			mean = {group:((gene_mult_rvs[group] * values[group]).sum(axis=1)+pseudocount)/(data.shape[0]+1) for group in groups_to_iter}
-			second_moments = {group:((gene_mult_rvs[group] * values[group]**2).sum(axis=1)+pseudocount)/(data.shape[0]+1) for group in groups_to_iter}
-			del gene_mult_rvs
-			del gene_counts
+			mean = {group:((gene_mult_rvs[group] * values[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+			second_moments = {group:((gene_mult_rvs[group] * values[group]**2).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+			del gene_mult_rvs, gene_counts
 
 			# Compute the permuted, estimated moments for both groups
 			estimated_means = {group:_estimate_mean(mean[group], self.q) for group in groups_to_iter}
 			estimated_vars = {group:_estimate_variance(mean[group], second_moments[group], mean_inv_numis[group], self.q, self.q_sq) for group in groups_to_iter}
 			estimated_residual_vars = {group:self._estimate_residual_variance(estimated_means[group], estimated_vars[group])[0] for group in groups_to_iter}
+			del mean, second_moments
 
 			compute_time = time.time()-compute_start_time
 			
 			# Store the S.E. of the parameter, log(param), and log1p(param)		
 			for group in groups_to_iter:
 
-				ci_dict[group]['mean'][gene_idx] = np.nanstd(estimated_means[group])
-				ci_dict[group]['residual_var'][gene_idx] = np.nanstd(estimated_residual_vars[group])
-				ci_dict[group]['log_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]))
-				ci_dict[group]['log_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]))
-				ci_dict[group]['log1p_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]+1))
-				ci_dict[group]['log1p_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]+1))
+				self.parameters_confidence_intervals[group]['mean'][gene_idx] = np.nanstd(estimated_means[group])
+				self.parameters_confidence_intervals[group]['residual_var'][gene_idx] = np.nanstd(estimated_residual_vars[group])
+				self.parameters_confidence_intervals[group]['log_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]))
+				self.parameters_confidence_intervals[group]['log_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]))
+				self.parameters_confidence_intervals[group]['log1p_mean'][gene_idx] = np.nanstd(np.log(estimated_means[group]+1))
+				self.parameters_confidence_intervals[group]['log1p_residual_var'][gene_idx] = np.nanstd(np.log(estimated_residual_vars[group]+1))
 			
 			# Perform hypothesis testing
 			for subsection, test_dict in self.hypothesis_test_result.items():
@@ -738,28 +759,31 @@ class SingleCellEstimator(object):
 			test_dict['de_fdr'] = fdrcorrect(test_dict['de_pval'])
 			test_dict['dv_fdr'] = fdrcorrect(test_dict['dv_pval'])
 
-		# Update the attribute dictionaries
-		self.parameters_confidence_intervals.update(ci_dict)
-
 		if timer == 'on':
 			return count_time, compute_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
 		
 
-	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, groups=None, groups_to_compare=None, gene_tracker_count=100, verbose=False):
+	def compute_confidence_intervals_2d(self, gene_list_1, gene_list_2, hypothesis_test=True, gene_tracker_count=100, verbose=False):
 		"""
-			Compute 95% confidence intervals around the estimated parameters. 
-
-			Use the Gamma -> Dirichlet framework to speed up the process.
-
+			Compute confidence intervals and p-values for estimate and effect sizes. 
+			Use the multinomial resampling.
 			Uses self.num_permute attribute, same as in hypothesis testing.
-
 			CAVEAT: Uses the same expectation of 1/N as the true value, does not compute this from the permutations. 
 			So the result might be slightly off.
 		"""
 
-		groups_to_iter = self.groups if groups == 'all' else groups
-		comparison_groups = groups_to_compare if groups_to_compare else list(itertools.combinations(groups_to_iter, 2))
+		# Calculate the pseudocount, so that the demonimator is N+1
+		pseudocount = 1/self.anndata.shape[1] if self.smooth else 0
+		
+		# Get the relevant groups to iterate over. 
+		if hypothesis_test:
+			groups_to_iter = []
+			for subsection, test_dict in self.hypothesis_test_result.items():
+				groups_to_iter += test_dict['groups']
+		else: 
+			groups_to_iter = self.groups
 
+		# Compute the inverse of N
 		mean_inv_numis = {
 			group:_compute_mean_inv_numis(
 				self.observed_central_moments[group]['allgenes_first'], 
@@ -771,30 +795,10 @@ class SingleCellEstimator(object):
 		genes_idxs_1 = self._get_gene_idxs(gene_list_1)
 		genes_idxs_2 = self._get_gene_idxs(gene_list_2)
 
-		# all_pair_counts = {group:set() for group in groups_to_iter}
-		pair_counts = {}
-
-		# Declare placeholders for gene confidence intervals
-		parameters = ['cov', 'corr']
-		ci_dict = {
-			group:{param:np.zeros(self.parameters[groups_to_iter[0]]['corr'].shape)*np.nan for param in parameters} \
-				for group in groups_to_iter}
-
-		# Declare placeholders for group comparison results
-		hypothesis_test_parameters = [
-			'dcov_diff', 'dcov_pval', 'dcov_fdr', 'cov_1', 'cov_2',
-			'dcorr_diff', 'dcorr_pval', 'dcorr_fdr', 'corr_1', 'corr_2'
-			]
-		hypothesis_test_dict = {
-			(group_1, group_2):{param:np.zeros(self.parameters[group_1]['corr'].shape)*np.nan for param \
-				in hypothesis_test_parameters} for group_1, group_2 in comparison_groups}
-		for group_1, group_2 in comparison_groups:
-			hypothesis_test_dict[(group_1, group_2)]['gene_idx_1'] = genes_idxs_1
-			hypothesis_test_dict[(group_1, group_2)]['gene_idx_2'] = genes_idxs_2
-
 		# Iterate through each gene and compute a standard error for each gene
 		iter_1 = 0
 		iter_2 = 0
+		pair_counts = {}
 		for gene_idx_1 in genes_idxs_1:
 
 			iter_2 = 0
@@ -806,7 +810,7 @@ class SingleCellEstimator(object):
 				if verbose and gene_tracker_count > 0 and (iter_1*genes_idxs_2.shape[0] + iter_2) % gene_tracker_count == 0: 
 					print('Computing the {}st/th gene of {}'.format((iter_1*genes_idxs_2.shape[0] + iter_2), genes_idxs_1.shape[0]*genes_idxs_2.shape[0]))
 
-				gene_dir_rvs = {}
+				gene_mult_rvs = {}
 				gene_counts = {}
 				for group in groups_to_iter:
 
@@ -815,11 +819,9 @@ class SingleCellEstimator(object):
 					if type(data) != np.ndarray:
 						data = data.toarray()
 					cantor_code = pair(data[:, gene_idx_1], data[:, gene_idx_2])
-
 					expr_values, counts = np.unique(cantor_code, return_counts=True)
-
 					pair_counts[group] = expr_values
-					gene_dir_rvs[group] = stats.dirichlet.rvs(alpha=counts, size=self.num_permute)
+					gene_mult_rvs[group] = stats.multinomial.rvs(n=data.shape[0], p=counts/data.shape[0], size=self.num_permute)
 
 				# Construct the repeated values matrix
 				cantor_code = {group:pair_counts[group] for group in groups_to_iter}
@@ -832,79 +834,49 @@ class SingleCellEstimator(object):
 					values_2[group] = np.tile(values_2_raw.reshape(1, -1), (self.num_permute, 1))
 
 				# Compute the bootstrapped observed moments
-				mean_1 = {group:((gene_dir_rvs[group]) * values_1[group]).sum(axis=1) for group in groups_to_iter}
-				second_moments_1 = {group:((gene_dir_rvs[group]) * values_1[group]**2).sum(axis=1) for group in groups_to_iter}
-				mean_2 = {group:((gene_dir_rvs[group]) * values_2[group]).sum(axis=1) for group in groups_to_iter}
-				second_moments_2 = {group:((gene_dir_rvs[group]) * values_2[group]**2).sum(axis=1) for group in groups_to_iter}
-				prod = {group:((gene_dir_rvs[group]) * values_1[group] * values_2[group]).sum(axis=1) for group in groups_to_iter}
-				del gene_dir_rvs
+				mean_1 = {group:((gene_mult_rvs[group] * values_1[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+				second_moments_1 = {group:((gene_mult_rvs[group] * values_1[group]**2).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+				mean_2 = {group:((gene_mult_rvs[group] * values_2[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+				second_moments_2 = {group:((gene_mult_rvs[group] * values_2[group]**2).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+				prod = {group:((gene_mult_rvs[group] * values_1[group] * values_2[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
+				del gene_mult_rvs
 
 				# Compute the permuted, estimated moments for both groups
 				estimated_means_1 = {group:_estimate_mean(mean_1[group], self.q) for group in groups_to_iter}
 				estimated_vars_1 = {group:_estimate_variance(mean_1[group], second_moments_1[group], mean_inv_numis[group], self.q, self.q_sq) for group in groups_to_iter}
 				estimated_means_2 = {group:_estimate_mean(mean_2[group], self.q) for group in groups_to_iter}
 				estimated_vars_2 = {group:_estimate_variance(mean_2[group], second_moments_2[group], mean_inv_numis[group], self.q, self.q_sq) for group in groups_to_iter}
+				del mean_1, mean_2, second_moments_1, second_moments_2
 
 				# Compute estimated correlations
 				estimated_corrs = {}
-				estimated_covs = {}
 				for group in groups_to_iter:
 					denom = self.q_sq - (self.q - self.q_sq)*mean_inv_numis[group]
-					cov = prod[group] / denom - (mean_1[group] * mean_2[group])/self.q**2
-					estimated_covs[group] = cov
+					cov = prod[group] / denom - (estimated_means_1[group] * estimated_means_2[group])
 					estimated_corrs[group] = cov / np.sqrt(estimated_vars_1[group]*estimated_vars_2[group]) 
 
-				# Store the S.E. of the correlation
+				# Store the S.E. of the correlation for each group
 				for group in groups_to_iter:
-					ci_dict[group]['cov'][gene_idx_1, gene_idx_2] = np.nanstd(estimated_covs[group])
-					ci_dict[group]['corr'][gene_idx_1, gene_idx_2] = np.nanstd(estimated_corrs[group])
+					self.parameters_confidence_intervals[group]['corr'][gene_idx_1, gene_idx_2] = np.nanstd(estimated_corrs[group])
 
 				# Perform hypothesis testing
-				for group_1, group_2 in comparison_groups:
+				for subsection, test_dict in self.hypothesis_test_result.items():
 
-					# For difference of covariances
-					boot_cov_diff = estimated_covs[group_2] - estimated_covs[group_1]
-					observed_cov_diff = self.parameters[group_2]['cov'][gene_idx_1, gene_idx_2] - self.parameters[group_1]['cov'][gene_idx_1, gene_idx_2]
-					hypothesis_test_dict[(group_1, group_2)]['cov_1'][gene_idx_1, gene_idx_2]  = self.parameters[group_1]['cov'][gene_idx_1, gene_idx_2]
-					hypothesis_test_dict[(group_1, group_2)]['cov_2'][gene_idx_1, gene_idx_2]  = self.parameters[group_2]['cov'][gene_idx_1, gene_idx_2]
-					hypothesis_test_dict[(group_1, group_2)]['dcov_diff'][gene_idx_1, gene_idx_2]  = observed_cov_diff
+					# Compute the dc bootstrapped effect sizes
+					correlations = np.vstack([estimated_corrs[group] for group in test_dict['groups']])
+					corr_es = self._get_effect_size(correlations, test_dict)
 
-					# For difference of correlations
-					boot_corr_diff = estimated_corrs[group_2] - estimated_corrs[group_1]
-					observed_corr_diff = self.parameters[group_2]['corr'][gene_idx_1, gene_idx_2] - self.parameters[group_1]['corr'][gene_idx_1, gene_idx_2]
-					hypothesis_test_dict[(group_1, group_2)]['corr_1'][gene_idx_1, gene_idx_2]  = self.parameters[group_1]['corr'][gene_idx_1, gene_idx_2]
-					hypothesis_test_dict[(group_1, group_2)]['corr_2'][gene_idx_1, gene_idx_2]  = self.parameters[group_2]['corr'][gene_idx_1, gene_idx_2]
-					hypothesis_test_dict[(group_1, group_2)]['dcorr_diff'][gene_idx_1, gene_idx_2]  = observed_corr_diff
-
-					if np.isfinite(observed_corr_diff):
-						hypothesis_test_dict[(group_1, group_2)]['dcorr_pval'][gene_idx_1, gene_idx_2] = compute_asl(boot_corr_diff)
-					if np.isfinite(observed_cov_diff):
-						hypothesis_test_dict[(group_1, group_2)]['dcov_pval'][gene_idx_1, gene_idx_2] = compute_asl(boot_cov_diff)
+					# Update the test dict
+					if np.isfinite(test_dict['dc_effect_size'][gene_idx_1, gene_idx_2]):
+						test_dict['dc_pval'][gene_idx_1, gene_idx_2] = compute_asl(corr_es)
+						test_dict['dc_es_ci'][gene_idx_1, gene_idx_2] = np.nanstd(corr_es)
 
 				iter_2 += 1
 			iter_1 += 1
 
 		# Perform FDR correction
-		for group_1, group_2 in comparison_groups:
-			hypothesis_test_dict[(group_1, group_2)]['cov_1'] = hypothesis_test_dict[(group_1, group_2)]['cov_1'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['cov_2'] = hypothesis_test_dict[(group_1, group_2)]['cov_2'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['dcov_diff'] = hypothesis_test_dict[(group_1, group_2)]['dcov_diff'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['dcov_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dcov_pval'][genes_idxs_1, :][:, genes_idxs_2].reshape(-1))\
+		for subsection, test_dict in self.hypothesis_test_result.items():
+
+			test_dict['dc_fdr'][genes_idxs_1[:, np.newaxis], genes_idxs_2] = \
+				fdrcorrect(test_dict['dc_pval'][genes_idxs_1[:, np.newaxis], genes_idxs_2].toarray().ravel())\
 				.reshape(genes_idxs_1.shape[0], genes_idxs_2.shape[0])
-			hypothesis_test_dict[(group_1, group_2)]['dcov_pval'] = hypothesis_test_dict[(group_1, group_2)]['dcov_pval'][genes_idxs_1, :][:, genes_idxs_2]
-
-			hypothesis_test_dict[(group_1, group_2)]['corr_1'] = hypothesis_test_dict[(group_1, group_2)]['corr_1'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['corr_2'] = hypothesis_test_dict[(group_1, group_2)]['corr_2'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['dcorr_diff'] = hypothesis_test_dict[(group_1, group_2)]['dcorr_diff'][genes_idxs_1, :][:, genes_idxs_2]
-			hypothesis_test_dict[(group_1, group_2)]['dcorr_fdr'] = fdrcorrect(hypothesis_test_dict[(group_1, group_2)]['dcorr_pval'][genes_idxs_1, :][:, genes_idxs_2].reshape(-1))\
-				.reshape(genes_idxs_1.shape[0], genes_idxs_2.shape[0])
-			hypothesis_test_dict[(group_1, group_2)]['dcorr_pval'] = hypothesis_test_dict[(group_1, group_2)]['dcorr_pval'][genes_idxs_1, :][:, genes_idxs_2]
-
-		# Update the attribute dictionaries
-		for group in groups_to_iter:
-			if group in self.parameters_confidence_intervals:
-				self.parameters_confidence_intervals[group].update(ci_dict[group])
-			else:
-				self.parameters_confidence_intervals[group] = ci_dict[group]
-		self.hypothesis_test_result_2d.update(hypothesis_test_dict)
-
