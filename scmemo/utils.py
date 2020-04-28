@@ -7,30 +7,43 @@
 
 import pandas as pd
 import scipy.stats as stats
-import scipy.sparse as sparse
 import numpy as np
 import time
 import itertools
 import scipy as sp
-import logging
-from scipy.stats import multivariate_normal
-import pickle as pkl
-from statsmodels.stats.moment_helpers import cov2corr
 from statsmodels.stats.multitest import fdrcorrection
 
 
-def estimated_mean_disp_corr(param, estimator):
+def _pair(k1, k2, safe=True):
+    """
+    Cantor pairing function
+    http://en.wikipedia.org/wiki/Pairing_function#Cantor_pairing_function
+    """
+    z = (0.5 * (k1 + k2) * (k1 + k2 + 1) + k2).astype(int)
+    return z
 
-	estimator.q_sq = param
-	estimator.estimate_1d_parameters()
-	x = np.log(estimator.estimated_central_moments['all']['first'])
-	y = np.log(estimator.estimated_central_moments['all']['second'])
 
-	condition = np.isfinite(x) & np.isfinite(y)
-	x = x[condition]
-	y = y[condition]
+def _depair(z):
+    """
+    Inverse of Cantor pairing function
+    http://en.wikipedia.org/wiki/Pairing_function#Inverting_the_Cantor_pairing_function
+    """
+    w = np.floor((np.sqrt(8 * z + 1) - 1)/2)
+    t = (w**2 + w) / 2
+    y = (z - t).astype(int)
+    x = (w - y).astype(int)
+    return x, y
 
-	return np.abs(stats.pearsonr(x,y-x)[0])
+
+def _sparse_bincount(col):
+	""" Sparse bincount. """
+	
+	if col.data.shape[0] == 0:
+		return np.array([col.shape[0]])
+	counts = np.bincount(col.data)
+	counts[0] = col.shape[0] - col.data.shape[0]
+
+	return counts
 
 
 def _sparse_cross_covariance(X, Y):
@@ -42,56 +55,78 @@ def _sparse_cross_covariance(X, Y):
 	return cov, prod
 
 
-def get_differential_genes(
-	gene_list,
-	hypothesis_test_dict, 
-	group_1, 
-	group_2, 
-	which, 
-	direction, 
-	sig=0.1, 
-	num_genes=50):
-	"""
-		Get genes that are increased in expression in group 2 compared to group 1, sorted in order of significance.
-		:which: should be either "mean" or "dispersion"
-		:direction: should be either "increase" or "decrease"
-		:sig: defines the threshold
-		:num_genes: defines the number of genes to be returned. If bigger than the number of significant genes, then return only the significant ones.
-	"""
+def _compute_1d_statistics(observed, smooth=True):
+	""" Compute some non central moments of the observed data. """
 
-	# Setup keys
-	group_key = (group_1, group_2)
-	param_key = 'de' if which == 'mean' else 'dv'
+	pseudocount = 1/observed.shape[1] if smooth else 0
 
-	# Find the number of genes to return
-	sig_condition = hypothesis_test_dict[group_key][param_key + '_fdr'] < sig
-	dir_condition = ((1 if direction == 'increase' else -1)*hypothesis_test_dict[group_key][param_key + '_diff']) > 0
-	num_sig_genes = (sig_condition & dir_condition).sum()
-	
-	# We will order the output by significance, then by effect size. Just turn the FDR of the other half into 1's to remove them from the ordering.
-	relevant_fdr = hypothesis_test_dict[group_key][param_key + '_fdr'].copy()
-	relevant_fdr[~dir_condition] = 1
-	relevant_effect_size = hypothesis_test_dict[group_key][param_key + '_diff'].copy()
-	relevant_effect_size[~dir_condition] = 0
+	first = (observed.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
+	c = observed.copy()
+	c.data **= 2
+	second = (c.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
+	del c
 
-	# Get the order of the genes in terms of FDR.
-	df = pd.DataFrame()
-	df['pval'] = hypothesis_test_dict[group_key][param_key + '_pval'].copy()
-	df['fdr'] = relevant_fdr
-	df['effect_size'] = np.absolute(relevant_effect_size)
-	df['gene'] = gene_list
-	df = df.sort_values(by=['fdr', 'effect_size'], ascending=[True, False])
-	df['rank'] = np.arange(df.shape[0])+1
-
-	df = df.query('fdr < {}'.format(sig)).iloc[:num_genes, :].copy()
-
-	return df
+	return first, second
 
 
-	return relevant_fdr[order], hypothesis_test_dict[group_key][param_key + '_diff'][order], gene_list[order], order
+def _estimate_mean(observed_first, q):
+	""" Estimate the mean vector. """
+
+	return observed_first/q
 
 
-def compute_asl(perm_diff):
+def _estimate_variance(observed_first, observed_second, mean_inv_allgenes, q, q_sq):
+	""" Estimate the true variance. """
+
+	numer = observed_first - (q_sq/q)*observed_first - observed_second
+	denom = -q_sq + q*mean_inv_allgenes - q_sq*mean_inv_allgenes
+
+	return numer/denom - observed_first**2/q**2
+
+
+def _estimate_covariance(observed_first_1, observed_first_2, observed_prod, mean_inv_allgenes, q, q_sq):
+	""" Estimate the true covariance. """
+
+	# Estimate covariances except for the diagonal
+
+
+	denom = q_sq - (q - q_sq)*mean_inv_allgenes
+	cov = observed_prod / denom - observed_first_1.reshape(-1,1)@observed_first_2.reshape(1, -1)/q**2
+
+	return cov
+
+
+def _compute_mean_inv_numis(observed_allgenes_mean, observed_allgenes_variance, q, q_sq):
+    """
+        Compute the expected value of inverse of N-1.
+    """
+
+    denom = observed_allgenes_mean**3 / q**3
+
+    numer = \
+        observed_allgenes_variance/q_sq + \
+        observed_allgenes_mean/q_sq + \
+        observed_allgenes_mean/q + \
+        observed_allgenes_mean**2/q**2
+
+    return numer/denom
+
+
+def _mean_substitution(mat):
+	""" Perform mean substition. Get the percentage of missing values. This will lower the power, but should still be unbiased. """
+
+	to_return = mat.copy()
+	col_mean = np.nanmean(mat, axis=0)
+	col_mean[np.isnan(col_mean)] = 0
+	isnan_mat = np.isnan(mat)
+	inds = np.where(isnan_mat)
+	perc_nans = np.isnan(mat).sum(axis=0)/mat.shape[0]
+	to_return[inds] = np.take(col_mean, inds[1])
+
+	return perc_nans, to_return
+
+
+def _compute_asl(perm_diff):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
@@ -124,28 +159,7 @@ def compute_asl(perm_diff):
 		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 
 
-def pair(k1, k2, safe=True):
-    """
-    Cantor pairing function
-    http://en.wikipedia.org/wiki/Pairing_function#Cantor_pairing_function
-    """
-    z = (0.5 * (k1 + k2) * (k1 + k2 + 1) + k2).astype(int)
-    return z
-
-
-def depair(z):
-    """
-    Inverse of Cantor pairing function
-    http://en.wikipedia.org/wiki/Pairing_function#Inverting_the_Cantor_pairing_function
-    """
-    w = np.floor((np.sqrt(8 * z + 1) - 1)/2)
-    t = (w**2 + w) / 2
-    y = (z - t).astype(int)
-    x = (w - y).astype(int)
-    return x, y
-
-
-def robust_linregress(a, b):
+def _robust_linregress(a, b):
 	""" Wrapper for scipy linregress function that ignores non-finite values. """
 
 	condition = (np.isfinite(a) & np.isfinite(b))
@@ -155,27 +169,7 @@ def robust_linregress(a, b):
 	return stats.linregress(x,y)
 
 
-def robust_corr(a, b, pearson=True):
-	""" Wrapper for scipy pearsonr function that ignores non-finite values. """
-
-	condition = (np.isfinite(a) & np.isfinite(b))
-	x = a[condition]
-	y = b[condition]
-
-	return stats.pearsonr(x,y) if pearson else stats.spearmanr(x,y)
-
-
-def tail_residual_correlation(a, b, k, pearson=True):
-
-	m, i, _, _, _ = robust_linregress(a,b)
-	residual = b - (m*a+i)
-
-	k_largest_idx = np.argpartition(a, -k)[-k:]
-
-	return a[k_largest_idx], residual[k_largest_idx], robust_corr(a[k_largest_idx], residual[k_largest_idx], pearson=pearson)
-
-
-def fdrcorrect(pvals):
+def _fdrcorrect(pvals):
 	"""
 		Perform FDR correction with nan's.
 	"""

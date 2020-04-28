@@ -1,9 +1,9 @@
 """
-	scmemo.py
+	estimator.py
 
-	Single Cell Moment Estimator
+	Single Cell Method of Moments
 
-	This file contains code for implementing the empirical bayes estimator for the Gaussian assumption for true single cell RNA sequencing counts.
+	This file contains code for implementing the method of moments estimators for single cell data.
 """
 
 
@@ -12,130 +12,14 @@ import scipy.stats as stats
 import scipy.sparse as sparse
 import numpy as np
 import time
-import itertools
 import scipy as sp
-import logging
 from scipy.stats import multivariate_normal
-import pickle as pkl
-import sklearn.decomposition as decomp
 import matplotlib
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 import sklearn as sk
 
 from utils import *
-
-
-def _pair(k1, k2, safe=True):
-    """
-    Cantor pairing function
-    http://en.wikipedia.org/wiki/Pairing_function#Cantor_pairing_function
-    """
-    z = (0.5 * (k1 + k2) * (k1 + k2 + 1) + k2).astype(int)
-    return z
-
-
-def _depair(z):
-    """
-    Inverse of Cantor pairing function
-    http://en.wikipedia.org/wiki/Pairing_function#Inverting_the_Cantor_pairing_function
-    """
-    w = np.floor((np.sqrt(8 * z + 1) - 1)/2)
-    t = (w**2 + w) / 2
-    y = (z - t).astype(int)
-    x = (w - y).astype(int)
-    return x, y
-
-
-def _sparse_bincount(col):
-	""" Sparse bincount. """
-	
-	if col.data.shape[0] == 0:
-		return np.array([col.shape[0]])
-	counts = np.bincount(col.data)
-	counts[0] = col.shape[0] - col.data.shape[0]
-
-	return counts
-
-
-def _sparse_cross_covariance(X, Y):
-	""" Return the expectation of the product as well as the cross covariance. """
-
-	prod = (X.T*Y).toarray()/X.shape[0]
-	cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
-	
-	return cov, prod
-
-
-def _compute_1d_statistics(observed, smooth=True):
-	""" Compute some non central moments of the observed data. """
-
-	pseudocount = 1/observed.shape[1] if smooth else 0
-
-	first = (observed.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
-	c = observed.copy()
-	c.data **= 2
-	second = (c.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
-	del c
-
-	return first, second
-
-
-def _estimate_mean(observed_first, q):
-	""" Estimate the mean vector. """
-
-	return observed_first/q
-
-
-def _estimate_variance(observed_first, observed_second, mean_inv_allgenes, q, q_sq):
-	""" Estimate the true variance. """
-
-	numer = observed_first - (q_sq/q)*observed_first - observed_second
-	denom = -q_sq + q*mean_inv_allgenes - q_sq*mean_inv_allgenes
-
-	return numer/denom - observed_first**2/q**2
-
-
-def _estimate_covariance(observed_first_1, observed_first_2, observed_prod, mean_inv_allgenes, q, q_sq):
-	""" Estimate the true covariance. """
-
-	# Estimate covariances except for the diagonal
-
-
-	denom = q_sq - (q - q_sq)*mean_inv_allgenes
-	cov = observed_prod / denom - observed_first_1.reshape(-1,1)@observed_first_2.reshape(1, -1)/q**2
-
-	return cov
-
-
-def _compute_mean_inv_numis(observed_allgenes_mean, observed_allgenes_variance, q, q_sq):
-    """
-        Compute the expected value of inverse of N-1.
-    """
-
-    denom = observed_allgenes_mean**3 / q**3
-
-    numer = \
-        observed_allgenes_variance/q_sq + \
-        observed_allgenes_mean/q_sq + \
-        observed_allgenes_mean/q + \
-        observed_allgenes_mean**2/q**2
-
-    return numer/denom
-
-
-def _mean_substitution(mat):
-	""" Perform mean substition. Get the percentage of missing values. This will lower the power, but should still be unbiased. """
-
-	to_return = mat.copy()
-	col_mean = np.nanmean(mat, axis=0)
-	col_mean[np.isnan(col_mean)] = 0
-	isnan_mat = np.isnan(mat)
-	inds = np.where(isnan_mat)
-	perc_nans = np.isnan(mat).sum(axis=0)/mat.shape[0]
-	to_return[inds] = np.take(col_mean, inds[1])
-
-	return perc_nans, to_return
 
 
 class SingleCellEstimator(object):
@@ -522,7 +406,7 @@ class SingleCellEstimator(object):
 
 		# Estimate the mean-var relationship
 		if not self.mean_var_slope and not self.mean_var_inter:
-			slope, inter, _, _, _ = robust_linregress(np.log(x), np.log(y))
+			slope, inter, _, _, _ = _robust_linregress(np.log(x), np.log(y))
 			self.mean_var_slope = slope
 			self.mean_var_inter = inter
 
@@ -799,16 +683,16 @@ class SingleCellEstimator(object):
 				# Update the test dict
 				if np.isfinite(self.hypothesis_test_result[subsection]['de_effect_size'][gene_idx]):
 					test_dict['de_es_ci'][gene_idx] = np.nanstd(mean_es)
-					test_dict['de_pval'][gene_idx] = compute_asl(mean_es)
+					test_dict['de_pval'][gene_idx] = _compute_asl(mean_es)
 				if np.isfinite(self.hypothesis_test_result[subsection]['dv_effect_size'][gene_idx]):
 					test_dict['dv_es_ci'][gene_idx] = np.nanstd(var_es)
-					test_dict['dv_pval'][gene_idx] = compute_asl(var_es)
+					test_dict['dv_pval'][gene_idx] = _compute_asl(var_es)
 			iter += 1
 
 		# Perform FDR correction
 		for subsection, test_dict in self.hypothesis_test_result.items():
-			test_dict['de_fdr'][gene_idxs] = fdrcorrect(test_dict['de_pval'][gene_idxs])
-			test_dict['dv_fdr'][gene_idxs] = fdrcorrect(test_dict['dv_pval'][gene_idxs])
+			test_dict['de_fdr'][gene_idxs] = _fdrcorrect(test_dict['de_pval'][gene_idxs])
+			test_dict['dv_fdr'][gene_idxs] = _fdrcorrect(test_dict['dv_pval'][gene_idxs])
 
 		if timer == 'on':
 			return count_time, compute_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
@@ -919,7 +803,7 @@ class SingleCellEstimator(object):
 
 					# Update the test dict
 					if np.isfinite(test_dict['dc_effect_size'][gene_idx_1, gene_idx_2]):
-						test_dict['dc_pval'][gene_idx_1, gene_idx_2] = compute_asl(corr_es)
+						test_dict['dc_pval'][gene_idx_1, gene_idx_2] = _compute_asl(corr_es)
 						test_dict['dc_es_ci'][gene_idx_1, gene_idx_2] = np.nanstd(corr_es)
 
 				iter_2 += 1
@@ -929,5 +813,5 @@ class SingleCellEstimator(object):
 		for subsection, test_dict in self.hypothesis_test_result.items():
 
 			test_dict['dc_fdr'][genes_idxs_1[:, np.newaxis], genes_idxs_2] = \
-				fdrcorrect(test_dict['dc_pval'][genes_idxs_1[:, np.newaxis], genes_idxs_2].toarray().ravel())\
+				_fdrcorrect(test_dict['dc_pval'][genes_idxs_1[:, np.newaxis], genes_idxs_2].toarray().ravel())\
 				.reshape(genes_idxs_1.shape[0], genes_idxs_2.shape[0])
