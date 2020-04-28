@@ -140,23 +140,29 @@ def _compute_asl(perm_diff):
 
 	else: # We use the GDP approximation
 
-		perm_mean = perm_diff.mean()
-		perm_dist = np.sort(perm_diff) if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
-		N_exec = 300 # Starting value for number of exceendences
+		try:
 
-		while N_exec > 50:
+			perm_mean = perm_diff.mean()
+			perm_dist = np.sort(perm_diff) if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+			perm_dist = perm_dist[np.isfinite(perm_dist)]
+			N_exec = 300 # Starting value for number of exceendences
 
-			tail_data = perm_dist[-N_exec:]
-			params = stats.genextreme.fit(tail_data)
-			_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+			while N_exec > 50:
 
-			if ks_pval > 0.05: # roughly a genpareto distribution
-				return 2 * (N_exec/perm_diff.shape[0]) * stats.genextreme.sf(1, *params)
-			else: # Failed to fit genpareto
-				N_exec -= 30
+				tail_data = perm_dist[-N_exec:]
+				params = stats.genextreme.fit(tail_data)
+				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
 
-		# Failed to fit genpareto, return the upper bound
-		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+				if ks_pval > 0.05: # roughly a genpareto distribution
+					return 2 * (N_exec/perm_diff.shape[0]) * stats.genextreme.sf(1, *params)
+				else: # Failed to fit genpareto
+					N_exec -= 30
+			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+		except:
+
+			# Failed to fit genpareto, return the upper bound
+			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 
 
 def _robust_linregress(a, b):
@@ -167,6 +173,34 @@ def _robust_linregress(a, b):
 	y = b[condition]
 
 	return stats.linregress(x,y)
+
+
+def _robust_function(a, b, func):
+
+	condition = (np.isfinite(a) & np.isfinite(b))
+	x = a[condition]
+	y = b[condition]
+
+	return func(x,y)
+
+
+def _robust_polyfit(a, b, degree):
+	""" Wrapper for scipy linregress function that ignores non-finite values. """
+
+	condition = (np.isfinite(a) & np.isfinite(b))
+	x = a[condition]
+	y = b[condition]
+
+	return np.polyfit(x,y, degree)
+
+
+def _compute_polynomial_residual(x, y, fit):
+    
+    fitted = 0
+    for i in range(fit.shape[0]):
+        fitted += fit[i]*x**(fit.shape[0]-i-1)
+    
+    return y - fitted
 
 
 def _fdrcorrect(pvals):
