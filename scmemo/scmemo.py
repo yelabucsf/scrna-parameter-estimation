@@ -26,31 +26,58 @@ import sklearn as sk
 from utils import *
 
 
-def _compute_1d_statistics(observed, N, smooth=True):
+def _pair(k1, k2, safe=True):
+    """
+    Cantor pairing function
+    http://en.wikipedia.org/wiki/Pairing_function#Cantor_pairing_function
+    """
+    z = (0.5 * (k1 + k2) * (k1 + k2 + 1) + k2).astype(int)
+    return z
+
+
+def _depair(z):
+    """
+    Inverse of Cantor pairing function
+    http://en.wikipedia.org/wiki/Pairing_function#Inverting_the_Cantor_pairing_function
+    """
+    w = np.floor((np.sqrt(8 * z + 1) - 1)/2)
+    t = (w**2 + w) / 2
+    y = (z - t).astype(int)
+    x = (w - y).astype(int)
+    return x, y
+
+
+def _sparse_bincount(col):
+	""" Sparse bincount. """
+	
+	if col.data.shape[0] == 0:
+		return np.array([col.shape[0]])
+	counts = np.bincount(col.data)
+	counts[0] = col.shape[0] - col.data.shape[0]
+
+	return counts
+
+
+def _sparse_cross_covariance(X, Y):
+	""" Return the expectation of the product as well as the cross covariance. """
+
+	prod = (X.T*Y).toarray()/X.shape[0]
+	cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
+	
+	return cov, prod
+
+
+def _compute_1d_statistics(observed, smooth=True):
 	""" Compute some non central moments of the observed data. """
 
 	pseudocount = 1/observed.shape[1] if smooth else 0
 
-	if type(observed) != np.ndarray:
+	first = (observed.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
+	c = observed.copy()
+	c.data **= 2
+	second = (c.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
+	del c
 
-		# count unique values in each column
-		#unique_counts = pd.DataFrame(observed.toarray()).nunique().values
-
-		first = (observed.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
-		c = observed.copy()
-		c.data **= 2
-		second = (c.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
-		del c
-
-	else:
-
-		#unique_counts = pd.DataFrame(observed).nunique().values
-		first = (observed.sum(axis=0) + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
-		second = ((observed**2).sum(axis=0) + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
-
-	# Return the first moment, second moment, expectation of the product
-	# Make some columns into NaN
-	#econd[unique_counts <= 2] = np.nan
 	return first, second
 
 
@@ -122,7 +149,6 @@ class SingleCellEstimator(object):
 	def __init__(
 		self, 
 		adata,
-		n_umis_column,
 		covariate_label=None,
 		replicate_label=None,
 		batch_label=None,
@@ -165,7 +191,7 @@ class SingleCellEstimator(object):
 		self.groups = self.anndata.obs[self.group_label].drop_duplicates().tolist() + ['all']
 		
 		# Keep n_umis, num_permute, cov converter
-		self.n_umis = adata.obs[n_umis_column].values
+		self.n_umis = adata.X.sum(axis=1).A1
 		self.num_permute = num_permute
 		self.covariate_converter = covariate_converter
 		self.smooth = smooth
@@ -175,7 +201,6 @@ class SingleCellEstimator(object):
 		self.mean_var_inter = None
 
 		# Initialize parameter containing dictionaries
-		self.mean_inv_numis = {}
 		self.observed_moments = {}
 		self.observed_central_moments = {}
 		self.estimated_central_moments = {}
@@ -185,12 +210,49 @@ class SingleCellEstimator(object):
 		# Attributes for hypothesis testing
 		self.use_hat_matrix = use_hat_matrix
 		self.hypothesis_test_result = {}
-		self.hypothesis_test_result_2d = {}
 
 		# Cache for selecting cells
 		self.group_cells = {}
+		
+		# Initialize the dictionarys
+		self._init_dicts()
+	
+	
+	def _init_dicts(self):
+		""" Fill the parameter and hypothesis testing dicts with empty sparse matrices. """
+		
+		# Fill the dictionaries containing moments and estimated parameters
+		for group in self.groups:
+			
+			self.observed_moments[group] = {}
+			self.observed_moments[group]['first'] = np.full(self.anndata.shape[1], np.nan)
+			self.observed_moments[group]['second'] = np.full(self.anndata.shape[1], np.nan)
+			self.observed_moments[group]['prod'] = sparse.lil_matrix((self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
+			
+			self.observed_central_moments[group] = {}
+			self.observed_central_moments[group]['first'] = np.full(self.anndata.shape[1], np.nan)
+			self.observed_central_moments[group]['second'] = np.full(self.anndata.shape[1], np.nan)
+			self.observed_central_moments[group]['prod'] = sparse.lil_matrix((self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
 
+			self.estimated_central_moments[group] = {}
+			self.estimated_central_moments[group]['first'] = np.full(self.anndata.shape[1], np.nan)
+			self.estimated_central_moments[group]['second'] = np.full(self.anndata.shape[1], np.nan)
+			self.estimated_central_moments[group]['prod'] = sparse.lil_matrix((self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
 
+			self.parameters[group] = {}
+			self.parameters[group]['mean'] = np.full(self.anndata.shape[1], np.nan)
+			self.parameters[group]['log_mean'] = np.full(self.anndata.shape[1], np.nan)
+			self.parameters[group]['residual_var'] = np.full(self.anndata.shape[1], np.nan)
+			self.parameters[group]['log_residual_var'] = np.full(self.anndata.shape[1], np.nan)
+			self.parameters[group]['corr'] = sparse.lil_matrix((self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
+			
+			attributes = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
+			self.parameters_confidence_intervals[group] = {}
+			for attribute in attributes:
+				self.parameters_confidence_intervals[group][attribute] = np.full(self.anndata.shape[1], np.nan)
+			self.parameters_confidence_intervals[group]['corr'] = sparse.lil_matrix((self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
+
+			
 	def _get_covariate(self, group):
 		return group.split(self.label_delimiter)[1]
 
@@ -210,22 +272,26 @@ class SingleCellEstimator(object):
 	def _select_cells(self, group, n_umis=False):
 		""" Select the cells. """
 
+		# If rows are already selected
 		if group in self.group_cells and not n_umis:
 			return self.group_cells[group]
-
-		if group == 'all': # All cells
-			cell_selector = np.arange(self.anndata.shape[0])
-		elif group[0] == '-': # Exclude this group
-			cell_selector = (self.anndata.obs[self.group_label] != group[1:]).values
-		else: # Include this group
+		
+		if group == 'all': # Whole dataset
+			
+			if n_umis:
+				return self.n_umis
+			else:
+				data = self.anndata.X
+		
+		else: # select the cells
 			cell_selector = (self.anndata.obs[self.group_label] == group).values
+			
+			if n_umis:
+				return self.n_umis[cell_selector]
+			else:
+				data = self.anndata.X[cell_selector, :]
 
-		if n_umis: # select the n_umis
-			return self.n_umis[cell_selector]
-
-		data = self.anndata.X[cell_selector, :] if group == 'all' or self.is_dense else self.anndata.X[cell_selector, :].toarray()
-
-		self.group_cells[group] = data.copy()
+		self.group_cells[group] = data.tocsc() # convert to CSC format for fast column indexing
 		return self.group_cells[group]
 
 
@@ -247,28 +313,23 @@ class SingleCellEstimator(object):
 		return np.exp(log_residual_variance), log_residual_variance
 
 
-	def _compute_params(self, group='all'):
+	def _compute_params(self, group, gene_idxs):
 		""" 
 			Use the estimated moments to compute the parameters of marginal distributions as 
 			well as the estimated correlation. 
 		"""
 
 		residual_variance, log_residual_variance = self._estimate_residual_variance(
-			self.estimated_central_moments[group]['first'],
-			self.estimated_central_moments[group]['second'])
-
-		self.parameters[group] = {
-			'mean': self.estimated_central_moments[group]['first'],
-			'log_mean': np.log(self.estimated_central_moments[group]['first']),
-			'residual_var':residual_variance,
-			'log_residual_var':log_residual_variance,
-			'cov':sparse.lil_matrix(
-				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32),
-			'corr': sparse.lil_matrix(
-				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)}
+			self.estimated_central_moments[group]['first'][gene_idxs],
+			self.estimated_central_moments[group]['second'][gene_idxs])
+		
+		self.parameters[group]['mean'] = self.estimated_central_moments[group]['first']
+		self.parameters[group]['log_mean'][gene_idxs] = np.log(self.estimated_central_moments[group]['first'][gene_idxs])
+		self.parameters[group]['residual_var'][gene_idxs] = residual_variance
+		self.parameters[group]['log_residual_var'][gene_idxs] = log_residual_variance
 
 
-	def _compute_estimated_1d_moments(self, group='all'):
+	def _compute_estimated_1d_moments(self, group, gene_idxs):
 		""" Use the observed moments to compute the moments of the underlying distribution. """
 
 		mean_inv_numis = _compute_mean_inv_numis(
@@ -277,22 +338,18 @@ class SingleCellEstimator(object):
 			self.q,
 			self.q_sq)
 
-		estimated_mean = _estimate_mean(self.observed_moments[group]['first'], self.q)
+		estimated_mean = _estimate_mean(self.observed_moments[group]['first'][gene_idxs], self.q)
 
 		estimated_var = _estimate_variance(
-			self.observed_moments[group]['first'], 
-			self.observed_moments[group]['second'],
+			self.observed_moments[group]['first'][gene_idxs], 
+			self.observed_moments[group]['second'][gene_idxs],
 			mean_inv_numis,
 			self.q,
 			self.q_sq)
 		estimated_var[estimated_var < 0] = np.nan
-
-		self.estimated_central_moments[group] = {
-			'first': estimated_mean,
-			'second': estimated_var,
-			'prod': sparse.lil_matrix(
-				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
-		}
+		
+		self.estimated_central_moments[group]['first'][gene_idxs] = estimated_mean
+		self.estimated_central_moments[group]['second'][gene_idxs] = estimated_var
 
 
 	def _get_effect_size(self, response_variable, test_dict, nan_thresh=0.5):
@@ -312,63 +369,64 @@ class SingleCellEstimator(object):
 		return effect_sizes
 
 
-	def compute_observed_moments(self, verbose=False):
+	def compute_observed_moments(self, gene_list, verbose=False):
 		""" Compute the observed statistics. Does not compute the covariance. """
+		
+		gene_idxs = self._get_gene_idxs(gene_list)
 
 		for group in self.groups:
 
 			if verbose:
 				print('Computing observed moments for:', group)
 
-			observed = self._select_cells(group)
-			N = observed.shape[0]
+			observed = self._select_cells(group)[:, gene_idxs]
 
-			first, second = _compute_1d_statistics(observed, N, smooth=self.smooth)
+			first, second = _compute_1d_statistics(observed, smooth=self.smooth)
 			allgenes_first = self._select_cells(group, n_umis=True).mean()
 			allgenes_second = (self._select_cells(group, n_umis=True)**2).mean()
+	
+			# Observed moments
+			self.observed_moments[group]['first'][gene_idxs] = first
+			self.observed_moments[group]['second'][gene_idxs] = second
+			self.observed_moments[group]['allgenes_first'] = allgenes_first
+			self.observed_moments[group]['allgenes_second'] = allgenes_second
 
-			self.observed_moments[group] = {
-				'first':first,
-				'second':second,
-				'prod':sparse.lil_matrix(
-					(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32),
-				'allgenes_first':allgenes_first,
-				'allgenes_second':allgenes_second,
-			}
+			# Observed central moments
+			self.observed_central_moments[group]['first'][gene_idxs] = first
+			self.observed_central_moments[group]['second'][gene_idxs] = second-first**2
+			self.observed_central_moments[group]['allgenes_first'] = allgenes_first
+			self.observed_central_moments[group]['allgenes_second'] = allgenes_second - allgenes_first**2
+			
 
-			self.observed_central_moments[group] = {
-				'first':first,
-				'second':second-first**2,
-				'prod':sparse.lil_matrix(
-					(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32),
-				'allgenes_first':allgenes_first,
-				'allgenes_second':allgenes_second - allgenes_first**2
-			}
-
-
-	def estimate_q_sq(self, frac=0.3, verbose=True):
+	def estimate_q_sq(self, k=5, verbose=True):
 		""" 
 			Estimate the expected value of the square of the capture rate q. 
 
 			Estimate the relationship between mean and variance. This means that we assume the mean variance relationship to be 
 			the same for all cell types. 
 		"""
-
-		# Combine all observed moments from every group
-		x = self.observed_central_moments['all']['first']
-		y = self.observed_central_moments['all']['second']
+		
+		# Compute observed statistics from all cells
+		observed = self._select_cells('all')
+		first, second = _compute_1d_statistics(observed, smooth=self.smooth)
+		
+		# Grab the values needed for fitting q_sq
+		x = first
+		y = second-first**2
 
 		# Filter for finite estimates
-		condition = np.isfinite(x) & np.isfinite(y)
-		x = x[condition]
-		y = y[condition]
-
-		# Filter for top k genes
-		k = int(frac*self.anndata.shape[1])
-		k_largest_idx = np.argpartition(x, -k)[-k:]
-		self.k_largest_indices = k_largest_idx
-		x = x[k_largest_idx]
-		y = y[k_largest_idx]
+		finite_filter = np.isfinite(x) & np.isfinite(y)
+		
+		# Filter for genes with max value greater than k
+		max_val_filter = (self.anndata.X.max(axis=0).toarray()[0] >= k)
+		
+		# Filter the genes used to compute q_sq
+		x = x[finite_filter & max_val_filter]
+		y = y[finite_filter & max_val_filter]
+		
+		# Save the mean, cv
+		self.q_sq_x = x
+		self.q_sq_y = y
 
 		# Get the upper and lower limits for q_sq
 		lower_lim = self.q**2
@@ -382,23 +440,30 @@ class SingleCellEstimator(object):
 		initial_q_sq_estimate = (noise_level+1)*self.q**2
 
 		# Refine the initial guess
-		res = sp.optimize.minimize_scalar(
-			estimated_mean_disp_corr, 
-			bounds=[lower_lim, upper_lim], 
-			args=(self, frac),
-			method='bounded',
-			options={'maxiter':100, 'disp':verbose})
-		q_sq_estimate = res.x
+# 		res = sp.optimize.minimize_scalar(
+# 			estimated_mean_disp_corr, 
+# 			bounds=[lower_lim, upper_lim], 
+# 			args=(self, frac),
+# 			method='bounded',
+# 			options={'maxiter':100, 'disp':verbose})
+		q_sq_estimate = initial_q_sq_estimate
+	
+		# Bound the estimate
+		if q_sq_estimate > upper_lim:
+			q_sq_estimate = upper_lim
+		if q_sq_estimate < lower_lim:
+			q_sq_estimate = lower_lim + 1e-7
 
 		# Clear out estimated parameters
-		self.parameters = {}
+# 		self.parameters = {}
 
 		# Keep estimated parameters for later
 		self.noise_level = q_sq_estimate/self.q**2-1
 		self.q_sq = q_sq_estimate
 
 		if verbose:
-			print('E[q^2] falls in [{:.5f}, {:.8f}], with the current estimate of {:.8f}'.format(lower_lim, upper_lim, self.q_sq))
+			print('E[q^2] falls in [{:.5f}, {:.8f}], with the current estimate of {:.8f}. Estimated with {} genes.'\
+					  .format(lower_lim, upper_lim, self.q_sq, x.shape[0]))
 
 
 	def plot_cv_mean_curve(self, group='all', estimated=False, plot_noise=True):
@@ -408,14 +473,8 @@ class SingleCellEstimator(object):
 			If an estimate for q_sq exists, also plot the estimated baseline noise level.
 		"""
 
-		obs_mean = self.estimated_central_moments[group]['first'] if estimated else self.observed_central_moments[group]['first']
-		obs_var = self.estimated_central_moments[group]['second'] if estimated else self.observed_central_moments[group]['second']
-
-		# Filter NaNs
-		condition = np.isfinite(obs_mean) & np.isfinite(obs_var)
-		obs_mean = obs_mean[condition]
-		obs_var = obs_var[condition]
-
+		obs_mean = self.q_sq_x
+		obs_var = self.q_sq_y
 
 		plt.scatter(
 		    np.log(obs_mean),
@@ -423,13 +482,6 @@ class SingleCellEstimator(object):
 		    s=2,
 		    alpha=0.5
 		)
-
-		# plt.scatter(
-		#     np.log(obs_mean)[self.k_largest_indices],
-		#     (np.log(obs_var)/2-np.log(obs_mean))[self.k_largest_indices],
-		#     s=2,
-		#     alpha=0.5
-		# )
 
 		bound_x = np.arange(
 		    np.nanmin(obs_mean),
@@ -448,16 +500,20 @@ class SingleCellEstimator(object):
 		plt.ylabel('log( observed CV )')
 
 
-	def estimate_1d_parameters(self):
+	def estimate_1d_parameters(self, gene_list):
 		""" Perform 1D (mean, variability) parameter estimation. """
+		
+		gene_idxs = self._get_gene_idxs(gene_list)
 
 		# Compute estimated moments
 		for group in self.groups:
-			self._compute_estimated_1d_moments(group)
+			self._compute_estimated_1d_moments(group, gene_idxs)
 
 		# Combine all estimated moments from every group
-		x = np.concatenate([self.estimated_central_moments[group]['first'] for group in self.groups])
-		y = np.concatenate([self.estimated_central_moments[group]['second'] for group in self.groups])
+		x = np.concatenate([
+			self.estimated_central_moments[group]['first'][gene_idxs]for group in self.groups])
+		y = np.concatenate([
+			self.estimated_central_moments[group]['second'][gene_idxs] for group in self.groups])
 
 		# Filter for finite estimates
 		condition = np.isfinite(x) & np.isfinite(y)
@@ -472,14 +528,7 @@ class SingleCellEstimator(object):
 
 		# Compute final parameters
 		for group in self.groups:
-			self._compute_params(group)
-
-		# Create blanks for the confidence intervals
-		attributes = ['mean', 'residual_var', 'log_mean', 'log_residual_var', 'log1p_mean', 'log1p_residual_var']
-		for group in self.groups:
-			self.parameters_confidence_intervals[group] = {}
-			for attribute in attributes:
-				self.parameters_confidence_intervals[group][attribute] = np.full(self.anndata.shape[1], np.nan)
+			self._compute_params(group, gene_idxs)
 
 
 	def estimate_2d_parameters(self, gene_list_1, gene_list_2, groups='all'):
@@ -498,11 +547,11 @@ class SingleCellEstimator(object):
 				self.q_sq)
 
 			observed = self._select_cells(group)
-			observed_1 = observed[:, gene_idxs_1].copy()
-			observed_2 = observed[:, gene_idxs_2].copy()
+			observed_1 = observed[:, gene_idxs_1]
+			observed_2 = observed[:, gene_idxs_2]
 
 			# Compute the observed cross-covariance and expectation of the product
-			observed_cov, observed_prod = cross_covariance(observed_1, observed_2)
+			observed_cov, observed_prod = _sparse_cross_covariance(observed_1, observed_2)
 
 			# Update the observed dictionaries
 			self.observed_moments[group]['prod'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = observed_prod
@@ -526,13 +575,8 @@ class SingleCellEstimator(object):
 
 			# Update the estimated dictionaries
 			self.estimated_central_moments[group]['prod'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_cov
-			self.parameters[group]['cov'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_cov
 			self.parameters[group]['corr'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_corr
 
-		# Create blanks for the confidence intervals
-		for group in self.groups:
-			self.parameters_confidence_intervals[group]['corr'] = sparse.lil_matrix(
-				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
 
 	def setup_hypothesis_testing(self, subsections=[]):
 		"""
@@ -589,36 +633,40 @@ class SingleCellEstimator(object):
 				design_matrix = pd.get_dummies(subsection_design_df[['covariate', 'batch', 'constant']], columns=['batch'], drop_first=True).values
 			self.hypothesis_test_result[subsection]['design_matrix'] = design_matrix
 
-			# Compute the hat matrix
+			# Compute the hat matrix if applicable
 			if self.use_hat_matrix:
 				hat_matrix = np.linalg.inv(design_matrix.T.dot(cell_count.reshape(-1,1)*design_matrix)).dot(design_matrix.T*cell_count)
 				self.hypothesis_test_result[subsection]['hat_matrix'] = hat_matrix
 
 			# Create empty data structures for hypothesis test results
 			for attribute in attributes_1d:
-				self.hypothesis_test_result[subsection][attribute] = np.full(self.anndata.var.shape[0], np.nan)
+				self.hypothesis_test_result[subsection][attribute] = np.full(self.anndata.shape[1], np.nan)
 			for attribute in attributes_2d:
 				self.hypothesis_test_result[subsection][attribute] = sparse.lil_matrix(
 				(self.anndata.shape[1], self.anndata.shape[1]), dtype=np.float32)
 
 
-	def compute_effect_sizes_1d(self):
+	def compute_effect_sizes_1d(self, gene_list):
 		""" 
 			Compute the effect sizes for mean and variability. 
 			This function does not compute p-values or FDR.
 			Assumes that the 1D parameters have been estimated.
 			Assumes that the setup_hypothesis_testing function has been run already.
 		"""
+		
+		gene_idxs = self._get_gene_idxs(gene_list)
 
 		for subsection, test_dict in self.hypothesis_test_result.items():
 
-			log_means = np.vstack([self.parameters[group]['log_mean'] for group in test_dict['groups']])
-			log_residual_vars = np.vstack([self.parameters[group]['log_residual_var'] for group in test_dict['groups']])
+			log_means = np.vstack([self.parameters[group]['log_mean'][gene_idxs] for group in test_dict['groups']])
+			log_residual_vars = np.vstack([self.parameters[group]['log_residual_var'][gene_idxs] for group in test_dict['groups']])
 
 			mean_es = self._get_effect_size(log_means, test_dict)
 			var_es = self._get_effect_size(log_residual_vars, test_dict)
+			
+			print(mean_es.shape, var_es.shape)
 
-			test_dict['de_effect_size'], test_dict['dv_effect_size'] = mean_es, var_es
+			test_dict['de_effect_size'][gene_idxs], test_dict['dv_effect_size'][gene_idxs] = mean_es, var_es
 
 
 	def compute_effect_sizes_2d(self, gene_list_1, gene_list_2):
@@ -643,7 +691,7 @@ class SingleCellEstimator(object):
 				corr_es.reshape(gene_idxs_1.shape[0], gene_idxs_2.shape[0])
 
 
-	def compute_confidence_intervals_1d(self, hypothesis_test=True, gene_tracker_count=100, verbose=False, timer='off'):
+	def compute_confidence_intervals_1d(self, gene_list, hypothesis_test=True, gene_tracker_count=100, verbose=False, timer='off'):
 		"""
 			Compute confidence intervals and p-values for estimate and effect sizes. 
 
@@ -654,6 +702,8 @@ class SingleCellEstimator(object):
 			CAVEAT: Uses the same expectation of 1/N as the true value, does not compute this from the permutations. 
 			So the result might be slightly off.
 		"""
+		
+		gene_idxs = self._get_gene_idxs(gene_list)
 
 		# Get the starting time
 		start_time = time.time()
@@ -678,10 +728,11 @@ class SingleCellEstimator(object):
 				self.q_sq) for group in groups_to_iter}
 
 		# Iterate through each gene and compute a standard error for each gene
-		for gene_idx in range(self.anndata.var.shape[0]):
+		iter = 0
+		for gene_idx in gene_idxs:
 			
-			if verbose and gene_tracker_count > 0 and gene_idx % gene_tracker_count == 0: 
-				print('Computing the {}st/th gene, {:.5f} seconds have passed.'.format(gene_idx, time.time()-start_time))
+			if verbose and gene_tracker_count > 0 and iter % gene_tracker_count == 0: 
+				print('Computing the {}st/th gene, {:.5f} seconds have passed.'.format(iter, time.time()-start_time))
 
 			gene_mult_rvs = {}
 			gene_counts = {}
@@ -690,18 +741,17 @@ class SingleCellEstimator(object):
 
 				# Grab the values
 				data = self._select_cells(group)
-				if type(data) != np.ndarray:
-					data = data.toarray()
 				
+				# Get a frequency count
 				count_start_time = time.time()
-				counts = np.bincount(data[:, gene_idx].reshape(-1).astype(int))
+				counts = _sparse_bincount(data[:, gene_idx])
 				count_time = time.time() - count_start_time
 				
 				expr_values = np.arange(counts.shape[0])
 				expr_values = expr_values[counts != 0]
 				counts = counts[counts != 0]
 				gene_counts[group] = expr_values
-				gene_freqs[group] = counts.copy()/data.shape[0]
+				gene_freqs[group] = counts/data.shape[0]
 			
 			compute_start_time = time.time()
 			
@@ -753,11 +803,12 @@ class SingleCellEstimator(object):
 				if np.isfinite(self.hypothesis_test_result[subsection]['dv_effect_size'][gene_idx]):
 					test_dict['dv_es_ci'][gene_idx] = np.nanstd(var_es)
 					test_dict['dv_pval'][gene_idx] = compute_asl(var_es)
+			iter += 1
 
 		# Perform FDR correction
 		for subsection, test_dict in self.hypothesis_test_result.items():
-			test_dict['de_fdr'] = fdrcorrect(test_dict['de_pval'])
-			test_dict['dv_fdr'] = fdrcorrect(test_dict['dv_pval'])
+			test_dict['de_fdr'][gene_idxs] = fdrcorrect(test_dict['de_pval'][gene_idxs])
+			test_dict['dv_fdr'][gene_idxs] = fdrcorrect(test_dict['dv_pval'][gene_idxs])
 
 		if timer == 'on':
 			return count_time, compute_time, sum([values[group].shape[1] for group in groups_to_iter])/len(groups_to_iter)
@@ -798,7 +849,6 @@ class SingleCellEstimator(object):
 		# Iterate through each gene and compute a standard error for each gene
 		iter_1 = 0
 		iter_2 = 0
-		pair_counts = {}
 		for gene_idx_1 in genes_idxs_1:
 
 			iter_2 = 0
@@ -811,25 +861,26 @@ class SingleCellEstimator(object):
 					print('Computing the {}st/th gene of {}'.format((iter_1*genes_idxs_2.shape[0] + iter_2), genes_idxs_1.shape[0]*genes_idxs_2.shape[0]))
 
 				gene_mult_rvs = {}
-				gene_counts = {}
+				cantor_codes = {}
 				for group in groups_to_iter:
 
 					# Grab the values
 					data = self._select_cells(group)
-					if type(data) != np.ndarray:
-						data = data.toarray()
-					cantor_code = pair(data[:, gene_idx_1], data[:, gene_idx_2])
-					expr_values, counts = np.unique(cantor_code, return_counts=True)
-					pair_counts[group] = expr_values
-					gene_mult_rvs[group] = stats.multinomial.rvs(n=data.shape[0], p=counts/data.shape[0], size=self.num_permute)
 
+					cantor_code = _pair(
+						data[:, gene_idx_1].toarray().reshape(-1), 
+						data[:, gene_idx_2].toarray().reshape(-1))
+					expr_values, counts = np.unique(cantor_code, return_counts=True)
+					cantor_codes[group] = expr_values
+					gene_mult_rvs[group] = stats.multinomial.rvs(n=data.shape[0], p=counts/data.shape[0], size=self.num_permute)
+				
 				# Construct the repeated values matrix
-				cantor_code = {group:pair_counts[group] for group in groups_to_iter}
+				cantor_code = {group:cantor_codes[group] for group in groups_to_iter}
 				values_1 = {}
 				values_2 = {}
 
 				for group in groups_to_iter:
-					values_1_raw, values_2_raw = depair(cantor_code[group])
+					values_1_raw, values_2_raw = _depair(cantor_code[group])
 					values_1[group] = np.tile(values_1_raw.reshape(1, -1), (self.num_permute, 1))
 					values_2[group] = np.tile(values_2_raw.reshape(1, -1), (self.num_permute, 1))
 

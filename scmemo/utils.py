@@ -1,7 +1,7 @@
 """
 	utils.py
 
-	This file contains functions that support scMEMO.
+	This file contains functions that support scMeMo.
 """
 
 
@@ -19,7 +19,7 @@ from statsmodels.stats.moment_helpers import cov2corr
 from statsmodels.stats.multitest import fdrcorrection
 
 
-def estimated_mean_disp_corr(param, estimator, frac=0.3):
+def estimated_mean_disp_corr(param, estimator):
 
 	estimator.q_sq = param
 	estimator.estimate_1d_parameters()
@@ -30,27 +30,15 @@ def estimated_mean_disp_corr(param, estimator, frac=0.3):
 	x = x[condition]
 	y = y[condition]
 
-	k = int(frac*x.shape[0])
-	k_largest_idx = np.argpartition(x, -k)[-k:]
-	x = x[k_largest_idx]
-	y = y[k_largest_idx]
-
 	return np.abs(stats.pearsonr(x,y-x)[0])
 
 
-def cross_covariance(X, Y):
+def _sparse_cross_covariance(X, Y):
 	""" Return the expectation of the product as well as the cross covariance. """
 
-	if type(X) != np.ndarray and type(X) != np.matrix:
-		X = X.toarray()
-		Y = Y.toarray()
-
-	X_mean = X.mean(axis=0)[:, np.newaxis]
-	Y_mean = Y.mean(axis=0)[np.newaxis, :]
-
-	cov = np.dot(X.T - X_mean, Y - Y_mean) / X.shape[0]
-	prod = cov + np.dot(X_mean, Y_mean)
-
+	prod = (X.T*Y).toarray()/X.shape[0]
+	cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
+	
 	return cov, prod
 
 
