@@ -42,7 +42,7 @@ class SingleCellEstimator(object):
 		label_delimiter='^',
 		covariate_converter={},
 		q=0.1,
-		smooth=True,
+		smooth=10,
 		use_hat_matrix=False,
 		mean_var_degree=2):
 
@@ -74,7 +74,7 @@ class SingleCellEstimator(object):
 			self.anndata.obs[self.replicate_label].astype(str) + self.label_delimiter + \
 			self.anndata.obs[self.batch_label].astype(str) + self.label_delimiter + \
 			self.anndata.obs[self.subsection_label].astype(str)
-		self.groups = self.anndata.obs[self.group_label].drop_duplicates().tolist() + ['all']
+		self.groups = ['all'] + self.anndata.obs[self.group_label].drop_duplicates().tolist()
 		
 		# Keep n_umis, num_permute, cov converter
 		self.n_umis = adata.X.sum(axis=1).A1
@@ -281,8 +281,28 @@ class SingleCellEstimator(object):
 		self.mv_line_var = estimated_var#[condition]
 
 		self.mean_var_fit = utils._robust_polyfit(np.log(self.mv_line_mean), np.log(self.mv_line_var), self.mean_var_degree)
+	
+	
+	def _smooth_estimate(self, group, estimates, key, idxs):
+		""" Smooth the estimates with the overall estimates. """
 
+		N = self.group_cells[group].shape[0]
+		
+		if idxs is None:
+			all_observed_moment = self.smooth*self.observed_central_moments['all'][key]
+		elif type(idxs) == tuple:
+			if np.issubdtype(type(idxs[0]), np.integer):
+				all_observed_moment = self.smooth*self.observed_central_moments['all'][key][idxs[0], idxs[1]]
+			else:
+				all_observed_moment = self.smooth*self.observed_central_moments['all'][key][idxs[0][:, np.newaxis], idxs[1]].toarray()
+		else:
+			all_observed_moment = self.observed_central_moments['all'][key][idxs]
+			
+		pseudocount = self.smooth*all_observed_moment
+		
+		return (estimates*N + pseudocount) / (N + self.smooth)
 
+	
 	def compute_observed_moments(self, gene_list, verbose=False):
 		""" Compute the observed statistics. Does not compute the covariance. """
 		
@@ -295,21 +315,33 @@ class SingleCellEstimator(object):
 
 			observed = self._select_cells(group)[:, gene_idxs]
 
-			first, second = utils._compute_1d_statistics(observed, smooth=self.smooth)
+			first, second = utils._compute_1d_statistics(observed)
 			allgenes_first = self._select_cells(group, n_umis=True).mean()
 			allgenes_second = (self._select_cells(group, n_umis=True)**2).mean()
+			
+			mean = first
+			variance = second - first**2
+			allgenes_mean = allgenes_first
+			allgenes_variance = allgenes_second - allgenes_first**2
+			
+			if group != 'all':
+				
+				mean = self._smooth_estimate(group, mean, 'first', gene_idxs)
+				variance = self._smooth_estimate(group, variance, 'second', gene_idxs)
+				allgenes_mean = self._smooth_estimate(group, allgenes_mean, 'allgenes_first', None)
+				allgenes_variance = self._smooth_estimate(group, allgenes_variance, 'allgenes_second', None)
 	
 			# Observed moments
-			self.observed_moments[group]['first'][gene_idxs] = first
-			self.observed_moments[group]['second'][gene_idxs] = second
-			self.observed_moments[group]['allgenes_first'] = allgenes_first
-			self.observed_moments[group]['allgenes_second'] = allgenes_second
+			self.observed_moments[group]['first'][gene_idxs] = mean
+			self.observed_moments[group]['second'][gene_idxs] = variance + mean**2
+			self.observed_moments[group]['allgenes_first'] = allgenes_mean
+			self.observed_moments[group]['allgenes_second'] = allgenes_variance + allgenes_mean**2
 
 			# Observed central moments
-			self.observed_central_moments[group]['first'][gene_idxs] = first
-			self.observed_central_moments[group]['second'][gene_idxs] = second-first**2
-			self.observed_central_moments[group]['allgenes_first'] = allgenes_first
-			self.observed_central_moments[group]['allgenes_second'] = allgenes_second - allgenes_first**2
+			self.observed_central_moments[group]['first'][gene_idxs] = mean
+			self.observed_central_moments[group]['second'][gene_idxs] = variance
+			self.observed_central_moments[group]['allgenes_first'] = allgenes_mean
+			self.observed_central_moments[group]['allgenes_second'] = allgenes_variance
 			
 
 	def estimate_q_sq(self, k=5, verbose=True):
@@ -322,7 +354,7 @@ class SingleCellEstimator(object):
 		
 		# Compute observed statistics from all cells
 		observed = self._select_cells('all')
-		first, second = utils._compute_1d_statistics(observed, smooth=self.smooth)
+		first, second = utils._compute_1d_statistics(observed)
 		
 		# Grab the values needed for fitting q_sq
 		x = first
@@ -453,6 +485,12 @@ class SingleCellEstimator(object):
 
 			# Compute the observed cross-covariance and expectation of the product
 			observed_cov, observed_prod = utils._sparse_cross_covariance(observed_1, observed_2)
+			
+			if group != 'all': # apply smoothing
+				observed_cov = self._smooth_estimate(group, observed_cov, 'prod', (gene_idxs_1, gene_idxs_2))
+				observed_prod = observed_cov + np.outer(
+					self.observed_central_moments[group]['first'][gene_idxs_1], 
+					self.observed_central_moments[group]['first'][gene_idxs_2])
 
 			# Update the observed dictionaries
 			self.observed_moments[group]['prod'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = observed_prod
@@ -472,6 +510,7 @@ class SingleCellEstimator(object):
 			vars_2 = self.estimated_central_moments[group]['second'][gene_idxs_2]
 			estimated_corr = estimated_cov / np.sqrt(vars_1[:, np.newaxis]).dot(np.sqrt(vars_2[np.newaxis, :]))
 			estimated_corr = np.clip(estimated_corr, -1, 1)
+# 			estimated_corr[np.isnan(estimated_corr)] = 0
 
 			# Update the estimated dictionaries
 			self.estimated_central_moments[group]['prod'][gene_idxs_1[:, np.newaxis], gene_idxs_2] = estimated_cov
@@ -661,9 +700,18 @@ class SingleCellEstimator(object):
 				gene_counts[group].reshape(1, -1), (self.num_permute, 1)) for group in groups_to_iter}
 
 			# Compute the permuted, observed mean/dispersion
-			mean = {group:((gene_mult_rvs[group] * values[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-			second_moments = {group:((gene_mult_rvs[group] * values[group]**2).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-			del gene_mult_rvs, gene_counts
+			mean = {group:((gene_mult_rvs[group] * values[group]).sum(axis=1))/self.group_cells[group].shape[0] for group in groups_to_iter}
+			second_moments = {group:(gene_mult_rvs[group] * values[group]**2).sum(axis=1)/self.group_cells[group].shape[0] for group in groups_to_iter}
+			variances = {group:second_moments[group]-mean[group]**2 for group in groups_to_iter}
+			del gene_mult_rvs, gene_counts, second_moments
+			
+			# Smooth these estimates
+			mean = {group:self._smooth_estimate(group, mean[group], 'first', gene_idx) for group in groups_to_iter}
+			variances = {group:self._smooth_estimate(group, variances[group], 'second', gene_idx) for group in groups_to_iter}
+			
+			# Re-create the non-central moments
+			second_moments = {group:(variances[group] + mean[group]**2) for group in groups_to_iter}
+			del variances
 
 			# Compute the permuted, estimated moments for both groups
 			estimated_means = {group:utils._estimate_mean(mean[group], self.q) for group in groups_to_iter}
@@ -720,7 +768,8 @@ class SingleCellEstimator(object):
 			CAVEAT: Uses the same expectation of 1/N as the true value, does not compute this from the permutations. 
 			So the result might be slightly off.
 		"""
-		temp = []
+        
+		start_time = time.time()
 
 		# Calculate the pseudocount, so that the demonimator is N+1
 		pseudocount = 1/self.anndata.shape[1] if self.smooth else 0
@@ -757,7 +806,7 @@ class SingleCellEstimator(object):
 					continue
 
 				if verbose and gene_tracker_count > 0 and (iter_1*genes_idxs_2.shape[0] + iter_2) % gene_tracker_count == 0: 
-					print('Computing the {}st/th gene of {}'.format((iter_1*genes_idxs_2.shape[0] + iter_2), genes_idxs_1.shape[0]*genes_idxs_2.shape[0]))
+					print('Computing the {}st/th gene pair of {}. {:.5f} seconds have passed.'.format((iter_1*genes_idxs_2.shape[0] + iter_2), genes_idxs_1.shape[0]*genes_idxs_2.shape[0], time.time()-start_time))
 
 				gene_mult_rvs = {}
 				cantor_codes = {}
@@ -784,13 +833,29 @@ class SingleCellEstimator(object):
 					values_2[group] = np.tile(values_2_raw.reshape(1, -1), (self.num_permute, 1))
 
 				# Compute the bootstrapped observed moments
-				mean_1 = {group:((gene_mult_rvs[group] * values_1[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-				second_moments_1 = {group:((gene_mult_rvs[group] * values_1[group]**2).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-				mean_2 = {group:((gene_mult_rvs[group] * values_2[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-				second_moments_2 = {group:((gene_mult_rvs[group] * values_2[group]**2).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-				prod = {group:((gene_mult_rvs[group] * values_1[group] * values_2[group]).sum(axis=1)+pseudocount)/(self.group_cells[group].shape[0]+1) for group in groups_to_iter}
-				del gene_mult_rvs
-
+				mean_1 = {group:(gene_mult_rvs[group] * values_1[group]).sum(axis=1)/self.group_cells[group].shape[0] for group in groups_to_iter}
+				second_moments_1 = {group:(gene_mult_rvs[group] * values_1[group]**2).sum(axis=1)/self.group_cells[group].shape[0] for group in groups_to_iter}
+				variances_1 = {group:(second_moments_1[group]-mean_1[group]**2) for group in groups_to_iter}
+				mean_2 = {group:(gene_mult_rvs[group] * values_2[group]).sum(axis=1)/self.group_cells[group].shape[0] for group in groups_to_iter}
+				second_moments_2 = {group:(gene_mult_rvs[group] * values_2[group]**2).sum(axis=1)/self.group_cells[group].shape[0] for group in groups_to_iter}
+				variances_2 = {group:(second_moments_2[group]-mean_2[group]**2) for group in groups_to_iter}
+				prod = {group:(gene_mult_rvs[group] * values_1[group] * values_2[group]).sum(axis=1)/self.group_cells[group].shape[0] for group in groups_to_iter}
+				cov = {group:(prod[group] - mean_1[group]*mean_2[group]) for group in groups_to_iter}
+				del gene_mult_rvs, second_moments_1, second_moments_2
+			
+				# Smooth these estimates
+				mean_1 = {group:self._smooth_estimate(group, mean_1[group], 'first', gene_idx_1) for group in groups_to_iter}
+				variances_1 = {group:self._smooth_estimate(group, variances_1[group], 'second', gene_idx_1) for group in groups_to_iter}
+				mean_2 = {group:self._smooth_estimate(group, mean_2[group], 'first', gene_idx_2) for group in groups_to_iter}
+				variances_2 = {group:self._smooth_estimate(group, variances_2[group], 'second', gene_idx_2) for group in groups_to_iter}
+				cov = {group:self._smooth_estimate(group, cov[group], 'prod', (gene_idx_1, gene_idx_2)) for group in groups_to_iter}
+				
+				# Re-create the noncentral moments
+				second_moments_1 = {group:(variances_1[group] + mean_1[group]**2) for group in groups_to_iter}
+				second_moments_2 = {group:(variances_2[group] + mean_2[group]**2) for group in groups_to_iter}
+				prod = {group:(cov[group]+mean_1[group]*mean_2[group]) for group in groups_to_iter}
+				del variances_1, variances_2, cov
+				
 				# Compute the permuted, estimated moments for both groups
 				estimated_means_1 = {group:utils._estimate_mean(mean_1[group], self.q) for group in groups_to_iter}
 				estimated_vars_1 = {group:utils._estimate_variance(mean_1[group], second_moments_1[group], mean_inv_numis[group], self.q, self.q_sq) for group in groups_to_iter}
@@ -803,7 +868,12 @@ class SingleCellEstimator(object):
 				for group in groups_to_iter:
 					denom = self.q_sq - (self.q - self.q_sq)*mean_inv_numis[group]
 					cov = prod[group] / denom - (estimated_means_1[group] * estimated_means_2[group])
+                    
 					estimated_corrs[group] = cov / np.sqrt(estimated_vars_1[group]*estimated_vars_2[group])
+                    
+					# A variable that is not variable cannot be correlated to other variables. 
+					estimated_corrs[group][np.isnan(estimated_corrs[group])] = 0
+					estimated_corrs[group] = np.clip(estimated_corrs[group], -1, 1)
 
 				# Store the S.E. of the correlation for each group
 				for group in groups_to_iter:
@@ -816,8 +886,6 @@ class SingleCellEstimator(object):
 					correlations = np.vstack([estimated_corrs[group] for group in test_dict['groups']])
 					corr_es = self._get_effect_size(correlations, test_dict)
 
-					temp.append(corr_es)
-
 					# Update the test dict
 					if np.isfinite(test_dict['dc_effect_size'][gene_idx_1, gene_idx_2]):
 						test_dict['dc_pval'][gene_idx_1, gene_idx_2] = utils._compute_asl(corr_es)
@@ -825,7 +893,6 @@ class SingleCellEstimator(object):
 
 				iter_2 += 1
 			iter_1 += 1
-		return temp
 
 		# Perform FDR correction
 		for subsection, test_dict in self.hypothesis_test_result.items():

@@ -55,15 +55,13 @@ def _sparse_cross_covariance(X, Y):
 	return cov, prod
 
 
-def _compute_1d_statistics(observed, smooth=True):
+def _compute_1d_statistics(observed):
 	""" Compute some non central moments of the observed data. """
 
-	pseudocount = 1/observed.shape[1] if smooth else 0
-
-	first = (observed.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
+	first = (observed.sum(axis=0).A1)/(observed.shape[0])
 	c = observed.copy()
 	c.data **= 2
-	second = (c.sum(axis=0).A1 + pseudocount)/(observed.shape[0]+pseudocount*observed.shape[1])
+	second = c.sum(axis=0).A1/observed.shape[0]
 	del c
 
 	return first, second

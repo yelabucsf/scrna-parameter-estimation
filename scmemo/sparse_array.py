@@ -16,8 +16,10 @@ class sparse_array(object):
         
     def __getitem__(self, key):
         
-        if np.issubdtype(type(key), np.integer):
+        if np.issubdtype(type(key), np.integer): # key is a number
             return self.values[key] if key in self.values else np.nan
+#         elif type(key) in [np.ndarray, list] and key.shape[0] == 1: # key is an np array containing 1 value
+#             return self.values[key[0]] if key[0] in self.values else np.nan
         
         return np.array([self.values[k] if k in self.values else np.nan for k in key])
     
