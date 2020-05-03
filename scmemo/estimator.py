@@ -135,5 +135,9 @@ def _corr_from_cov(cov, var_1, var_2):
 	"""
 		Convert the estimation of the covariance to the estimation of correlation.
 	"""
+
+	corr = cov / np.outer(np.sqrt(var_1), np.sqrt(var_2))
+	corr[corr < -1] = np.nan
+	corr[corr > 1] = np.nan
 	
-	return
+	return corr
