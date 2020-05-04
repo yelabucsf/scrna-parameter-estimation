@@ -59,16 +59,20 @@ def _poisson_cov(data, n_obs, idx1=None, idx2=None):
 		cov = obs_MX - obs_M1*obs_M2
 
 	else:
+
+		idx1 = np.arange(0, data.shape[1]) if idx1 is None else idx1
+		idx2 = np.arange(0, data.shape[1]) if idx2 is None else idx2
+        
 		overlap = set(idx1) & set(idx2)
 		
-		overlap_idx1 = np.array([1 if i in overlap else 0 for i in idx1])
-		overlap_idx2 = np.array([1 if i in overlap else 0 for i in idx2])
+		overlap_idx1 = idx1[[True if i in overlap else False for i in idx1]]
+		overlap_idx2 = idx1[[True if i in overlap else False for i in idx2]]
 		
 		X, Y = data[:, idx1], data[:, idx2]
 		prod = (X.T*Y).toarray()/X.shape[0]
 		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
-		
-		cov[overlap_idx1[:, np.newaxis], overlap_idx2] -= X[:, overlap_idx1].sum(axis=0).A1/n_obs
+				
+		cov[overlap_idx1, overlap_idx2] = cov[overlap_idx1, overlap_idx2] - X[:, overlap_idx1].sum(axis=0).A1/n_obs
 	
 	return cov
 
