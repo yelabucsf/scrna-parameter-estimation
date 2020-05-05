@@ -61,9 +61,10 @@ def compute_1d_moments(
 	adata.uns['scmemo']['n_umi'] = adata.X.sum(axis=1).mean() if use_n_umi else 1
 		
 	# Compute size factors for all groups
-	size_factors = estimator._estimate_size_factor(adata.X)
+	size_factor = estimator._estimate_size_factor(adata.X)
+	adata.uns['scmemo']['all_size_factor'] = size_factor
 	adata.uns['scmemo']['size_factor'] = \
-		{group:size_factors[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
+		{group:size_factor[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
 	
 	# Compute 1d moments for all groups
 	adata.uns['scmemo']['1d_moments'] = {group:estimator._poisson_1d(
@@ -152,7 +153,7 @@ def compute_2d_moments(adata, gene_1, gene_2, inplace=True):
 		return adata
 
 	
-def bootstrap_1d_moments(adata, inplace=True, num_boot=10000, verbose=False):
+def bootstrap_1d_moments(adata, inplace=True, num_boot=10000, verbose=False, bins=5):
 	"""
 		Computes the CI for mean and variance of each gene 
 	"""
@@ -172,7 +173,10 @@ def bootstrap_1d_moments(adata, inplace=True, num_boot=10000, verbose=False):
 			size_factor=adata.uns['scmemo']['size_factor'][group], 
 			num_boot=num_boot, 
 			mv_regressor=adata.uns['scmemo']['mv_regressor'][group],
-			n_umi=adata.uns['scmemo']['n_umi'])
+			n_umi=adata.uns['scmemo']['n_umi'],
+			bins=bins)
+		
+		return mean_se, var_se, res_var_se
 		
 		adata.uns['scmemo']['1d_ci'][group] = [mean_se, var_se, res_var_se]
 		
