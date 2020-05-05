@@ -46,7 +46,7 @@ def _precompute_size_factor(expr, size_factor):
 	return inv_sf.reshape(-1, 1), inv_sf_sq.reshape(-1, 1)
 
 
-def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None):
+def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None, n_umi=1):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
 	"""
@@ -76,20 +76,26 @@ def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None):
 		mean, var = estimator._poisson_1d(
 			data=(expr.reshape(-1,1), gene_mult_rvs),
 			n_obs=Nc,
-			size_factor=precomputed_size_factor)
+			size_factor=precomputed_size_factor,
+			n_umi=n_umi)
 		
 		# Estimate residual variance
 		if mv_regressor is not None:
 			res_var = estimator._residual_variance(mean, var, mv_regressor)
 		else:
 			res_var = np.array([np.nan])
-		
-		mean_se[gene_idx], var_se[gene_idx], res_var_se[gene_idx] = np.nanstd(mean), np.nanstd(var), np.nanstd(res_var)
+			
+		if np.isfinite(mean).sum() != 0:
+			mean_se[gene_idx] = np.nanstd(mean)
+		if np.isfinite(var).sum() != 0:
+			var_se[gene_idx] = np.nanstd(var)
+		if np.isfinite(res_var).sum() != 0:
+			res_var_se[gene_idx] = np.nanstd(res_var)
 			
 	return mean_se, var_se, res_var_se
 
 
-def _bootstrap_2d(data, size_factor, gene_idxs_1, gene_idxs_2, num_boot=1000):
+def _bootstrap_2d(data, size_factor, gene_idxs_1, gene_idxs_2, num_boot=1000, n_umi=1):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
 	"""
@@ -115,7 +121,8 @@ def _bootstrap_2d(data, size_factor, gene_idxs_1, gene_idxs_2, num_boot=1000):
 			gene_mult_rvs = stats.multinomial.rvs(n=Nc, p=counts/Nc, size=num_boot).T
 			precomputed_size_factor = _precompute_size_factor(
 				expr=code, 
-				size_factor=size_factor)
+				size_factor=size_factor,
+				n_umi=n_umi)
 			
 			# Estimate the covariance and variance
 			cov = estimator._poisson_cov(
@@ -132,8 +139,7 @@ def _bootstrap_2d(data, size_factor, gene_idxs_1, gene_idxs_2, num_boot=1000):
 				size_factor=precomputed_size_factor)
 			
 			# Convert to correlation
-			corr = cov / (np.sqrt(var_1)*np.sqrt(var_2))
-			corr[~np.isfinite(corr)] = np.nan
+			corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 									
 			# New indices for this gene set
 			new_gene_idx_1 = np.where(gene_idxs_1 == gene_idx_1)[0]

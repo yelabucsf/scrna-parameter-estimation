@@ -49,26 +49,33 @@ def compute_1d_moments(
 	filter_mean_thresh=0.07, 
 	min_perc_group=0.7, 
 	filter_genes=True, 
-	residual_var=True):
+	residual_var=True,
+	use_n_umi=True):
 	
 	assert 'scmemo' in adata.uns
 	
 	if not inplace:
 		adata = adata.copy()
 		
+	# Compute n_umi for the entire dataset
+	adata.uns['scmemo']['n_umi'] = adata.X.sum(axis=1).mean() if use_n_umi else 1
+		
 	# Compute size factors for all groups
+	size_factors = estimator._estimate_size_factor(adata.X)
 	adata.uns['scmemo']['size_factor'] = \
-		{group:estimator._estimate_size_factor(adata.uns['scmemo']['group_cells'][group]) for group in adata.uns['scmemo']['groups']}
+		{group:size_factors[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
 	
 	# Compute 1d moments for all groups
 	adata.uns['scmemo']['1d_moments'] = {group:estimator._poisson_1d(
 		data=adata.uns['scmemo']['group_cells'][group],
 		n_obs=adata.uns['scmemo']['group_cells'][group].shape[0],
-		size_factor=adata.uns['scmemo']['size_factor'][group]) for group in adata.uns['scmemo']['groups']}
+		size_factor=adata.uns['scmemo']['size_factor'][group],
+		n_umi=adata.uns['scmemo']['n_umi']) for group in adata.uns['scmemo']['groups']}
 	
 	# Create gene masks for each group
 	adata.uns['scmemo']['gene_filter'] = \
-		{group:(adata.uns['scmemo']['1d_moments'][group][0] > filter_mean_thresh) for group in adata.uns['scmemo']['groups']}
+		{group:(adata.uns['scmemo']['1d_moments'][group][0] > filter_mean_thresh/adata.uns['scmemo']['n_umi'] ) 
+		 for group in adata.uns['scmemo']['groups']}
 	
 	# Create overall gene mask
 	gene_masks = np.vstack([adata.uns['scmemo']['gene_filter'][group] for group in adata.uns['scmemo']['groups']])
@@ -90,13 +97,13 @@ def compute_1d_moments(
 	
 	# Compute residual variance
 	if residual_var:
-		
-		adata.uns['scmemo']['mv_regressor'] = {
-			group:estimator._fit_mv_regressor(
-				mean=adata.uns['scmemo']['1d_moments'][group][0],
-				var=adata.uns['scmemo']['1d_moments'][group][1]) for group in adata.uns['scmemo']['groups']}
-		
+	
+		adata.uns['scmemo']['mv_regressor'] = {}
 		for group in adata.uns['scmemo']['groups']:
+			
+			adata.uns['scmemo']['mv_regressor'][group] = estimator._fit_mv_regressor(
+				mean=adata.uns['scmemo']['1d_moments'][group][0],
+				var=adata.uns['scmemo']['1d_moments'][group][1])
 			
 			res_var = estimator._residual_variance(
 				adata.uns['scmemo']['1d_moments'][group][0],
@@ -131,7 +138,8 @@ def compute_2d_moments(adata, gene_1, gene_2, inplace=True):
 			n_obs=adata.uns['scmemo']['group_cells'][group].shape[0], 
 			size_factor=adata.uns['scmemo']['size_factor'][group], 
 			idx1=adata.uns['scmemo']['2d_moments']['gene_idx_1'], 
-			idx2=adata.uns['scmemo']['2d_moments']['gene_idx_2'])
+			idx2=adata.uns['scmemo']['2d_moments']['gene_idx_2'],
+			n_umi=adata.uns['scmemo']['n_umi'])
 		
 		var_1 = adata.uns['scmemo']['1d_moments'][group][1][adata.uns['scmemo']['2d_moments']['gene_idx_1']]
 		var_2 = adata.uns['scmemo']['1d_moments'][group][1][adata.uns['scmemo']['2d_moments']['gene_idx_2']]
@@ -144,7 +152,7 @@ def compute_2d_moments(adata, gene_1, gene_2, inplace=True):
 		return adata
 
 	
-def bootstrap_1d_moments(adata, inplace=True, num_boot=10000):
+def bootstrap_1d_moments(adata, inplace=True, num_boot=10000, verbose=False):
 	"""
 		Computes the CI for mean and variance of each gene 
 	"""
@@ -154,13 +162,17 @@ def bootstrap_1d_moments(adata, inplace=True, num_boot=10000):
 		
 	adata.uns['scmemo']['1d_ci'] = {}
 	for group in adata.uns['scmemo']['groups']:
+		
+		if verbose:
+			print(group)
 				
 		# Compute 1D CIs
 		mean_se, var_se, res_var_se = bootstrap._bootstrap_1d(
 			data=adata.uns['scmemo']['group_cells'][group], 
 			size_factor=adata.uns['scmemo']['size_factor'][group], 
 			num_boot=num_boot, 
-			mv_regressor=adata.uns['scmemo']['mv_regressor'][group])
+			mv_regressor=adata.uns['scmemo']['mv_regressor'][group],
+			n_umi=adata.uns['scmemo']['n_umi'])
 		
 		adata.uns['scmemo']['1d_ci'][group] = [mean_se, var_se, res_var_se]
 		
@@ -178,16 +190,15 @@ def bootstrap_2d_moments(adata, inplace=True, num_boot=10000):
 		
 	adata.uns['scmemo']['2d_ci'] = {}
 	for group in adata.uns['scmemo']['groups']:
-		
-		print(group)
-				
+						
 		# Compute 2D CIs
 		cov_se, corr_se = bootstrap._bootstrap_2d(
 			data=adata.uns['scmemo']['group_cells'][group], 
 			size_factor=adata.uns['scmemo']['size_factor'][group],
 			gene_idxs_1=adata.uns['scmemo']['2d_moments']['gene_idx_1'],
 			gene_idxs_2=adata.uns['scmemo']['2d_moments']['gene_idx_2'],
-			num_boot=num_boot)
+			num_boot=num_boot,
+			n_umi=adata.uns['scmemo']['n_umi'])
 		
 		adata.uns['scmemo']['2d_ci'][group] = [cov_se, corr_se]
 		

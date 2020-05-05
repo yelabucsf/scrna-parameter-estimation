@@ -54,9 +54,9 @@ def _fit_mv_regressor(mean, var):
 	
 	cond = (mean > 0) & (var > 0)
 	m, v = np.log(mean[cond]), np.log(var[cond])
-	ransac = linear_model.LinearRegression().fit(m.reshape(-1, 1), v)
+	model = linear_model.LinearRegression().fit(m.reshape(-1, 1), v)
 	
-	return ransac
+	return model
 
 
 def _residual_variance(mean, var, model):
@@ -71,13 +71,12 @@ def _residual_variance(mean, var, model):
 	return res_var
 
 
-def _poisson_1d(data, n_obs, size_factor=None):
+def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
 	"""
 		Estimate the variance using the Poisson noise process.
 		
 		If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
 	"""
-	
 	if type(data) == tuple:
 		size_factor = size_factor if size_factor is not None else (1, 1)
 		mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
@@ -87,14 +86,14 @@ def _poisson_1d(data, n_obs, size_factor=None):
 		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
 		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
 
-	mm_mean = mm_M1
-	mm_var = mm_M2 - mm_M1**2
+	mm_mean = mm_M1/n_umi
+	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
 	mm_var = np.clip(mm_var, a_min=0, a_max=np.inf)
 	
 	return [mm_mean, mm_var]
 
 
-def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None):
+def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None, n_umi=1):
 	"""
 		Estimate the covariance using the Poisson noise process between genes at idx1 and idx2.
 		
@@ -114,8 +113,8 @@ def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None):
         
 		overlap = set(idx1) & set(idx2)
 		
-		overlap_idx1 = [i for i in idx1 if i in overlap ]
-		overlap_idx2 = [i for i in idx2 if i in overlap ]
+		overlap_idx1 = [i for i in idx1 if i in overlap]
+		overlap_idx2 = [i for i in idx2 if i in overlap]
 		
 		overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap ]
 		overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap ]
@@ -126,7 +125,7 @@ def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None):
 		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
 		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
 					
-	return cov
+	return cov/n_umi**2
 
 
 def _hyper_mean(data, q, q_sq):
@@ -187,13 +186,22 @@ def _hyper_cov(data, idx1, idx2, q, q_sq):
 	return cov
 
 
-def _corr_from_cov(cov, var_1, var_2):
+def _corr_from_cov(cov, var_1, var_2, boot=False):
 	"""
 		Convert the estimation of the covariance to the estimation of correlation.
 	"""
-
-	corr = cov / np.outer(np.sqrt(var_1), np.sqrt(var_2))
-	corr[corr < -1] = np.nan
-	corr[corr > 1] = np.nan
+	
+	var_1[var_1 <= 0] = np.nan
+	var_2[var_2 <= 0] = np.nan
+	
+	corr = np.full(cov.shape, np.nan)
+	if boot:
+		var_prod = np.sqrt(var_1)*np.sqrt(var_2)
+	else:
+		var_prod = np.outer(np.sqrt(var_1), np.sqrt(var_2))
+	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
+	corr[~np.isfinite(corr)] = -np.inf
+	
+	corr[(corr < -1) | (corr > 1)] = np.nan
 	
 	return corr

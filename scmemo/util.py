@@ -12,6 +12,7 @@ def _select_cells(adata, group):
 	
 	return adata.X[cell_selector, :].tocsc()
 
+
 def _get_gene_idx(adata, gene_list):
 	""" Returns the indices of each gene in the list. """
 
