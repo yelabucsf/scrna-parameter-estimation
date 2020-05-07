@@ -7,9 +7,11 @@
 
 import numpy as np
 import pandas as pd
+from patsy import dmatrix
 
 import bootstrap
 import estimator
+import hypothesis_test
 import util
 
 
@@ -35,6 +37,8 @@ def create_groups(
 	
 	# Create a dict in the uns object
 	adata.uns['scmemo'] = {}
+	adata.uns['scmemo']['label_columns'] = label_columns
+	adata.uns['scmemo']['label_delimiter'] = label_delimiter
 	adata.uns['scmemo']['groups'] = adata.obs['scmemo_group'].drop_duplicates().tolist()
 	
 	# Create slices of the data based on the group
@@ -168,17 +172,15 @@ def bootstrap_1d_moments(adata, inplace=True, num_boot=10000, verbose=False, bin
 			print(group)
 				
 		# Compute 1D CIs
-		mean_se, var_se, res_var_se = bootstrap._bootstrap_1d(
+		mean_se, log_mean_se, var_se, log_var_se, res_var_se = bootstrap._bootstrap_1d(
 			data=adata.uns['scmemo']['group_cells'][group], 
 			size_factor=adata.uns['scmemo']['size_factor'][group], 
 			num_boot=num_boot, 
 			mv_regressor=adata.uns['scmemo']['mv_regressor'][group],
 			n_umi=adata.uns['scmemo']['n_umi'],
 			bins=bins)
-		
-		return mean_se, var_se, res_var_se
-		
-		adata.uns['scmemo']['1d_ci'][group] = [mean_se, var_se, res_var_se]
+				
+		adata.uns['scmemo']['1d_ci'][group] = [mean_se, log_mean_se, var_se, log_var_se, res_var_se]
 		
 	if not inplace:
 		return adata
@@ -208,4 +210,55 @@ def bootstrap_2d_moments(adata, inplace=True, num_boot=10000):
 		
 	if not inplace:
 		return adata
+
+	
+def ht_1d_moments(adata, formula_like, inplace=True, use_residual_var=True):
+	"""
+		Performs hypothesis testing for 1D moments.
+	"""
+	
+	if not inplace:
+		adata = adata.copy()
+	
+	# Create design DF
+	design_df_list = []
+	mean_list, var_list = [], []
+	mean_ci_list, var_ci_list = [], []
+	
+	# Determine whether to use variance or residual variance
+	mean_idx = 1
+	var_idx = -1 if use_residual_var else -2
+	
+	# Create the design df
+	for group in adata.uns['scmemo']['groups']:
+		
+		design_df_list.append(group.split(adata.uns['scmemo']['label_delimiter'])[1:])
+		mean_list.append(adata.uns['scmemo']['1d_moments'][group][mean_idx])
+		var_list.append(adata.uns['scmemo']['1d_moments'][group][var_idx])
+		mean_ci_list.append(adata.uns['scmemo']['1d_moments'][group][mean_idx])
+		var_ci_list.append(adata.uns['scmemo']['1d_moments'][group][var_idx])
+		
+	# Create the design matrix
+	design_df = pd.DataFrame(design_df_list, columns=adata.uns['scmemo']['label_columns'])
+	design_matrix = dmatrix(formula_like, design_df)
+	
+	# Create the response variables and the weights
+	response = (np.vstack(mean_list), np.vstack(var_list))
+	weights = (np.vstack(mean_ci_list), np.vstack(var_ci_list))
+	
+	# Perform hypothesis testing
+	mean_result, var_result = hypothesis_test._ht_1d(design_matrix, response, weights)
+
+	# Save the hypothesis test result
+	adata.uns['scmemo']['1d_ht'] = {}
+	adata.uns['scmemo']['1d_ht']['design_df'] = design_df
+	adata.uns['scmemo']['1d_ht']['design_matrix'] = design_matrix
+	adata.uns['scmemo']['1d_ht']['design_matrix_cols'] = design_matrix.design_info.column_names
+	adata.uns['scmemo']['1d_ht']['mean_result'] = mean_result
+	adata.uns['scmemo']['1d_ht']['var_result'] = var_result
+	
+	if not inplace:
+		return adata
+	
+	
 	

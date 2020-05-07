@@ -28,11 +28,23 @@ def convert_params(mu, theta):
 	return r, 1 - p
 
 
-def simulate_transcriptomes(n_cells, n_genes, correlated=False):
+def simulate_transcriptomes(
+	n_cells, 
+	n_genes, 
+	correlated=False, 
+	mv_mean=[1, 2], 
+	mv_cov=[[4, 0], [0, 0.4]],
+	log_means=None,
+	log_res_var=None,
+	norm_cov=None
+	):
 		
 	# Define the parameters for the marginals
-	params = stats.multivariate_normal.rvs(mean=[1, 2], cov=np.array([[4, 0], [0, 0.4]]), size=n_genes)
-	means, residual_variances = np.exp(params[:, 0]), np.exp(params[:, 1])
+	if log_means is None and log_res_var is None:
+		params = stats.multivariate_normal.rvs(mean=mv_mean, cov=mv_cov, size=n_genes)
+		means, residual_variances = np.exp(params[:, 0]), np.exp(params[:, 1])
+	else:
+		means, residual_variances = np.exp(log_means), np.exp(log_res_var)
 	variances = means*residual_variances
 	dispersions = (variances - means)/means**2
 	dispersions[dispersions < 0] = 1e-5
@@ -43,11 +55,11 @@ def simulate_transcriptomes(n_cells, n_genes, correlated=False):
 	
 	# Define parameters for the copula
 	norm_mean = np.random.random(n_genes)
-	norm_cov = make_spd_matrix(n_genes)
+	norm_cov = make_spd_matrix(n_genes) if norm_cov is None else norm_cov
 	norm_var = np.diag(norm_cov)
 	corr = norm_cov / np.outer(np.sqrt(norm_var), np.sqrt(norm_var))
 	
-	# Sample from the copua
+	# Sample from the copula
 	gaussian_variables = stats.multivariate_normal.rvs(mean=norm_mean, cov=norm_cov, size=n_cells)
 	uniform_variables = stats.norm.cdf(gaussian_variables, loc=norm_mean, scale=np.sqrt(norm_var))
 	nbinom_variables = stats.nbinom.ppf(uniform_variables, *convert_params(means, thetas))
