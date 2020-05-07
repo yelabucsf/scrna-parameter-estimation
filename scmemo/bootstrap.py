@@ -10,34 +10,47 @@ import pandas as pd
 import string
 
 import estimator
-
-
-def _sparse_bincount(data, size_factor):
-	""" Sparse bincount. """
-	
-	y = data.dot(np.random.random(data.shape[1])) + np.random.random()*size_factor
-	_, index, counts = np.unique(y, return_counts=True, return_index=True)
-	
-	return index, counts
 		
 
-def _precompute_size_factor(expr, size_factor, bins):
+def _precompute_size_factor(expr, sf_df, bins):
 	"""
-		Precompute the size factor to separate it from the bootstrap. 
-		Must return in the increasing order of :expr:
+		Precompute the size factor to separate it from the bootstrap.
+		This function also serves to find and count unique values.
+		
+		:sf_df: is already a dictionary with memory already allocated to speed up the calculations.
+		It should already include the inverse of size factors and inverse of the squared size factors.
 	"""
 	
-	df = pd.DataFrame()
-	df['size_factor'] = size_factor
-	df['expr'] = expr
-	df['bin'] = df.groupby('expr', sort=False)['size_factor'].transform(lambda x: pd.cut(x, bins=bins, labels=list(string.ascii_lowercase[:bins])))
-	df['inv_size_factor'] = df.groupby(['expr', 'bin'], sort=False)['size_factor'].transform(lambda x: (1/x).mean())
-	df['inv_size_factor_sq'] = df.groupby(['expr', 'bin'], sort=False)['size_factor'].transform(lambda x: (1/x**2).mean())
+	if expr.ndim > 1:
+		sf_df['expr'] = np.random.random()*expr[:, 0]+np.random.random()*expr[:, 1]
+	else:
+		sf_df['expr'] = expr
+	
+	# Create bins for size factors
+	if bins == 2:
+		sf_df['bin_cutoff'] = sf_df.groupby('expr', sort=True)['size_factor'].transform(np.mean)
+		sf_df['bin'] = sf_df['size_factor'] > sf_df['bin_cutoff']
+	else:
+		sf_df['bin'] = sf_df.groupby('expr', sort=True)['size_factor'].transform(lambda x: pd.cut(x, bins=bins, labels=list(string.ascii_lowercase[:bins])))
 		
-	return df['inv_size_factor'].values, df['inv_size_factor_sq'].values
+	precomputed_sf = sf_df.groupby(['expr', 'bin'], sort=True)[['inv_size_factor', 'inv_size_factor_sq']].mean().dropna()
+	counts = sf_df.groupby(['expr', 'bin'], sort=True).size().values
+	
+	if expr.ndim > 1:
+		_, index, counts = np.unique(np.vstack([sf_df['expr'].values, sf_df['bin'].values]).T, axis=0, return_counts=True, return_index=True)
+		unique_expr = expr[index]
+	else:
+		unique_expr = precomputed_sf.index.get_level_values(0).values.reshape(-1, 1)
+		counts = sf_df.groupby(['expr', 'bin'], sort=True).size().values
+			
+	return (
+		precomputed_sf['inv_size_factor'].values.reshape(-1, 1), 
+		precomputed_sf['inv_size_factor_sq'].values.reshape(-1, 1),
+		unique_expr,
+		counts)
 
 
-def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None, n_umi=1, bins=2):
+def _bootstrap_1d(data, sf_df, num_boot=1000, mv_regressor=None, n_umi=1, bins=2):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
 		
@@ -49,15 +62,10 @@ def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None, n_umi=1, 
 	Nc = data.shape[0]
 			
 	# Pre-compute size factor
-	precomputed_size_factor = _precompute_size_factor(
+	inv_sf, inv_sf_sq, expr, counts = _precompute_size_factor(
 		expr=data.toarray().reshape(-1), 
-		size_factor=size_factor,
+		sf_df=sf_df,
 		bins=bins)
-
-	# Get expr values and counts
-	index, counts = _sparse_bincount(data, precomputed_size_factor[0])
-	expr = data[index].toarray()
-	precomputed_size_factor = (precomputed_size_factor[0][index].reshape(-1, 1), precomputed_size_factor[1][index].reshape(-1, 1))
 
 	# Skip this gene if it has no expression
 	if expr.shape[0] <= bins:
@@ -70,7 +78,7 @@ def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None, n_umi=1, 
 	mean, var = estimator._poisson_1d(
 		data=(expr, gene_mult_rvs),
 		n_obs=Nc,
-		size_factor=precomputed_size_factor,
+		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 
 	# Estimate residual variance
@@ -82,18 +90,15 @@ def _bootstrap_1d(data, size_factor, num_boot=1000, mv_regressor=None, n_umi=1, 
 	return mean, var, res_var
 
 
-def _bootstrap_2d(data, size_factor, num_boot=1000, n_umi=1, bins=2):
+def _bootstrap_2d(data, sf_df, num_boot=1000, n_umi=1, bins=2):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
 	"""
 	Nc = data.shape[0]
-			
-	# Get expr values and counts
-	expr, counts, code = _sparse_bincount(data[:, [gene_idx_1, gene_idx_2]])
 
-	precomputed_size_factor = _precompute_size_factor(
+	inv_sf, inv_sf_sq, expr, counts = _precompute_size_factor(
 		expr=data.toarray(), 
-		size_factor=size_factor,
+		sf_df=sf_df,
 		bins=bins)
 	
 	# Generate the bootstrap samples
@@ -101,27 +106,23 @@ def _bootstrap_2d(data, size_factor, num_boot=1000, n_umi=1, bins=2):
 
 	# Estimate the covariance and variance
 	cov = estimator._poisson_cov(
-		data=(expr[:, [0]], expr[:, [1]], gene_mult_rvs), 
+		data=(expr[:, 0].reshape(-1, 1), expr[:, 0].reshape(-1, 1), gene_mult_rvs), 
 		n_obs=Nc, 
-		size_factor=precomputed_size_factor)
+		size_factor=(inv_sf, inv_sf_sq),
+		n_umi=n_umi)
 	_, var_1 = estimator._poisson_1d(
-		data=(expr[:, [0]], gene_mult_rvs),
+		data=(expr[:, 0].reshape(-1, 1), gene_mult_rvs),
 		n_obs=Nc,
-		size_factor=precomputed_size_factor)
+		size_factor=(inv_sf, inv_sf_sq),
+		n_umi=n_umi)
 	_, var_2 = estimator._poisson_1d(
-		data=(expr[:, [1]], gene_mult_rvs),
+		data=(expr[:, 1].reshape(-1, 1), gene_mult_rvs),
 		n_obs=Nc,
-		size_factor=precomputed_size_factor)
+		size_factor=(inv_sf, inv_sf_sq),
+		n_umi=n_umi)
 
 	# Convert to correlation
 	corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
-
-	# New indices for this gene set
-	new_gene_idx_1 = np.where(gene_idxs_1 == gene_idx_1)[0]
-	new_gene_idx_2 = np.where(gene_idxs_2 == gene_idx_2)[0]
-
-	cov_se[new_gene_idx_1, new_gene_idx_2] = np.nanstd(cov)
-	corr_se[new_gene_idx_1, new_gene_idx_2] = np.nanstd(corr)
 			
-	return cov_se, corr_se
+	return cov, corr, var_1, var_2
 		
