@@ -23,26 +23,29 @@ def _precompute_size_factor(expr, sf_df, bins):
 	
 	if expr.ndim > 1:
 		sf_df['expr'] = np.random.random()*expr[:, 0]+np.random.random()*expr[:, 1]
+		sf_df['expr1'], sf_df['expr2'] = expr[:, 0], expr[:, 1]
 	else:
 		sf_df['expr'] = expr
 	
 	# Create bins for size factors
 	if bins == 2:
-		sf_df['bin_cutoff'] = sf_df.groupby('expr', sort=True)['size_factor'].transform(np.mean)
+		sf_df['bin_cutoff'] = sf_df.groupby('expr', sort=True)['size_factor'].transform('mean')
 		sf_df['bin'] = sf_df['size_factor'] > sf_df['bin_cutoff']
 	else:
 		sf_df['bin'] = sf_df.groupby('expr', sort=True)['size_factor'].transform(lambda x: pd.cut(x, bins=bins, labels=list(string.ascii_lowercase[:bins])))
-		
-	precomputed_sf = sf_df.groupby(['expr', 'bin'], sort=True)[['inv_size_factor', 'inv_size_factor_sq']].mean().dropna()
-	counts = sf_df.groupby(['expr', 'bin'], sort=True).size().values
 	
+	groupby_obj = sf_df.groupby(['expr', 'bin'], sort=True)
+	precomputed_sf = groupby_obj[['inv_size_factor', 'inv_size_factor_sq']].mean().dropna()
+	
+	# Get unique expression values
 	if expr.ndim > 1:
-		_, index, counts = np.unique(np.vstack([sf_df['expr'].values, sf_df['bin'].values]).T, axis=0, return_counts=True, return_index=True)
-		unique_expr = expr[index]
+		unique_expr = groupby_obj[['expr1', 'expr2']].first().dropna().values
 	else:
 		unique_expr = precomputed_sf.index.get_level_values(0).values.reshape(-1, 1)
-		counts = sf_df.groupby(['expr', 'bin'], sort=True).size().values
-			
+	
+	# Get unique counts
+	counts = groupby_obj.size().values
+					
 	return (
 		precomputed_sf['inv_size_factor'].values.reshape(-1, 1), 
 		precomputed_sf['inv_size_factor_sq'].values.reshape(-1, 1),
@@ -50,7 +53,7 @@ def _precompute_size_factor(expr, sf_df, bins):
 		counts)
 
 
-def _bootstrap_1d(data, sf_df, num_boot=1000, mv_regressor=None, n_umi=1, bins=2):
+def _bootstrap_1d(data, sf_df, num_boot=1000, mv_regressor=None, n_umi=1, bins=2, dirichlet_approx=True):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
 		
@@ -70,15 +73,20 @@ def _bootstrap_1d(data, sf_df, num_boot=1000, mv_regressor=None, n_umi=1, bins=2
 	# Skip this gene if it has no expression
 	if expr.shape[0] <= bins:
 		return None
-
+	
 	# Generate the bootstrap samples
-	gene_mult_rvs = stats.multinomial.rvs(n=Nc, p=counts/Nc, size=num_boot).T
-	print(gene_mult_rvs.shape)
+	gen = np.random.Generator(np.random.PCG64(42343))
+	if dirichlet_approx:
+		gene_rvs = gen.dirichlet(alpha=counts, size=num_boot).T
+		n_obs = 1
+	else:
+		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
+		n_obs = Nc
 
 	# Estimate mean and variance
 	mean, var = estimator._poisson_1d(
-		data=(expr, gene_mult_rvs),
-		n_obs=Nc,
+		data=(expr, gene_rvs),
+		n_obs=n_obs,
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 
@@ -88,10 +96,10 @@ def _bootstrap_1d(data, sf_df, num_boot=1000, mv_regressor=None, n_umi=1, bins=2
 	else:
 		res_var = np.array([np.nan])
 			
-	return mean, var, res_var
+	return mean, var, res_var, counts
 
 
-def _bootstrap_2d(data, sf_df, num_boot=1000, n_umi=1, bins=2):
+def _bootstrap_2d(data, sf_df, num_boot=1000, n_umi=1, bins=2, dirichlet_approx=True):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
 	"""
@@ -103,23 +111,28 @@ def _bootstrap_2d(data, sf_df, num_boot=1000, n_umi=1, bins=2):
 		bins=bins)
 	
 	# Generate the bootstrap samples
-	gene_mult_rvs = stats.multinomial.rvs(n=Nc, p=counts/Nc, size=num_boot).T
-	print(gene_mult_rvs.shape)
+	gen = np.random.Generator(np.random.PCG64(42343))
+	if dirichlet_approx:
+		gene_rvs = gen.dirichlet(alpha=counts, size=num_boot).T
+		n_obs = 1
+	else:
+		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
+		n_obs = Nc
 
 	# Estimate the covariance and variance
 	cov = estimator._poisson_cov(
-		data=(expr[:, 0].reshape(-1, 1), expr[:, 1].reshape(-1, 1), gene_mult_rvs), 
-		n_obs=Nc, 
+		data=(expr[:, 0].reshape(-1, 1), expr[:, 1].reshape(-1, 1), gene_rvs), 
+		n_obs=n_obs, 
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 	_, var_1 = estimator._poisson_1d(
-		data=(expr[:, 0].reshape(-1, 1), gene_mult_rvs),
-		n_obs=Nc,
+		data=(expr[:, 0].reshape(-1, 1), gene_rvs),
+		n_obs=n_obs,
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 	_, var_2 = estimator._poisson_1d(
-		data=(expr[:, 1].reshape(-1, 1), gene_mult_rvs),
-		n_obs=Nc,
+		data=(expr[:, 1].reshape(-1, 1), gene_rvs),
+		n_obs=n_obs,
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 
