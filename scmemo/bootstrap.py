@@ -73,6 +73,7 @@ def _bootstrap_1d(data, sf_df, num_boot=1000, mv_regressor=None, n_umi=1, bins=2
 
 	# Generate the bootstrap samples
 	gene_mult_rvs = stats.multinomial.rvs(n=Nc, p=counts/Nc, size=num_boot).T
+	print(gene_mult_rvs.shape)
 
 	# Estimate mean and variance
 	mean, var = estimator._poisson_1d(
@@ -103,10 +104,11 @@ def _bootstrap_2d(data, sf_df, num_boot=1000, n_umi=1, bins=2):
 	
 	# Generate the bootstrap samples
 	gene_mult_rvs = stats.multinomial.rvs(n=Nc, p=counts/Nc, size=num_boot).T
+	print(gene_mult_rvs.shape)
 
 	# Estimate the covariance and variance
 	cov = estimator._poisson_cov(
-		data=(expr[:, 0].reshape(-1, 1), expr[:, 0].reshape(-1, 1), gene_mult_rvs), 
+		data=(expr[:, 0].reshape(-1, 1), expr[:, 1].reshape(-1, 1), gene_mult_rvs), 
 		n_obs=Nc, 
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
