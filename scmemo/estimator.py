@@ -71,7 +71,7 @@ def _residual_variance(mean, var, model):
 	return res_var
 
 
-def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
+def _poisson_1d(data, n_obs, size_factor=None, n_umi=1, noise=False):
 	"""
 		Estimate the variance using the Poisson noise process.
 		

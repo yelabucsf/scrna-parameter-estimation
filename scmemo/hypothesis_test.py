@@ -6,8 +6,10 @@
 
 import numpy as np
 import scipy.stats as stats
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LinearRegression
 
-def wlstsq(X, y, weights):
+def _wlstsq(X, y, weights):
 	""" 
 		Perform weighted least squares and return the coefficients and the p-values. 
 		
@@ -24,37 +26,78 @@ def wlstsq(X, y, weights):
 	return beta, stde, pval
 
 
-def _ht_1d(design_matrix, response, weights):
+def _compute_asl(perm_diff):
+	""" 
+		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
-		Performs hypothesis testing. 
+
+	extreme_count = (perm_diff > 0).sum()
+	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
+	
+	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+	if extreme_count > 2: # We do not need to use the GDP approximation. 
+
+		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+	else: # We use the GDP approximation
+
+		try:
+
+			perm_mean = perm_diff.mean()
+			perm_dist = np.sort(perm_diff) if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+			perm_dist = perm_dist[np.isfinite(perm_dist)]
+			N_exec = 300 # Starting value for number of exceendences
+
+			while N_exec > 50:
+
+				tail_data = perm_dist[-N_exec:]
+				params = stats.genextreme.fit(tail_data)
+				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+				if ks_pval > 0.05: # roughly a genpareto distribution
+					return 2 * (N_exec/perm_diff.shape[0]) * stats.genextreme.sf(1, *params)
+				else: # Failed to fit genpareto
+					N_exec -= 30
+			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+		except:
+
+			# Failed to fit genpareto, return the upper bound
+			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+
+
+def _ht_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
+	"""
+		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
-		Here, weights are standard error of the estimates.
+		Here, :design_matrix:, :boot_mean:, :boot_var: should have the same number of rows
 	"""
 	
-	num_rep, G = response[0].shape
+	# Get some constants
+	num_rep, num_boot = boot_mean.shape
 	_, num_param = design_matrix.shape
 	
-	# Create resonse variables and weights
-	mean, var = response
-	mean_ci, var_ci = weights
-	mean_weights, var_weights = 1/mean_ci**2, 1/var_ci**2
+	# Impute NaNs with the column average
+	imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+	boot_mean = imputer.fit_transform(boot_mean)
+	boot_var = imputer.fit_transform(boot_var)
 	
-	# Initialize array to hold information
-	mean_beta = np.full((num_param, G), np.nan)
-	mean_stde = np.full((num_param, G), np.nan)
-	mean_pval = np.full((num_param, G), np.nan)
-	var_beta = np.full((num_param, G), np.nan)
-	var_stde = np.full((num_param, G), np.nan)
-	var_pval = np.full((num_param, G), np.nan)
+	# Fit the linear models for all bootstrap iterations
+	if design_matrix.shape[0] > 2:
+		mean_coef = LinearRegression(fit_intercept=False)\
+			.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
+		var_coef = LinearRegression(fit_intercept=False)\
+			.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
+	elif design_matrix.shape[0] == 2:
+		ctrl_row = int(design_matrix[0, cov_idx] == 1)
+		mean_coef = boot_mean[1-ctrl_row, :] - boot_mean[ctrl_row, :]
+		var_coef = boot_var[1-ctrl_row, :] - boot_var[ctrl_row, :]
+	else:
+		return np.nan, np.nan, np.nan, np.nan
 	
-	# Perform hypothesis test for each gene
-	for i in range(G):
-		
-		mean_beta[:, i], mean_stde[:, i], mean_pval[:, i] = wlstsq(design_matrix, mean[:, i], mean_weights[:, i])
-		var_beta[:, i], var_stde[:, i], var_pval[:, i] = wlstsq(design_matrix, var[:, i], var_weights[:, i])
+	mean_asl = _compute_asl(mean_coef)
+	var_asl = _compute_asl(var_coef)
 	
-	# Return the results
-	return [[mean_beta, mean_stde, mean_pval], [var_beta, var_stde, var_pval]]
-		
-		
+	return mean_coef[0], mean_asl, var_coef[0], var_asl
 		

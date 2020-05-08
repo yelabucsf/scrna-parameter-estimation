@@ -8,6 +8,7 @@
 import numpy as np
 import pandas as pd
 from patsy import dmatrix
+import scipy.stats as stats
 
 import bootstrap
 import estimator
@@ -31,7 +32,7 @@ def create_groups(
 	# Create group labels
 	adata.obs['scmemo_group'] = 'sg' + label_delimiter
 	for idx, col_name in enumerate(label_columns):
-		adata.obs['scmemo_group'] += adata.obs[col_name]
+		adata.obs['scmemo_group'] += adata.obs[col_name].astype(str)
 		if idx != len(label_columns)-1:
 			adata.obs['scmemo_group'] += label_delimiter
 	
@@ -66,6 +67,7 @@ def compute_1d_moments(
 		
 	# Compute size factors for all groups
 	size_factor = estimator._estimate_size_factor(adata.X)
+	print(np.unique(size_factor).shape)
 	adata.uns['scmemo']['all_size_factor'] = size_factor
 	adata.uns['scmemo']['size_factor'] = \
 		{group:size_factor[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
@@ -212,7 +214,16 @@ def bootstrap_2d_moments(adata, inplace=True, num_boot=10000):
 		return adata
 
 	
-def ht_1d_moments(adata, formula_like, inplace=True, use_residual_var=True):
+def ht_1d_moments(
+	adata, 
+	formula_like,
+	cov_column,
+	inplace=True, 
+	use_residual_var=True, 
+	num_boot=10000, 
+	bins=2,
+	dirichlet_approx=True,
+	log=True):
 	"""
 		Performs hypothesis testing for 1D moments.
 	"""
@@ -220,43 +231,82 @@ def ht_1d_moments(adata, formula_like, inplace=True, use_residual_var=True):
 	if not inplace:
 		adata = adata.copy()
 	
-	# Create design DF
-	design_df_list = []
-	mean_list, var_list = [], []
-	mean_ci_list, var_ci_list = [], []
+	# Get number of genes
+	G = adata.shape[1]
 	
-	# Determine whether to use variance or residual variance
-	mean_idx = 1
-	var_idx = -1 if use_residual_var else -2
+	# Create design DF
+	design_df_list, Nc_list = [], []
 	
 	# Create the design df
 	for group in adata.uns['scmemo']['groups']:
 		
 		design_df_list.append(group.split(adata.uns['scmemo']['label_delimiter'])[1:])
-		mean_list.append(adata.uns['scmemo']['1d_moments'][group][mean_idx])
-		var_list.append(adata.uns['scmemo']['1d_moments'][group][var_idx])
-		mean_ci_list.append(adata.uns['scmemo']['1d_moments'][group][mean_idx])
-		var_ci_list.append(adata.uns['scmemo']['1d_moments'][group][var_idx])
+		Nc_list.append(adata.uns['scmemo']['group_cells'][group].shape[0])
 		
-	# Create the design matrix
+	# Create the design matrix from the patsy formula
 	design_df = pd.DataFrame(design_df_list, columns=adata.uns['scmemo']['label_columns'])
 	design_matrix = dmatrix(formula_like, design_df)
+	design_matrix_cols = design_matrix.design_info.column_names
+	Nc_list = np.array(Nc_list)
 	
-	# Create the response variables and the weights
-	response = (np.vstack(mean_list), np.vstack(var_list))
-	weights = (np.vstack(mean_ci_list), np.vstack(var_ci_list))
+	# Find the covariate that actually matters
+	for idx, col_name in enumerate(design_matrix_cols):
+		if cov_column in col_name:
+			cov_idx = idx
+			break
 	
-	# Perform hypothesis testing
-	mean_result, var_result = hypothesis_test._ht_1d(design_matrix, response, weights)
+	# Create the size factor DataFrame for each group
+	size_factor_df = {
+		group:bootstrap._create_size_factor_df(
+			adata.uns['scmemo']['size_factor'][group]) for group in adata.uns['scmemo']['groups']}
+	
+	# Initialize empty arrays to hold bootstrap values
+	boot_mean = np.zeros((design_matrix.shape[0], num_boot + 1))*np.nan
+	boot_var = np.zeros((design_matrix.shape[0], num_boot + 1))*np.nan
+	
+	# Initialize empty arrays to hold fitted coefficients and achieved significance level
+	mean_coef, mean_asl, var_coef, var_asl = [np.zeros(G)*np.nan for i in range(4)]
+	
+	# Iterate through each gene and perform hypothesis test
+	for idx in range(G):
+		good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
+		
+		for group_idx, group in enumerate(adata.uns['scmemo']['groups']):
+			
+			# Skip if any of the 1d moments are NaNs
+			if np.isnan(adata.uns['scmemo']['1d_moments'][group][0][idx]) or \
+				np.isnan(adata.uns['scmemo']['1d_moments'][group][2 if use_residual_var else 1][idx]):
+				continue
+			
+			# This replicate is good
+			good_idxs[group_idx] = True
+			
+			# Generate the bootstrap values
+			data = adata.uns['scmemo']['group_cells'][group][:, idx]
+			boot_mean[group_idx, :], boot_var[group_idx, :] = bootstrap._bootstrap_1d(
+				data=data,
+				sf_df=size_factor_df[group],
+				num_boot=num_boot,
+				mv_regressor=adata.uns['scmemo']['mv_regressor'][group] if use_residual_var else None,
+				n_umi=adata.uns['scmemo']['n_umi'],
+				bins=bins,
+				dirichlet_approx=dirichlet_approx,
+				log=log)
+			
+		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = \
+			hypothesis_test._ht_1d(
+				design_matrix=design_matrix[good_idxs, :], 
+				boot_mean=boot_mean[good_idxs, :], 
+				boot_var=boot_var[good_idxs, :], 
+				Nc_list=Nc_list[good_idxs], 
+				cov_idx=cov_idx)
 
 	# Save the hypothesis test result
 	adata.uns['scmemo']['1d_ht'] = {}
-	adata.uns['scmemo']['1d_ht']['design_df'] = design_df
-	adata.uns['scmemo']['1d_ht']['design_matrix'] = design_matrix
-	adata.uns['scmemo']['1d_ht']['design_matrix_cols'] = design_matrix.design_info.column_names
-	adata.uns['scmemo']['1d_ht']['mean_result'] = mean_result
-	adata.uns['scmemo']['1d_ht']['var_result'] = var_result
-	
+	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'cov_column', 'mean_coef', 'mean_asl', 'var_coef', 'var_asl']
+	for attr in attrs:
+		adata.uns['scmemo']['1d_ht'][attr] = eval(attr)
+
 	if not inplace:
 		return adata
 	
