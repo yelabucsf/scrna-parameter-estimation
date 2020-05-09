@@ -11,90 +11,38 @@ import string
 
 import estimator
 
-
-def _create_size_factor_df(size_factor):
-	"""
-		Contains the pre-computed size factors for individual cells.
-	"""
-		
-	df = pd.DataFrame(
-		data=np.vstack([
-			size_factor, 
-			1/size_factor, 
-			1/size_factor**2]).T,
-		columns=['size_factor', 'inv_size_factor', 'inv_size_factor_sq'])
-	df['expr'] = 1.0
-	df['bin_cutoff'] = 1.0
-	df['bin'] = True
-	
-	return df
-
-
-def _create_bins(x, num_bins):
-	""" Small helper function to create bins dynamically. """
-	
-# 	bin_edges = np.quantile(x, np.linspace(0, 1, num_bins))
-
-# 	if x.shape[0] < 20:
-# 		return 1
-	_, bin_edges = np.histogram(x, bins=num_bins)
-	
-	return np.digitize(x, np.unique(bin_edges))
-
-	return pd.cut(x, bins=num_bins, labels=list(string.ascii_lowercase)[:num_bins])
-
-
-def _precompute_size_factor(expr, sf_df, bins):
+def _unique_expr(expr, size_factor):
 	"""
 		Precompute the size factor to separate it from the bootstrap.
 		This function also serves to find and count unique values.
 		
-		:sf_df: is already a dictionary with memory already allocated to speed up the calculations.
-		It should already include the inverse of size factors and inverse of the squared size factors.
+		:expr: is a sparse matrix, either one or two columns
 	"""
 	
-	# Get the expression values into the DataFrame
-	if expr.ndim > 1:
-		sf_df['expr'] = np.random.random()*expr[:, 0]+np.random.random()*expr[:, 1]
-		sf_df['expr1'], sf_df['expr2'] = expr[:, 0], expr[:, 1]
+	if expr.shape[1] == 1:
+		num_unique = len(set(expr.data))
 	else:
-		sf_df['expr'] = expr
+		num_unique = np.unique(expr.toarray(), axis=0).shape[0]
 	
-	# Create bins for size factors
-	if bins == 1:
-		sf_df['bin'] = 1
-	elif bins == 2:
-		sf_df['bin_cutoff'] = sf_df.groupby('expr', sort=True)['size_factor'].transform('mean')
-		sf_df['bin'] = sf_df['size_factor'] > sf_df['bin_cutoff']
-	else:
-		sf_df['bin'] = sf_df.groupby('expr', sort=True)['size_factor'].transform(lambda x: _create_bins(x, bins))
+	bins = min(num_unique, 20)
 	
-	groupby_obj = sf_df.groupby(['expr', 'bin'], sort=True)
-	precomputed_sf = groupby_obj[['inv_size_factor', 'inv_size_factor_sq']].mean().dropna()
+	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=sf_bin_edges, statistic='median')
+	approx_sf = binned_stat[0][binned_stat[2]-1]
 	
-	# Get unique expression values
-	if expr.ndim > 1:
-		unique_expr = groupby_obj[['expr1', 'expr2']].first().dropna().values
-	else:
-		unique_expr = precomputed_sf.index.get_level_values(0).values.reshape(-1, 1)
+	code = expr.dot(np.random.random(expr.shape[1])) + np.random.random()*approx_sf
 	
-	# Get unique counts
-	counts = groupby_obj.size().values
-					
-	return (
-		precomputed_sf['inv_size_factor'].values.reshape(-1, 1), 
-		precomputed_sf['inv_size_factor_sq'].values.reshape(-1, 1),
-		unique_expr,
-		counts)
+	_, index, count = np.unique(code, return_index=True, return_counts=True)
+	
+	return 1/approx_sf[index].reshape(-1, 1), 1/approx_sf[index].reshape(-1, 1)**2, expr[index].toarray(), count
 
 
 def _bootstrap_1d(
 	data, 
-	sf_df, 
+	size_factor, 
 	num_boot=1000, 
 	mv_regressor=None, 
 	n_umi=1, 
-	bins=2, 
 	dirichlet_approx=True,
 	log=True):
 	"""
@@ -108,13 +56,10 @@ def _bootstrap_1d(
 	Nc = data.shape[0]
 			
 	# Pre-compute size factor
-	inv_sf, inv_sf_sq, expr, counts = _precompute_size_factor(
-		expr=data.toarray().reshape(-1), 
-		sf_df=sf_df,
-		bins=bins)
+	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
 
 	# Skip this gene if it has no expression
-	if expr.shape[0] <= bins:
+	if expr.shape[0] <= 1:
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
 	
 	# Generate the bootstrap samples.

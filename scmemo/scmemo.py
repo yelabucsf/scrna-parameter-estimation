@@ -259,10 +259,10 @@ def ht_1d_moments(
 			cov_idx = idx
 			break
 	
-	# Create the size factor DataFrame for each group
-	size_factor_df = {
-		group:bootstrap._create_size_factor_df(
-			adata.uns['scmemo']['size_factor'][group]) for group in adata.uns['scmemo']['groups']}
+# 	# Create the size factor DataFrame for each group
+# 	size_factor_df = {
+# 		group:bootstrap._create_size_factor_df(
+# 			adata.uns['scmemo']['size_factor'][group]) for group in adata.uns['scmemo']['groups']}
 	
 	# Initialize empty arrays to hold bootstrap values
 	boot_mean = np.zeros((design_matrix.shape[0], num_boot + 1))*np.nan
@@ -287,13 +287,12 @@ def ht_1d_moments(
 			
 			# Generate the bootstrap values
 			data = adata.uns['scmemo']['group_cells'][group][:, idx]
-			boot_mean[group_idx, :], boot_var[group_idx, :] = bootstrap._bootstrap_1d(
+			boot_mean[group_idx, :], boot_var[group_idx, :], count = bootstrap._bootstrap_1d(
 				data=data,
-				sf_df=size_factor_df[group],
+				size_factor=adata.uns['scmemo']['size_factor'][group],
 				num_boot=num_boot,
 				mv_regressor=adata.uns['scmemo']['mv_regressor'][group] if use_residual_var else None,
 				n_umi=adata.uns['scmemo']['n_umi'],
-				bins=bins,
 				dirichlet_approx=dirichlet_approx,
 				log=log)
 		
