@@ -35,8 +35,8 @@ def _create_bins(x, num_bins):
 	
 # 	bin_edges = np.quantile(x, np.linspace(0, 1, num_bins))
 
-	if x.shape[0] < 20:
-		return 1
+# 	if x.shape[0] < 20:
+# 		return 1
 	_, bin_edges = np.histogram(x, bins=num_bins)
 	
 	return np.digitize(x, np.unique(bin_edges))
@@ -119,7 +119,7 @@ def _bootstrap_1d(
 	
 	# Generate the bootstrap samples.
 	# The first sample is always the original data counts.
-	gen = np.random.Generator(np.random.PCG64(42343))
+	gen = np.random.Generator(np.random.PCG64(np.random.randint(10000)))
 	gene_rvs = np.zeros((counts.shape[0], num_boot + 1))
 	if dirichlet_approx:
 		gene_rvs[:, 0] = counts/Nc
@@ -144,9 +144,9 @@ def _bootstrap_1d(
 			return np.log(mean), estimator._residual_variance(mean, var, mv_regressor)
 		else:
 			var[var <= 0] = np.nan
-			return np.log(mean), np.log(var)
+			return np.log(mean), np.log(var), gene_rvs.shape[0]
 	else:
-		return mean, var
+		return mean, var, gene_rvs.shape[0]
 
 
 def _bootstrap_2d(data, sf_df, num_boot=1000, n_umi=1, bins=2, dirichlet_approx=True):

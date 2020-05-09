@@ -67,7 +67,11 @@ def compute_1d_moments(
 		
 	# Compute size factors for all groups
 	size_factor = estimator._estimate_size_factor(adata.X)
-	print(np.unique(size_factor).shape)
+	
+# 	if True:
+# 		bin_mean, _, binnumber = stats.binned_statistic(size_factor, size_factor, bins=10)
+# 		size_factor = bin_mean[binnumber-1]
+	
 	adata.uns['scmemo']['all_size_factor'] = size_factor
 	adata.uns['scmemo']['size_factor'] = \
 		{group:size_factor[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
@@ -292,7 +296,7 @@ def ht_1d_moments(
 				bins=bins,
 				dirichlet_approx=dirichlet_approx,
 				log=log)
-			
+		
 		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = \
 			hypothesis_test._ht_1d(
 				design_matrix=design_matrix[good_idxs, :], 
