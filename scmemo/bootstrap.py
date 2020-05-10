@@ -39,7 +39,9 @@ def _unique_expr(expr, size_factor):
 
 def _bootstrap_1d(
 	data, 
-	size_factor, 
+	size_factor,
+	true_mean, 
+	true_var,
 	num_boot=1000, 
 	mv_regressor=None, 
 	n_umi=1, 
@@ -65,14 +67,11 @@ def _bootstrap_1d(
 	# Generate the bootstrap samples.
 	# The first sample is always the original data counts.
 	gen = np.random.Generator(np.random.PCG64(np.random.randint(10000)))
-	gene_rvs = np.zeros((counts.shape[0], num_boot + 1))
 	if dirichlet_approx:
-		gene_rvs[:, 0] = counts/Nc
-		gene_rvs[:, 1:] = gen.dirichlet(alpha=counts, size=num_boot).T
+		gene_rvs = gen.dirichlet(alpha=counts, size=num_boot).T
 		n_obs = 1
 	else:
-		gene_rvs[:, 0] = counts
-		gene_rvs[:, 1:] = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
+		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
 		n_obs = Nc
 
 	# Estimate mean and variance
@@ -81,6 +80,10 @@ def _bootstrap_1d(
 		n_obs=n_obs,
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
+	
+	# Center the estimates to the actual values
+	mean += true_mean - mean.mean()
+	var += true_var - var.mean()
 
 	# Return the mean and the variance
 	if log:
