@@ -226,7 +226,8 @@ def ht_1d_moments(
 	use_residual_var=True, 
 	num_boot=10000, 
 	dirichlet_approx=True,
-	log=True):
+	log=True,
+	verbose=False):
 	"""
 		Performs hypothesis testing for 1D moments.
 	"""
@@ -259,14 +260,19 @@ def ht_1d_moments(
 			break
 	
 	# Initialize empty arrays to hold bootstrap values
-	boot_mean = np.zeros((design_matrix.shape[0], num_boot))*np.nan
-	boot_var = np.zeros((design_matrix.shape[0], num_boot))*np.nan
+	# First value is always the actual estimate
+	boot_mean = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
+	boot_var = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 	
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_asl, var_coef, var_asl = [np.zeros(G)*np.nan for i in range(4)]
 	
 	# Iterate through each gene and perform hypothesis test
 	for idx in range(G):
+		
+		if idx % 300 == 0 and verbose:
+			print('On gene idx', idx)
+		
 		good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 		
 		for group_idx, group in enumerate(adata.uns['scmemo']['groups']):
@@ -279,9 +285,20 @@ def ht_1d_moments(
 			# This replicate is good
 			good_idxs[group_idx] = True
 			
+			# Fill in the true value
+			if log and not use_residual_var:
+				boot_mean[group_idx, 0], boot_var[group_idx, 1:] = \
+					np.log(adata.uns['scmemo']['1d_moments'][group][0][idx]), np.log(adata.uns['scmemo']['1d_moments'][group][1][idx])
+			elif log and use_residual_var:
+				boot_mean[group_idx, 0], boot_var[group_idx, 1:] = \
+					np.log(adata.uns['scmemo']['1d_moments'][group][0][idx]), adata.uns['scmemo']['1d_moments'][group][2][idx]	
+			else:
+				boot_mean[group_idx, 0], boot_var[group_idx, 1:] = \
+					adata.uns['scmemo']['1d_moments'][group][0][idx], adata.uns['scmemo']['1d_moments'][group][1][idx]		
+			
 			# Generate the bootstrap values
 			data = adata.uns['scmemo']['group_cells'][group][:, idx]
-			boot_mean[group_idx, :], boot_var[group_idx, :], count = bootstrap._bootstrap_1d(
+			boot_mean[group_idx, 1:], boot_var[group_idx, 1:] = bootstrap._bootstrap_1d(
 				data=data,
 				size_factor=adata.uns['scmemo']['size_factor'][group],
 				true_mean=adata.uns['scmemo']['1d_moments'][group][0][idx],
@@ -291,6 +308,10 @@ def ht_1d_moments(
 				n_umi=adata.uns['scmemo']['n_umi'],
 				dirichlet_approx=dirichlet_approx,
 				log=log)
+		
+		# Skip this gene
+		if good_idxs.sum() == 0:
+			continue
 		
 		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = \
 			hypothesis_test._ht_1d(
@@ -308,6 +329,20 @@ def ht_1d_moments(
 
 	if not inplace:
 		return adata
+
 	
+def get_1d_ht_result(adata):
+	"""
+		Getter function for 1d result. 
+	"""
+	
+	result_df = pd.DataFrame()
+	result_df['gene'] = adata.var.index.tolist()
+	result_df['de_coef'] = adata.uns['scmemo']['1d_ht']['mean_coef']
+	result_df['de_pval'] = adata.uns['scmemo']['1d_ht']['mean_asl']
+	result_df['dv_coef'] = adata.uns['scmemo']['1d_ht']['var_coef']
+	result_df['dv_pval'] = adata.uns['scmemo']['1d_ht']['var_asl']	
+	
+	return result_df
 	
 	

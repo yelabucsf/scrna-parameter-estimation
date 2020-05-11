@@ -34,6 +34,8 @@ def _compute_asl(perm_diff):
 	extreme_count = (perm_diff > 0).sum()
 	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
 	
+# 	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+	
 	if extreme_count > 2: # We do not need to use the GDP approximation. 
 
 		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))

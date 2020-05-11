@@ -20,7 +20,8 @@ def _unique_expr(expr, size_factor, bins=None):
 		:expr: is a sparse matrix, either one or two columns
 	"""
 	
-	
+	code = expr.dot(np.random.random(expr.shape[1]))
+
 	if bins is None:
 		if expr.shape[1] == 1:
 			num_unique = len(set(expr.data))
@@ -31,16 +32,14 @@ def _unique_expr(expr, size_factor, bins=None):
 	
 	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=sf_bin_edges, statistic='median')
-	approx_sf = binned_stat[0][binned_stat[2]-1]
+	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
+	approx_sf = binned_stat[0][bin_idx-1]
 	
-	start_time = time.time()
-	
-	code = expr.dot(np.random.random(expr.shape[1]))
 	code += np.random.random()*approx_sf
 	
 	_, index, count = np.unique(code, return_index=True, return_counts=True)
 	
-	return 1/approx_sf[index].reshape(-1, 1), 1/approx_sf[index].reshape(-1, 1)**2, expr[index].toarray(), count, start_time
+	return 1/approx_sf[index].reshape(-1, 1), 1/approx_sf[index].reshape(-1, 1)**2, expr[index].toarray(), count
 
 
 def _bootstrap_1d(
@@ -66,10 +65,8 @@ def _bootstrap_1d(
 	Nc = data.shape[0]
 				
 	# Pre-compute size factor
-	inv_sf, inv_sf_sq, expr, counts, start_time = _unique_expr(data, size_factor, bins=bins)
+	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor, bins=bins)
 	
-	count_time = time.time()
-
 	# Skip this gene if it has no expression
 	if expr.shape[0] <= 1:
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
@@ -94,11 +91,6 @@ def _bootstrap_1d(
 	# Bias correction
 	mean += true_mean - mean.mean()
 	var += true_var - var.mean()
-	
-	boot_time = time.time()
-	
-	if return_times:
-		return start_time, count_time, boot_time
 
 	# Return the mean and the variance
 	if log:
