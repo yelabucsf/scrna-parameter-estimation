@@ -104,9 +104,6 @@ venv.bak/
 .mypy_cache/
 
 # Files
-*.txt
-*.pdf
-*.png
 sftp-config.json
 *.tex
 *.pkl
@@ -114,4 +111,4 @@ sftp-config.json
 *.bed
 *.eps
 *.xlsx
-*.csv
+*.h5ad
