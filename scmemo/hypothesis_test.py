@@ -78,18 +78,28 @@ def _ht_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	num_rep, num_boot = boot_mean.shape
 	_, num_param = design_matrix.shape
 	
+	# Original shapes
+	mean_shape, var_shape = boot_mean.shape, boot_var.shape
+	
 	# Impute NaNs with the column average
-	imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
-	boot_mean = imputer.fit_transform(boot_mean)
-	boot_var = imputer.fit_transform(boot_var)
+# 	imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
+# 	boot_mean = imputer.fit_transform(boot_mean)
+# 	boot_var = imputer.fit_transform(boot_var)
+	
+	# Drop columns with any NaNs
+	boot_mean = boot_mean[:, ~np.any(np.isnan(boot_mean), axis=0)]
+	boot_var = boot_var[:, ~np.any(np.isnan(boot_var), axis=0)]
+
+	# Number of unique covariate values
+	unique_cov_vals = len(set(design_matrix[:, cov_idx]))
 	
 	# Fit the linear models for all bootstrap iterations
-	if design_matrix.shape[0] > 2:
+	if design_matrix.shape[0] > 2 and unique_cov_vals > 1:
 		mean_coef = LinearRegression(fit_intercept=False)\
 			.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
 		var_coef = LinearRegression(fit_intercept=False)\
 			.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
-	elif design_matrix.shape[0] == 2:
+	elif design_matrix.shape[0] == 2 and unique_cov_vals > 1:
 		ctrl_row = int(design_matrix[0, cov_idx] == 1)
 		mean_coef = boot_mean[1-ctrl_row, :] - boot_mean[ctrl_row, :]
 		var_coef = boot_var[1-ctrl_row, :] - boot_var[ctrl_row, :]

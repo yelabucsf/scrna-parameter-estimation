@@ -27,3 +27,38 @@ def _fdrcorrect(pvals):
 	fdr = np.ones(pvals.shape[0])
 	_, fdr[~np.isnan(pvals)] = fdrcorrection(pvals[~np.isnan(pvals)])
 	return fdr
+
+
+def density_scatterplot(a,b, s=1, cmap='Reds', kde=None):
+    # Calculate the point density
+    condition = np.isfinite(a) & np.isfinite(b)
+    x = a[condition]
+    y = b[condition]
+    xy = np.vstack([x,y])
+    z = stats.gaussian_kde(xy, bw_method=kde)(xy)
+    print(z)
+    plt.scatter(x, y, c=z, s=s, edgecolor='', cmap=cmap)
+    
+
+def robust_correlation(a, b):
+    
+    condition = (np.isfinite(a) & np.isfinite(b))
+    x = a[condition]
+    y = b[condition]
+    
+    return stats.spearmanr(x,y)
+
+def robust_linregress(a, b):
+    
+    condition = (np.isfinite(a) & np.isfinite(b))
+    x = a[condition]
+    y = b[condition]
+    
+    print(x.min())
+    
+    return stats.linregress(x,y)
+
+def robust_hist(x, **kwargs):
+    
+    condition = np.isfinite(x)
+    plt.hist(x[condition], **kwargs)

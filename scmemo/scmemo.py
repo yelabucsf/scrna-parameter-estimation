@@ -281,19 +281,24 @@ def ht_1d_moments(
 			if np.isnan(adata.uns['scmemo']['1d_moments'][group][0][idx]) or \
 				np.isnan(adata.uns['scmemo']['1d_moments'][group][2 if use_residual_var else 1][idx]):
 				continue
+				
+			# Skip if any of the 1d moments are 0s
+			if adata.uns['scmemo']['1d_moments'][group][0][idx] == 0 or \
+				adata.uns['scmemo']['1d_moments'][group][2 if use_residual_var else 1][idx] == 0:
+				continue
 			
 			# This replicate is good
 			good_idxs[group_idx] = True
 			
 			# Fill in the true value
 			if log and not use_residual_var:
-				boot_mean[group_idx, 0], boot_var[group_idx, 1:] = \
+				boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
 					np.log(adata.uns['scmemo']['1d_moments'][group][0][idx]), np.log(adata.uns['scmemo']['1d_moments'][group][1][idx])
 			elif log and use_residual_var:
-				boot_mean[group_idx, 0], boot_var[group_idx, 1:] = \
+				boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
 					np.log(adata.uns['scmemo']['1d_moments'][group][0][idx]), adata.uns['scmemo']['1d_moments'][group][2][idx]	
 			else:
-				boot_mean[group_idx, 0], boot_var[group_idx, 1:] = \
+				boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
 					adata.uns['scmemo']['1d_moments'][group][0][idx], adata.uns['scmemo']['1d_moments'][group][1][idx]		
 			
 			# Generate the bootstrap values

@@ -100,17 +100,21 @@ def _bootstrap_1d(
 	
 	if return_times:
 		return start_time, count_time, boot_time
+	
+	# Filter some bad values
+	mean[(mean <= 0)] = np.nan
+	var[(var <= 0)] = np.nan
+	
+# 	print('boot', np.nanmin(var), np.nanmax(var))
 
 	# Return the mean and the variance
 	if log:
-		mean[mean <= 0] = np.nan
 		if mv_regressor is not None:
 			return np.log(mean), estimator._residual_variance(mean, var, mv_regressor)
 		else:
-			var[var <= 0] = np.nan
-			return np.log(mean), np.log(var), gene_rvs.shape[0]
+			return np.log(mean), np.log(var)
 	else:
-		return mean, var, gene_rvs.shape[0]
+		return mean, var
 
 
 def _bootstrap_2d(
