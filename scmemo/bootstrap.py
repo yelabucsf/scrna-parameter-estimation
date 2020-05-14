@@ -31,9 +31,11 @@ def _unique_expr(expr, size_factor, bins=None):
 		bins = min(num_unique, 20)
 	
 	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=sf_bin_edges, statistic='median')
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=bins, statistic='mean')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
+	max_sf = size_factor.max()
+	approx_sf[size_factor == max_sf] = max_sf
 	
 	start_time = time.time()
 	
@@ -50,10 +52,8 @@ def _bootstrap_1d(
 	true_mean, 
 	true_var,
 	num_boot=1000, 
-	mv_regressor=None, 
 	n_umi=1, 
 	dirichlet_approx=True,
-	log=True,
 	bins=None,
 	return_times=False):
 	"""
@@ -68,7 +68,7 @@ def _bootstrap_1d(
 				
 	# Pre-compute size factor
 	inv_sf, inv_sf_sq, expr, counts, start_time = _unique_expr(data, size_factor, bins=bins)
-	
+		
 	# Skip this gene if it has no expression
 	if expr.shape[0] <= 1:
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
@@ -84,6 +84,8 @@ def _bootstrap_1d(
 	else:
 		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
 		n_obs = Nc
+		
+# 	nonzero_idx = expr.reshape(-1) > 0
 
 	# Estimate mean and variance
 	mean, var = estimator._poisson_1d(
@@ -91,30 +93,23 @@ def _bootstrap_1d(
 		n_obs=n_obs,
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
-	
+
 	# Bias correction
 	mean += true_mean - mean.mean()
 	var += true_var - var.mean()
-	
+		
 	boot_time = time.time()
 	
 	if return_times:
 		return start_time, count_time, boot_time
 	
 	# Filter some bad values
-	mean[(mean <= 0)] = np.nan
-	var[(var <= 0)] = np.nan
+# 	mean[(mean <= 0)] = np.nan
+# 	var[(var <= 0)] = np.nan
 	
 # 	print('boot', np.nanmin(var), np.nanmax(var))
 
-	# Return the mean and the variance
-	if log:
-		if mv_regressor is not None:
-			return np.log(mean), estimator._residual_variance(mean, var, mv_regressor)
-		else:
-			return np.log(mean), np.log(var)
-	else:
-		return mean, var
+	return mean, var
 
 
 def _bootstrap_2d(
@@ -162,7 +157,6 @@ def _bootstrap_2d(
 	# Convert to correlation
 	corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 
-	
 	# Bias correction
 	corr += true_corr - corr.mean()
 	cov += true_cov - cov.mean()

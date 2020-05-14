@@ -8,8 +8,9 @@ import numpy as np
 import scipy.stats as stats
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import PoissonRegressor
 
-def _wlstsq(X, y, weights):
+def _wlstsq(X, y, weights, cov_idx):
 	""" 
 		Perform weighted least squares and return the coefficients and the p-values. 
 		
@@ -19,11 +20,9 @@ def _wlstsq(X, y, weights):
 
 	inv = np.linalg.inv(X.T.dot(weights.reshape(-1,1)*X))
 	beta = inv.dot(X.T*weights).dot(y)
-	stde = np.sqrt(np.diag(inv))/3
-
-	pval = 2*(1-stats.norm.cdf(np.abs(beta), 0, stde))
-
-	return beta, stde, pval
+# 	stde = np.sqrt(np.diag(inv))
+	
+	return beta.reshape(-1)[cov_idx]#, stde
 
 
 def _compute_asl(perm_diff):
@@ -34,7 +33,18 @@ def _compute_asl(perm_diff):
 	extreme_count = (perm_diff > 0).sum()
 	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
 	
-# 	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+	stat = perm_diff[0]
+	boot_stat =  perm_diff[1:]
+	boot_stat = boot_stat[np.isfinite(boot_stat)]
+	
+	if boot_stat.shape[0] < 500:
+		return np.nan
+	centered = boot_stat - boot_stat.mean()
+	c = (centered > stat).mean()
+	
+	return 2*min(c, 1-c)
+	
+	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 	
 	if extreme_count > 2: # We do not need to use the GDP approximation. 
 
@@ -86,28 +96,48 @@ def _ht_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 # 	boot_mean = imputer.fit_transform(boot_mean)
 # 	boot_var = imputer.fit_transform(boot_var)
 	
-	# Drop columns with any NaNs
-	boot_mean = boot_mean[:, ~np.any(np.isnan(boot_mean), axis=0)]
-	boot_var = boot_var[:, ~np.any(np.isnan(boot_var), axis=0)]
+# 	Drop columns with any NaNs
+# 	boot_mean = boot_mean[:, ~np.any(np.isnan(boot_mean), axis=0)]
+# 	boot_var = boot_var[:, ~np.any(np.isnan(boot_var), axis=0)]
 
 	# Number of unique covariate values
 	unique_cov_vals = len(set(design_matrix[:, cov_idx]))
-	
+		
 	# Fit the linear models for all bootstrap iterations
 	if design_matrix.shape[0] > 2 and unique_cov_vals > 1:
-		mean_coef = LinearRegression(fit_intercept=False)\
-			.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
-		var_coef = LinearRegression(fit_intercept=False)\
-			.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
+		
+		mean_coefs = np.zeros(num_boot)
+		var_coefs = np.zeros(num_boot)
+		
+		for boot_idx in range(num_boot):
+			
+			mean_coefs[boot_idx] = _wlstsq(
+				design_matrix, 
+				boot_mean[:, boot_idx], 
+				stats.poisson.rvs(Nc_list), cov_idx)
+			var_coefs[boot_idx] = _wlstsq(
+				design_matrix, 
+				boot_var[:, boot_idx], 
+				stats.poisson.rvs(Nc_list), cov_idx)
+			
+			
+# 			mean_coefs[boot_idx] = LinearRegression(fit_intercept=False)\
+# 				.fit(design_matrix, boot_mean[:, boot_idx], stats.poisson.rvs(Nc_list)).coef_[cov_idx]
+# 			var_coefs[boot_idx] = LinearRegression(fit_intercept=False)\
+# 				.fit(design_matrix, boot_var[:, boot_idx], stats.poisson.rvs(Nc_list)).coef_[cov_idx]
 	elif design_matrix.shape[0] == 2 and unique_cov_vals > 1:
+		print("here2")
 		ctrl_row = int(design_matrix[0, cov_idx] == 1)
 		mean_coef = boot_mean[1-ctrl_row, :] - boot_mean[ctrl_row, :]
 		var_coef = boot_var[1-ctrl_row, :] - boot_var[ctrl_row, :]
 	else:
 		return np.nan, np.nan, np.nan, np.nan
 	
-	mean_asl = _compute_asl(mean_coef)
-	var_asl = _compute_asl(var_coef)
+
+# 	mean_coef, mean_stderr
 	
-	return mean_coef[0], mean_asl, var_coef[0], var_asl
+	mean_asl = _compute_asl(mean_coefs)
+	var_asl = _compute_asl(var_coefs)
+	
+	return mean_coefs[0], mean_asl, var_coefs[0], var_asl
 		

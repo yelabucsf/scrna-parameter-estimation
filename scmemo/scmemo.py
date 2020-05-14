@@ -68,9 +68,13 @@ def compute_1d_moments(
 	# Compute size factors for all groups
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
-# 	if True:
-# 		bin_mean, _, binnumber = stats.binned_statistic(size_factor, size_factor, bins=10)
-# 		size_factor = bin_mean[binnumber-1]
+# 	# Bin the size factors
+# 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=50, statistic='median')
+# 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
+# 	approx_sf = binned_stat[0][bin_idx-1]
+# 	max_sf = size_factor.max()
+# 	approx_sf[size_factor == max_sf] = max_sf
+# 	size_factor = approx_sf
 	
 	adata.uns['scmemo']['all_size_factor'] = size_factor
 	adata.uns['scmemo']['size_factor'] = \
@@ -270,7 +274,8 @@ def ht_1d_moments(
 	# Iterate through each gene and perform hypothesis test
 	for idx in range(G):
 		
-		if idx % 300 == 0 and verbose:
+		
+		if idx % 50 == 0 and verbose:
 			print('On gene idx', idx)
 		
 		good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
@@ -291,15 +296,8 @@ def ht_1d_moments(
 			good_idxs[group_idx] = True
 			
 			# Fill in the true value
-			if log and not use_residual_var:
-				boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
-					np.log(adata.uns['scmemo']['1d_moments'][group][0][idx]), np.log(adata.uns['scmemo']['1d_moments'][group][1][idx])
-			elif log and use_residual_var:
-				boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
-					np.log(adata.uns['scmemo']['1d_moments'][group][0][idx]), adata.uns['scmemo']['1d_moments'][group][2][idx]	
-			else:
-				boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
-					adata.uns['scmemo']['1d_moments'][group][0][idx], adata.uns['scmemo']['1d_moments'][group][1][idx]		
+			boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
+				adata.uns['scmemo']['1d_moments'][group][0][idx], adata.uns['scmemo']['1d_moments'][group][1][idx]		
 			
 			# Generate the bootstrap values
 			data = adata.uns['scmemo']['group_cells'][group][:, idx]
@@ -309,15 +307,18 @@ def ht_1d_moments(
 				true_mean=adata.uns['scmemo']['1d_moments'][group][0][idx],
 				true_var=adata.uns['scmemo']['1d_moments'][group][1][idx],
 				num_boot=num_boot,
-				mv_regressor=adata.uns['scmemo']['mv_regressor'][group] if use_residual_var else None,
 				n_umi=adata.uns['scmemo']['n_umi'],
-				dirichlet_approx=dirichlet_approx,
-				log=log)
+				dirichlet_approx=dirichlet_approx)
 		
 		# Skip this gene
 		if good_idxs.sum() == 0:
 			continue
-		
+
+		if log:
+
+			boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,]+5)
+			boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
+			
 		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = \
 			hypothesis_test._ht_1d(
 				design_matrix=design_matrix[good_idxs, :], 

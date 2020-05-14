@@ -80,16 +80,19 @@ def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
 	if type(data) == tuple:
 		size_factor = size_factor if size_factor is not None else (1, 1)
 		mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
+# 		mm_M2 = (data[0]**2*data[1]*size_factor[1]).sum(axis=0)/n_obs
 		mm_M2 = (data[0]**2*data[1]*size_factor[1] - data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
 	else:
 		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0])
 		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
-		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
+# 		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs
 
+		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
+	
 	mm_mean = mm_M1/n_umi
 	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
-	mm_var = np.clip(mm_var, a_min=0, a_max=np.inf)
-	
+# 	mm_var = np.clip(mm_var, a_min=1e-20, a_max=np.inf)
+
 	return [mm_mean, mm_var]
 
 
