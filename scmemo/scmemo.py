@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from patsy import dmatrix
 import scipy.stats as stats
+from multiprocessing import Pool
+from functools import partial
 
 import bootstrap
 import estimator
@@ -271,61 +273,42 @@ def ht_1d_moments(
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_asl, var_coef, var_asl = [np.zeros(G)*np.nan for i in range(4)]
 	
-	# Iterate through each gene and perform hypothesis test
-	for idx in range(G):
-		
-		
-		if idx % 50 == 0 and verbose:
-			print('On gene idx', idx)
-		
-		good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
-		
-		for group_idx, group in enumerate(adata.uns['scmemo']['groups']):
-			
-			# Skip if any of the 1d moments are NaNs
-			if np.isnan(adata.uns['scmemo']['1d_moments'][group][0][idx]) or \
-				np.isnan(adata.uns['scmemo']['1d_moments'][group][2 if use_residual_var else 1][idx]):
-				continue
-				
-			# Skip if any of the 1d moments are 0s
-			if adata.uns['scmemo']['1d_moments'][group][0][idx] == 0 or \
-				adata.uns['scmemo']['1d_moments'][group][2 if use_residual_var else 1][idx] == 0:
-				continue
-			
-			# This replicate is good
-			good_idxs[group_idx] = True
-			
-			# Fill in the true value
-			boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
-				adata.uns['scmemo']['1d_moments'][group][0][idx], adata.uns['scmemo']['1d_moments'][group][1][idx]		
-			
-			# Generate the bootstrap values
-			data = adata.uns['scmemo']['group_cells'][group][:, idx]
-			boot_mean[group_idx, 1:], boot_var[group_idx, 1:] = bootstrap._bootstrap_1d(
-				data=data,
-				size_factor=adata.uns['scmemo']['size_factor'][group],
-				true_mean=adata.uns['scmemo']['1d_moments'][group][0][idx],
-				true_var=adata.uns['scmemo']['1d_moments'][group][1][idx],
-				num_boot=num_boot,
-				n_umi=adata.uns['scmemo']['n_umi'],
-				dirichlet_approx=dirichlet_approx)
-		
-		# Skip this gene
-		if good_idxs.sum() == 0:
-			continue
+	# Precompute the bootstrap number of cells per group
+	# Approximate with Poisson
+	weights = stats.poisson.rvs(Nc_list, size=(num_boot+1, Nc_list.shape[0])).T
+	weights[:, 0] = Nc_list
+	covariate = np.array(design_matrix[:, cov_idx].reshape(-1, 1))
+	X = np.tile(covariate, (1, num_boot+1))
 
-		if log:
+	X_mean = np.average(X, axis=0, weights=weights)
+	X_centered = X - X_mean
+	X_centered_sq = X_centered**2
+	w_X_centered = weights*X_centered
+	w_X_centered_sq = weights*X_centered_sq
+	
+	partial_func = partial(
+		hypothesis_test._ht_1d,
+		adata_dict=adata.uns['scmemo'],
+		w_X_centered=w_X_centered,
+		w_X_centered_sq=w_X_centered_sq,
+		weights=weights,
+		use_residual_var=use_residual_var,
+		dirichlet_approx=dirichlet_approx,
+		log=log)
+	
+	# Multiprocess
+# 	for idx in range(G):
+		
 
-			boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,]+5)
-			boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
-			
-		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = \
-			hypothesis_test._ht_1d(
-				design_matrix=design_matrix[good_idxs, :], 
-				boot_mean=boot_mean[good_idxs, :], 
-				boot_var=boot_var[good_idxs, :], 
-				Nc_list=Nc_list[good_idxs], 
-				cov_idx=cov_idx)
+# 		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = partial_func(idx)
+	
+# 		if idx % 20 == 0:
+# 			print(idx, mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx])
+	pool = Pool(processes=7)
+	results = pool.map(partial_func, [idx for idx in range(G)])
+	
+	for output_idx, output in enumerate(results):
+		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output
 
 	# Save the hypothesis test result
 	adata.uns['scmemo']['1d_ht'] = {}

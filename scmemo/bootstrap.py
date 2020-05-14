@@ -28,7 +28,7 @@ def _unique_expr(expr, size_factor, bins=None):
 		else:
 			num_unique = np.unique(code).shape[0]
 
-		bins = min(num_unique, 20)
+		bins = 20
 	
 	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=bins, statistic='mean')
@@ -85,8 +85,6 @@ def _bootstrap_1d(
 		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
 		n_obs = Nc
 		
-# 	nonzero_idx = expr.reshape(-1) > 0
-
 	# Estimate mean and variance
 	mean, var = estimator._poisson_1d(
 		data=(expr, gene_rvs),
@@ -102,12 +100,6 @@ def _bootstrap_1d(
 	
 	if return_times:
 		return start_time, count_time, boot_time
-	
-	# Filter some bad values
-# 	mean[(mean <= 0)] = np.nan
-# 	var[(var <= 0)] = np.nan
-	
-# 	print('boot', np.nanmin(var), np.nanmax(var))
 
 	return mean, var
 

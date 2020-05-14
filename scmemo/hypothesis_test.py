@@ -6,9 +6,16 @@
 
 import numpy as np
 import scipy.stats as stats
-from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
-from sklearn.linear_model import PoissonRegressor
+
+import bootstrap
+
+
+def _simple_wlstsq(w_X_centered, w_X_centered_sq, y, weights):
+	
+    y_mean = np.average(y, axis=0, weights=weights)    
+    beta = (w_X_centered*(y-y_mean)).sum(axis=0)/(w_X_centered_sq).sum(axis=0)
+    
+    return beta
 
 def _wlstsq(X, y, weights, cov_idx):
 	""" 
@@ -76,65 +83,79 @@ def _compute_asl(perm_diff):
 			# Failed to fit genpareto, return the upper bound
 			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 
+def _ht_1d(
+	idx,
+	adata_dict, 
+	w_X_centered, 
+	w_X_centered_sq, 
+	weights, 
+	use_residual_var,
+	dirichlet_approx,
+	log):
+	
+	good_idxs = np.zeros(w_X_centered.shape[0], dtype=bool)
+	
+	# the bootstrap arrays
+	boot_mean = np.zeros(w_X_centered.shape)*np.nan
+	boot_var = np.zeros(w_X_centered.shape)*np.nan
 
-def _ht_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
+	for group_idx, group in enumerate(adata_dict['groups']):
+
+		# Skip if any of the 1d moments are NaNs
+		if np.isnan(adata_dict['1d_moments'][group][0][idx]) or \
+			np.isnan(adata_dict['1d_moments'][group][2 if use_residual_var else 1][idx]):
+			continue
+
+		# Skip if any of the 1d moments are 0s
+		if adata_dict['1d_moments'][group][0][idx] == 0 or \
+			adata_dict['1d_moments'][group][2 if use_residual_var else 1][idx] == 0:
+			continue
+
+		# This replicate is good
+		good_idxs[group_idx] = True
+
+		# Fill in the true value
+		boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
+			adata_dict['1d_moments'][group][0][idx], adata_dict['1d_moments'][group][1][idx]		
+
+		# Generate the bootstrap values
+		data = adata_dict['group_cells'][group][:, idx]
+		boot_mean[group_idx, 1:], boot_var[group_idx, 1:] = bootstrap._bootstrap_1d(
+			data=data,
+			size_factor=adata_dict['size_factor'][group],
+			true_mean=adata_dict['1d_moments'][group][0][idx],
+			true_var=adata_dict['1d_moments'][group][1][idx],
+			num_boot=w_X_centered.shape[1]-1,
+			n_umi=adata_dict['n_umi'],
+			dirichlet_approx=dirichlet_approx)
+
+	# Skip this gene
+	if good_idxs.sum() == 0:
+		return np.nan, np.nan, np.nan, np.nan
+
+	if log:
+
+		boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,]+5)
+		boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
+
+	vals = _regress_1d(
+			w_X_centered=w_X_centered[good_idxs, :],
+			w_X_centered_sq=w_X_centered_sq[good_idxs, :],
+			boot_mean=boot_mean[good_idxs, :], 
+			boot_var=boot_var[good_idxs, :],
+			weights=weights[good_idxs, :])
+	return vals
+
+
+def _regress_1d(w_X_centered, w_X_centered_sq, boot_mean, boot_var, weights):
 	"""
 		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
-		Here, :design_matrix:, :boot_mean:, :boot_var: should have the same number of rows
+		Here, :X_center:, :X_center_Sq:, :boot_var:, :boot_mean: should have the same number of rows
 	"""
-	
-	# Get some constants
-	num_rep, num_boot = boot_mean.shape
-	_, num_param = design_matrix.shape
-	
-	# Original shapes
-	mean_shape, var_shape = boot_mean.shape, boot_var.shape
-	
-	# Impute NaNs with the column average
-# 	imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
-# 	boot_mean = imputer.fit_transform(boot_mean)
-# 	boot_var = imputer.fit_transform(boot_var)
-	
-# 	Drop columns with any NaNs
-# 	boot_mean = boot_mean[:, ~np.any(np.isnan(boot_mean), axis=0)]
-# 	boot_var = boot_var[:, ~np.any(np.isnan(boot_var), axis=0)]
-
-	# Number of unique covariate values
-	unique_cov_vals = len(set(design_matrix[:, cov_idx]))
 		
-	# Fit the linear models for all bootstrap iterations
-	if design_matrix.shape[0] > 2 and unique_cov_vals > 1:
-		
-		mean_coefs = np.zeros(num_boot)
-		var_coefs = np.zeros(num_boot)
-		
-		for boot_idx in range(num_boot):
-			
-			mean_coefs[boot_idx] = _wlstsq(
-				design_matrix, 
-				boot_mean[:, boot_idx], 
-				stats.poisson.rvs(Nc_list), cov_idx)
-			var_coefs[boot_idx] = _wlstsq(
-				design_matrix, 
-				boot_var[:, boot_idx], 
-				stats.poisson.rvs(Nc_list), cov_idx)
-			
-			
-# 			mean_coefs[boot_idx] = LinearRegression(fit_intercept=False)\
-# 				.fit(design_matrix, boot_mean[:, boot_idx], stats.poisson.rvs(Nc_list)).coef_[cov_idx]
-# 			var_coefs[boot_idx] = LinearRegression(fit_intercept=False)\
-# 				.fit(design_matrix, boot_var[:, boot_idx], stats.poisson.rvs(Nc_list)).coef_[cov_idx]
-	elif design_matrix.shape[0] == 2 and unique_cov_vals > 1:
-		print("here2")
-		ctrl_row = int(design_matrix[0, cov_idx] == 1)
-		mean_coef = boot_mean[1-ctrl_row, :] - boot_mean[ctrl_row, :]
-		var_coef = boot_var[1-ctrl_row, :] - boot_var[ctrl_row, :]
-	else:
-		return np.nan, np.nan, np.nan, np.nan
-	
-
-# 	mean_coef, mean_stderr
+	mean_coefs = _simple_wlstsq(w_X_centered, w_X_centered_sq, boot_mean, weights)
+	var_coefs = _simple_wlstsq(w_X_centered, w_X_centered_sq, boot_var, weights)
 	
 	mean_asl = _compute_asl(mean_coefs)
 	var_asl = _compute_asl(var_coefs)
