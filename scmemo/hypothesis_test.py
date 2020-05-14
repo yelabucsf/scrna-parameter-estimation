@@ -40,13 +40,17 @@ def _compute_asl(perm_diff):
 	extreme_count = (perm_diff > 0).sum()
 	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
 	
+# 	c = (perm_diff < 0).mean()
+	
+# 	return 2*min(1-c, c )
+	
 	stat = perm_diff[0]
 	boot_stat =  perm_diff[1:]
 	boot_stat = boot_stat[np.isfinite(boot_stat)]
 	
 	if boot_stat.shape[0] < 500:
 		return np.nan
-	centered = boot_stat - boot_stat.mean()
+	centered = boot_stat - stat
 	c = (centered > stat).mean()
 	
 	return 2*min(c, 1-c)
@@ -132,11 +136,8 @@ def _ht_1d(
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan, np.nan
-
-	if log:
-
-		boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,]+5)
-		boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
+	
+	boot_var[good_idxs,] = np.sqrt(boot_var[good_idxs,]+100)/boot_mean[good_idxs,]
 
 	vals = _regress_1d(
 			w_X_centered=w_X_centered[good_idxs, :],

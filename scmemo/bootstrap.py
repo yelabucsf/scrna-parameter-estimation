@@ -28,7 +28,7 @@ def _unique_expr(expr, size_factor, bins=None):
 		else:
 			num_unique = np.unique(code).shape[0]
 
-		bins = 20
+		bins = min(num_unique, 30)
 	
 	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=bins, statistic='mean')

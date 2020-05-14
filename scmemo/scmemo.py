@@ -304,8 +304,12 @@ def ht_1d_moments(
 	
 # 		if idx % 20 == 0:
 # 			print(idx, mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx])
-	pool = Pool(processes=7)
-	results = pool.map(partial_func, [idx for idx in range(G)])
+
+	try:
+		pool = Pool(processes=3)
+		results = pool.map(partial_func, [idx for idx in range(G)])
+	except:
+		pool.close()
 	
 	for output_idx, output in enumerate(results):
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output
