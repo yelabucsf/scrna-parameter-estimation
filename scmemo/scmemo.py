@@ -297,19 +297,15 @@ def ht_1d_moments(
 		log=log)
 	
 	# Multiprocess
-# 	for idx in range(G):
-		
-
-# 		mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx] = partial_func(idx)
-	
-# 		if idx % 20 == 0:
-# 			print(idx, mean_coef[idx], mean_asl[idx], var_coef[idx], var_asl[idx])
-
 	try:
 		pool = Pool(processes=3)
 		results = pool.map(partial_func, [idx for idx in range(G)])
+		pool.close()
+		pool.join()
+		
 	except:
 		pool.close()
+		pool.join()
 	
 	for output_idx, output in enumerate(results):
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output

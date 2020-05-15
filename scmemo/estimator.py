@@ -93,7 +93,7 @@ def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
 	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
 # 	mm_var = np.clip(mm_var, a_min=1e-20, a_max=np.inf)
 
-	return [mm_mean, mm_var]
+	return [mm_mean, mm_var, mm_M2]
 
 
 def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None, n_umi=1):
