@@ -6,6 +6,7 @@
 
 import numpy as np
 import scipy.stats as stats
+from sklearn.linear_model import LinearRegression
 
 import bootstrap
 
@@ -48,10 +49,8 @@ def _compute_asl(perm_diff):
 	boot_stat =  perm_diff[1:]
 	boot_stat = boot_stat[np.isfinite(boot_stat)]
 	
-	if boot_stat.shape[0] < 500:
-		return np.nan
 	centered = boot_stat - stat
-	c = (centered > stat).mean()
+	c = ((centered > stat).sum() + 1)/(boot_stat.shape[0]+1)
 	
 	return 2*min(c, 1-c)
 	
@@ -90,29 +89,27 @@ def _compute_asl(perm_diff):
 def _ht_1d(
 	idx,
 	adata_dict, 
-	w_X_centered, 
-	w_X_centered_sq, 
-	weights, 
-	use_residual_var,
-	dirichlet_approx,
-	log):
+	design_matrix,
+	Nc_list,
+	num_boot,
+	cov_idx):
 	
-	good_idxs = np.zeros(w_X_centered.shape[0], dtype=bool)
+	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
 	# the bootstrap arrays
-	boot_mean = np.zeros(w_X_centered.shape)*np.nan
-	boot_var = np.zeros(w_X_centered.shape)*np.nan
+	boot_mean = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
+	boot_var = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 
 	for group_idx, group in enumerate(adata_dict['groups']):
 
 		# Skip if any of the 1d moments are NaNs
 		if np.isnan(adata_dict['1d_moments'][group][0][idx]) or \
-			np.isnan(adata_dict['1d_moments'][group][2 if use_residual_var else 1][idx]):
+			np.isnan(adata_dict['1d_moments'][group][1][idx]):
 			continue
 
 		# Skip if any of the 1d moments are 0s
 		if adata_dict['1d_moments'][group][0][idx] == 0 or \
-			adata_dict['1d_moments'][group][2 if use_residual_var else 1][idx] == 0:
+			adata_dict['1d_moments'][group][1][idx] == 0:
 			continue
 
 		# This replicate is good
@@ -129,37 +126,49 @@ def _ht_1d(
 			size_factor=adata_dict['size_factor'][group],
 			true_mean=adata_dict['1d_moments'][group][0][idx],
 			true_var=adata_dict['1d_moments'][group][1][idx],
-			num_boot=w_X_centered.shape[1]-1,
-			n_umi=adata_dict['n_umi'],
-			dirichlet_approx=dirichlet_approx)
+			num_boot=num_boot,
+			n_umi=adata_dict['n_umi'])
 
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan, np.nan
 	
-	boot_var[good_idxs,] = np.sqrt(boot_var[good_idxs,]+100)/boot_mean[good_idxs,]
+	boot_var[good_idxs,] = np.log((boot_var[good_idxs,])/(boot_mean[good_idxs,]))
+	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,])
 
 	vals = _regress_1d(
-			w_X_centered=w_X_centered[good_idxs, :],
-			w_X_centered_sq=w_X_centered_sq[good_idxs, :],
+			design_matrix=design_matrix[good_idxs, :],
 			boot_mean=boot_mean[good_idxs, :], 
 			boot_var=boot_var[good_idxs, :],
-			weights=weights[good_idxs, :])
+			Nc_list=Nc_list[good_idxs],
+			cov_idx=cov_idx)
 	return vals
 
 
-def _regress_1d(w_X_centered, w_X_centered_sq, boot_mean, boot_var, weights):
+def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	"""
 		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
 		Here, :X_center:, :X_center_Sq:, :boot_var:, :boot_mean: should have the same number of rows
 	"""
+	
+	num_boot = boot_mean.shape[1]
+	
+	print(boot_var[:, :3])
+	boot_mean = boot_mean[:, ~np.any(np.isnan(boot_mean), axis=0)]
+	boot_var = boot_var[:, ~np.any(np.isnan(boot_var), axis=0)]
+	
+	if boot_var.shape[0] < num_boot/2:
+		return np.nan, np.nan, np.nan, np.nan
 		
-	mean_coefs = _simple_wlstsq(w_X_centered, w_X_centered_sq, boot_mean, weights)
-	var_coefs = _simple_wlstsq(w_X_centered, w_X_centered_sq, boot_var, weights)
 	
-	mean_asl = _compute_asl(mean_coefs)
-	var_asl = _compute_asl(var_coefs)
+	mean_coef = LinearRegression(fit_intercept=False)\
+		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
+	var_coef = LinearRegression(fit_intercept=False)\
+		.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
+
+	mean_asl = _compute_asl(mean_coef)
+	var_asl = _compute_asl(var_coef)
 	
-	return mean_coefs[0], mean_asl, var_coefs[0], var_asl
+	return mean_coef[0], mean_asl, var_coef[0], var_asl
 		

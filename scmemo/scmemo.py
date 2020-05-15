@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from patsy import dmatrix
 import scipy.stats as stats
+import sys
 from multiprocessing import Pool
 from functools import partial
 
@@ -265,45 +266,29 @@ def ht_1d_moments(
 			cov_idx = idx
 			break
 	
-	# Initialize empty arrays to hold bootstrap values
-	# First value is always the actual estimate
-	boot_mean = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
-	boot_var = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
-	
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_asl, var_coef, var_asl = [np.zeros(G)*np.nan for i in range(4)]
-	
-	# Precompute the bootstrap number of cells per group
-	# Approximate with Poisson
-	weights = stats.poisson.rvs(Nc_list, size=(num_boot+1, Nc_list.shape[0])).T
-	weights[:, 0] = Nc_list
-	covariate = np.array(design_matrix[:, cov_idx].reshape(-1, 1))
-	X = np.tile(covariate, (1, num_boot+1))
-
-	X_mean = np.average(X, axis=0, weights=weights)
-	X_centered = X - X_mean
-	X_centered_sq = X_centered**2
-	w_X_centered = weights*X_centered
-	w_X_centered_sq = weights*X_centered_sq
 	
 	partial_func = partial(
 		hypothesis_test._ht_1d,
 		adata_dict=adata.uns['scmemo'],
-		w_X_centered=w_X_centered,
-		w_X_centered_sq=w_X_centered_sq,
-		weights=weights,
-		use_residual_var=use_residual_var,
-		dirichlet_approx=dirichlet_approx,
-		log=log)
+		design_matrix=np.array(design_matrix),
+		Nc_list=Nc_list,
+		num_boot=num_boot,
+		cov_idx=cov_idx)
 	
 	# Multiprocess
 	try:
-		pool = Pool(processes=3)
+		pool = Pool(processes=4)
 		results = pool.map(partial_func, [idx for idx in range(G)])
 		pool.close()
 		pool.join()
 		
-	except:
+	except Exception as err:
+		print('pool failed')
+		print("Unexpected error:", sys.exc_info()[0])
+		print(err)
+
 		pool.close()
 		pool.join()
 	
