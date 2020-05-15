@@ -51,11 +51,8 @@ def _unique_expr(expr, size_factor, bins=None):
 def _bootstrap_1d(
 	data, 
 	size_factor,
-	true_mean, 
-	true_var,
 	num_boot=1000, 
 	n_umi=1, 
-	dirichlet_approx=False,
 	bins=None,
 	return_times=False):
 	"""
@@ -98,14 +95,14 @@ def _bootstrap_1d(
 	
 	# Generate the bootstrap samples.
 	# The first sample is always the original data counts.
-	gen = np.random.Generator(np.random.PCG64(np.random.randint(10000)))
-	if dirichlet_approx:
-		gene_rvs = gen.dirichlet(alpha=counts, size=num_boot).T
-		n_obs = 1
-	else:
-# 		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
-		gene_rvs = stats.poisson.rvs(counts, size=(num_boot, counts.shape[0])).T
-		n_obs = Nc
+# 	gen = np.random.Generator(np.random.PCG64(np.random.randint(10000)))
+# 	if dirichlet_approx:
+# 		gene_rvs = gen.dirichlet(alpha=counts, size=num_boot).T
+# 		n_obs = 1
+# 	else:
+# 	gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
+	gene_rvs = stats.poisson.rvs(counts, size=(num_boot, counts.shape[0])).T
+	n_obs = Nc
 		
 	# Estimate mean and variance
 	mean, var = estimator._poisson_1d(
