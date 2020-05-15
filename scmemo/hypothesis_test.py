@@ -9,6 +9,7 @@ import scipy.stats as stats
 from sklearn.linear_model import LinearRegression
 
 import bootstrap
+import estimator
 
 
 def _simple_wlstsq(w_X_centered, w_X_centered_sq, y, weights):
@@ -38,19 +39,20 @@ def _compute_asl(perm_diff):
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 
-	extreme_count = (perm_diff > 0).sum()
-	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
+# 	extreme_count = (perm_diff > 0).sum()
+# 	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
 	
 # 	c = (perm_diff < 0).mean()
 	
 # 	return 2*min(1-c, c )
 	
-	stat = perm_diff[0]
-	boot_stat =  perm_diff[1:]
-	boot_stat = boot_stat[np.isfinite(boot_stat)]
+# 	stat = perm_diff[0]
+# 	boot_stat =  perm_diff[1:]
+# 	boot_stat = boot_stat[np.isfinite(boot_stat)]
 	
-	centered = boot_stat - stat
-	c = ((centered > stat).sum() + 1)/(boot_stat.shape[0]+1)
+# 	centered = boot_stat - stat
+
+	c = ((perm_diff[1:] > 0).sum() + 1)/(perm_diff[1:].shape[0]+1)
 	
 	return 2*min(c, 1-c)
 	
@@ -117,23 +119,30 @@ def _ht_1d(
 
 		# Fill in the true value
 		boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
-			adata_dict['1d_moments'][group][0][idx], adata_dict['1d_moments'][group][1][idx]		
+			adata_dict['1d_moments'][group][0][idx], adata_dict['1d_moments'][group][2][idx]		
 
 		# Generate the bootstrap values
 		data = adata_dict['group_cells'][group][:, idx]
-		boot_mean[group_idx, 1:], boot_var[group_idx, 1:] = bootstrap._bootstrap_1d(
+		mean, var = bootstrap._bootstrap_1d(
 			data=data,
-			size_factor=adata_dict['size_factor'][group],
+			size_factor=adata_dict['approx_size_factor'][group],
 			true_mean=adata_dict['1d_moments'][group][0][idx],
 			true_var=adata_dict['1d_moments'][group][1][idx],
 			num_boot=num_boot,
 			n_umi=adata_dict['n_umi'])
+		
+		boot_mean[group_idx, 1:] = mean
+		boot_var[group_idx, 1:] = var #vestimator._residual_variance(mean, var, adata_dict['mv_regressor'][group])
+	
+	return boot_mean, boot_var
 
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan, np.nan
 	
-	boot_var[good_idxs,] = np.log((boot_var[good_idxs,])/(boot_mean[good_idxs,]))
+# 	print(boot_var.min(), boot_var.mean(), boot_var.max())
+	boot_var[good_idxs,] = np.log(boot_var[good_idxs,] + 5)
+	
 	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,])
 
 	vals = _regress_1d(
@@ -154,13 +163,11 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	
 	num_boot = boot_mean.shape[1]
 	
-	print(boot_var[:, :3])
 	boot_mean = boot_mean[:, ~np.any(np.isnan(boot_mean), axis=0)]
 	boot_var = boot_var[:, ~np.any(np.isnan(boot_var), axis=0)]
 	
-	if boot_var.shape[0] < num_boot/2:
+	if boot_var.shape[1] < num_boot*0.9:
 		return np.nan, np.nan, np.nan, np.nan
-		
 	
 	mean_coef = LinearRegression(fit_intercept=False)\
 		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]

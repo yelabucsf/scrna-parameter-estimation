@@ -10,6 +10,7 @@
 """
 
 import scipy.sparse as sparse
+import scipy.stats as stats
 import numpy as np
 import time
 import scipy as sp
@@ -54,21 +55,19 @@ def _fit_mv_regressor(mean, var):
 	
 	cond = (mean > 0) & (var > 0)
 	m, v = np.log(mean[cond]), np.log(var[cond])
-	model = linear_model.LinearRegression().fit(m.reshape(-1, 1), v)
+	slope, inter, _, _, _ = stats.linregress(m, v)
 	
-	return model
+	return [slope, inter]
 
 
-def _residual_variance(mean, var, model):
+def _residual_variance(mean, var, mv_fit):
 	
-	cond = (mean > 0) & (var > 0)
-	res_var = np.full(mean.shape[0], np.nan)
+	cond = (mean > 0)
+	rv = np.zeros(mean.shape)*np.nan
+# 	rv[cond] = var[cond] / (np.exp(mv_fit[1])*mean[cond]**mv_fit[0])
+	rv[cond] = var[cond]/mean[cond]
 	
-	if np.max(cond) > 0:
-		v_pred = model.predict(np.log(mean[cond]).reshape(-1, 1))
-		res_var[cond] = np.log(var[cond]) - v_pred
-	
-	return res_var
+	return rv
 
 
 def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):

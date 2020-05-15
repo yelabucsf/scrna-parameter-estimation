@@ -71,15 +71,17 @@ def compute_1d_moments(
 	# Compute size factors for all groups
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
-# 	# Bin the size factors
-# 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=50, statistic='median')
-# 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
-# 	approx_sf = binned_stat[0][bin_idx-1]
-# 	max_sf = size_factor.max()
-# 	approx_sf[size_factor == max_sf] = max_sf
-# 	size_factor = approx_sf
+	# Bin the size factors
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=100, statistic='median')
+	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
+	approx_sf = binned_stat[0][bin_idx-1]
+	max_sf = size_factor.max()
+	approx_sf[size_factor == max_sf] = max_sf
 	
 	adata.uns['scmemo']['all_size_factor'] = size_factor
+	adata.uns['scmemo']['all_approx_size_factor'] = approx_sf
+	adata.uns['scmemo']['approx_size_factor'] = \
+		{group:approx_sf[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
 	adata.uns['scmemo']['size_factor'] = \
 		{group:size_factor[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
 	
@@ -113,21 +115,19 @@ def compute_1d_moments(
 				] for group in adata.uns['scmemo']['groups']}
 		adata._inplace_subset_var(overall_gene_mask)
 	
-	# Compute residual variance
-	if residual_var:
-	
-		adata.uns['scmemo']['mv_regressor'] = {}
-		for group in adata.uns['scmemo']['groups']:
-			
-			adata.uns['scmemo']['mv_regressor'][group] = estimator._fit_mv_regressor(
-				mean=adata.uns['scmemo']['1d_moments'][group][0],
-				var=adata.uns['scmemo']['1d_moments'][group][1])
-			
-			res_var = estimator._residual_variance(
-				adata.uns['scmemo']['1d_moments'][group][0],
-				adata.uns['scmemo']['1d_moments'][group][1],
-				adata.uns['scmemo']['mv_regressor'][group])
-			adata.uns['scmemo']['1d_moments'][group].append(res_var)
+	# Compute residual variance	
+	adata.uns['scmemo']['mv_regressor'] = {}
+	for group in adata.uns['scmemo']['groups']:
+
+		adata.uns['scmemo']['mv_regressor'][group] = estimator._fit_mv_regressor(
+			mean=adata.uns['scmemo']['1d_moments'][group][0],
+			var=adata.uns['scmemo']['1d_moments'][group][1])
+
+		res_var = estimator._residual_variance(
+			adata.uns['scmemo']['1d_moments'][group][0],
+			adata.uns['scmemo']['1d_moments'][group][1],
+			adata.uns['scmemo']['mv_regressor'][group])
+		adata.uns['scmemo']['1d_moments'][group].append(res_var)
 	
 	if not inplace:
 		return adata
@@ -230,10 +230,7 @@ def ht_1d_moments(
 	formula_like,
 	cov_column,
 	inplace=True, 
-	use_residual_var=True, 
 	num_boot=10000, 
-	dirichlet_approx=True,
-	log=True,
 	verbose=False):
 	"""
 		Performs hypothesis testing for 1D moments.
@@ -279,11 +276,11 @@ def ht_1d_moments(
 	
 	# Multiprocess
 	try:
-		pool = Pool(processes=4)
+		pool = Pool(processes=2)
 		results = pool.map(partial_func, [idx for idx in range(G)])
 		pool.close()
 		pool.join()
-		
+				
 	except Exception as err:
 		print('pool failed')
 		print("Unexpected error:", sys.exc_info()[0])
@@ -291,6 +288,8 @@ def ht_1d_moments(
 
 		pool.close()
 		pool.join()
+	
+	return results
 	
 	for output_idx, output in enumerate(results):
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output

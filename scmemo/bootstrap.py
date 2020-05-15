@@ -22,20 +22,22 @@ def _unique_expr(expr, size_factor, bins=None):
 	
 	code = expr.dot(np.random.random(expr.shape[1]))
 
-	if bins is None:
-		if expr.shape[1] == 1:
-			num_unique = len(set(expr.data))
-		else:
-			num_unique = np.unique(code).shape[0]
+# 	if bins is None:
+# 		if expr.shape[1] == 1:
+# 			num_unique = len(set(expr.data))
+# 		else:
+# 			num_unique = np.unique(code).shape[0]
 
-		bins = min(num_unique, 30)
+# 		bins = 30
 	
-	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=bins, statistic='mean')
-	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
-	approx_sf = binned_stat[0][bin_idx-1]
-	max_sf = size_factor.max()
-	approx_sf[size_factor == max_sf] = max_sf
+# 	_, sf_bin_edges = np.histogram(size_factor, bins=bins)
+# 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=bins, statistic='mean')
+# 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
+# 	approx_sf = binned_stat[0][bin_idx-1]
+# 	max_sf = size_factor.max()
+# 	approx_sf[size_factor == max_sf] = max_sf
+	
+	approx_sf = size_factor
 	
 	start_time = time.time()
 	
@@ -53,7 +55,7 @@ def _bootstrap_1d(
 	true_var,
 	num_boot=1000, 
 	n_umi=1, 
-	dirichlet_approx=True,
+	dirichlet_approx=False,
 	bins=None,
 	return_times=False):
 	"""
@@ -75,6 +77,25 @@ def _bootstrap_1d(
 	
 	count_time = time.time()
 	
+# 	boot_means, boot_vars = [], []
+	
+# 	for i in range(num_boot):
+		
+# 		boot_idxs = np.random.choice(data.shape[0], data.shape[0])
+		
+# 		res = estimator._poisson_1d(
+# 			data=data[boot_idxs],
+# 			n_obs=data.shape[0],
+# 			size_factor=size_factor[boot_idxs],
+# 			n_umi=n_umi)
+		
+# 		boot_means.append(res[0][0])
+# 		boot_vars.append(res[1][0])
+	
+# 	mean = np.array(boot_means)
+# 	var = np.array(boot_vars)
+			
+	
 	# Generate the bootstrap samples.
 	# The first sample is always the original data counts.
 	gen = np.random.Generator(np.random.PCG64(np.random.randint(10000)))
@@ -82,7 +103,8 @@ def _bootstrap_1d(
 		gene_rvs = gen.dirichlet(alpha=counts, size=num_boot).T
 		n_obs = 1
 	else:
-		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
+# 		gene_rvs = gen.multinomial(n=Nc, pvals=counts/Nc, size=num_boot).T
+		gene_rvs = stats.poisson.rvs(counts, size=(num_boot, counts.shape[0])).T
 		n_obs = Nc
 		
 	# Estimate mean and variance
@@ -93,8 +115,8 @@ def _bootstrap_1d(
 		n_umi=n_umi)
 
 	# Bias correction
-	mean += true_mean - mean.mean()
-	var += true_var - var.mean()
+# 	mean += true_mean - mean.mean()
+# 	var += true_var - var.mean()
 		
 	boot_time = time.time()
 	
