@@ -64,8 +64,8 @@ def _residual_variance(mean, var, mv_fit):
 	
 	cond = (mean > 0)
 	rv = np.zeros(mean.shape)*np.nan
-# 	rv[cond] = var[cond] / (np.exp(mv_fit[1])*mean[cond]**mv_fit[0])
-	rv[cond] = var[cond]/mean[cond]
+	rv[cond] = var[cond] / (np.exp(mv_fit[1])*mean[cond]**mv_fit[0])
+# 	rv[cond] = var[cond]/mean[cond]
 	
 	return rv
 
@@ -79,18 +79,15 @@ def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
 	if type(data) == tuple:
 		size_factor = size_factor if size_factor is not None else (1, 1)
 		mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
-# 		mm_M2 = (data[0]**2*data[1]*size_factor[1]).sum(axis=0)/n_obs
 		mm_M2 = (data[0]**2*data[1]*size_factor[1] - data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
 	else:
 		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0])
 		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
-# 		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs
 
 		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
 	
 	mm_mean = mm_M1/n_umi
 	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
-# 	mm_var = np.clip(mm_var, a_min=1e-20, a_max=np.inf)
 
 	return [mm_mean, mm_var]
 
@@ -201,12 +198,12 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 	
 	corr = np.full(cov.shape, np.nan)
 	if boot:
-		var_prod = np.sqrt(var_1)*np.sqrt(var_2)
+		var_prod = np.sqrt(var_1*var_2)
 	else:
-		var_prod = np.outer(np.sqrt(var_1), np.sqrt(var_2))
+		var_prod = np.sqrt(np.outer(var_1, var_2))
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
-	corr[~np.isfinite(corr)] = -np.inf
 	
-	corr[(corr < -1) | (corr > 1)] = np.nan
+	if not boot:
+		corr = np.clip(corr, a_min=-1, a_max=1)
 	
 	return corr

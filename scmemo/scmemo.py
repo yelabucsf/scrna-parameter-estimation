@@ -12,6 +12,7 @@ import scipy.stats as stats
 import sys
 from multiprocessing import Pool
 from functools import partial
+import itertools
 
 import bootstrap
 import estimator
@@ -93,9 +94,13 @@ def compute_1d_moments(
 		n_umi=adata.uns['scmemo']['n_umi']) for group in adata.uns['scmemo']['groups']}
 	
 	# Create gene masks for each group
-	adata.uns['scmemo']['gene_filter'] = \
-		{group:(adata.uns['scmemo']['1d_moments'][group][0] > filter_mean_thresh/adata.uns['scmemo']['n_umi'] ) 
-		 for group in adata.uns['scmemo']['groups']}
+	adata.uns['scmemo']['gene_filter'] = {}
+	for group in adata.uns['scmemo']['groups']:
+		
+		obs_mean = adata.uns['scmemo']['group_cells'][group].mean(axis=0).A1 
+		expr_filter = (obs_mean > filter_mean_thresh)
+		expr_filter &= (adata.uns['scmemo']['1d_moments'][group][1] > 0)
+		adata.uns['scmemo']['gene_filter'][group] = expr_filter
 	
 	# Create overall gene mask
 	gene_masks = np.vstack([adata.uns['scmemo']['gene_filter'][group] for group in adata.uns['scmemo']['groups']])
@@ -164,74 +169,20 @@ def compute_2d_moments(adata, gene_1, gene_2, inplace=True):
 		
 		corr = estimator._corr_from_cov(cov, var_1, var_2)
 		
-		adata.uns['scmemo']['2d_moments'][group] = (cov, corr, var_1, var_2)
+		adata.uns['scmemo']['2d_moments'][group] = {'cov':cov, 'corr':corr, 'var_1':var_1, 'var_2':var_2}
 
 	if not inplace:
 		return adata
 
-	
-def bootstrap_1d_moments(adata, inplace=True, num_boot=10000, verbose=False, bins=5):
-	"""
-		Computes the CI for mean and variance of each gene 
-	"""
-	
-	if not inplace:
-		adata = adata.copy()
-		
-	adata.uns['scmemo']['1d_ci'] = {}
-	for group in adata.uns['scmemo']['groups']:
-		
-		if verbose:
-			print(group)
-				
-		# Compute 1D CIs
-		mean_se, log_mean_se, var_se, log_var_se, res_var_se = bootstrap._bootstrap_1d(
-			data=adata.uns['scmemo']['group_cells'][group], 
-			size_factor=adata.uns['scmemo']['size_factor'][group], 
-			num_boot=num_boot, 
-			mv_regressor=adata.uns['scmemo']['mv_regressor'][group],
-			n_umi=adata.uns['scmemo']['n_umi'],
-			bins=bins)
-				
-		adata.uns['scmemo']['1d_ci'][group] = [mean_se, log_mean_se, var_se, log_var_se, res_var_se]
-		
-	if not inplace:
-		return adata
-		
-		
-def bootstrap_2d_moments(adata, inplace=True, num_boot=10000):
-	"""
-		Computes the CI for covariance and correlation of each gene pair 
-	"""
-	
-	if not inplace:
-		adata = adata.copy()
-		
-	adata.uns['scmemo']['2d_ci'] = {}
-	for group in adata.uns['scmemo']['groups']:
-						
-		# Compute 2D CIs
-		cov_se, corr_se = bootstrap._bootstrap_2d(
-			data=adata.uns['scmemo']['group_cells'][group], 
-			size_factor=adata.uns['scmemo']['size_factor'][group],
-			gene_idxs_1=adata.uns['scmemo']['2d_moments']['gene_idx_1'],
-			gene_idxs_2=adata.uns['scmemo']['2d_moments']['gene_idx_2'],
-			num_boot=num_boot,
-			n_umi=adata.uns['scmemo']['n_umi'])
-		
-		adata.uns['scmemo']['2d_ci'][group] = [cov_se, corr_se]
-		
-	if not inplace:
-		return adata
 
-	
 def ht_1d_moments(
 	adata, 
 	formula_like,
 	cov_column,
 	inplace=True, 
 	num_boot=10000, 
-	verbose=False):
+	verbose=False,
+	num_cpus=1):
 	"""
 		Performs hypothesis testing for 1D moments.
 	"""
@@ -253,8 +204,10 @@ def ht_1d_moments(
 		
 	# Create the design matrix from the patsy formula
 	design_df = pd.DataFrame(design_df_list, columns=adata.uns['scmemo']['label_columns'])
-	design_matrix = dmatrix(formula_like, design_df)
-	design_matrix_cols = design_matrix.design_info.column_names
+	dmat = dmatrix(formula_like, design_df)
+	design_matrix_cols = dmat.design_info.column_names.copy()
+	design_matrix = np.array(dmat)
+	del dmat
 	Nc_list = np.array(Nc_list)
 	
 	# Find the covariate that actually matters
@@ -269,25 +222,20 @@ def ht_1d_moments(
 	partial_func = partial(
 		hypothesis_test._ht_1d,
 		adata_dict=adata.uns['scmemo'],
-		design_matrix=np.array(design_matrix),
+		design_matrix=design_matrix,
 		Nc_list=Nc_list,
 		num_boot=num_boot,
 		cov_idx=cov_idx)
 	
 	# Multiprocess
 	try:
-		pool = Pool(processes=8)
+		pool = Pool(processes=num_cpus)
 		results = pool.map(partial_func, [idx for idx in range(G)])
-		pool.close()
-		pool.join()
 				
 	except Exception as err:
 		print('pool failed')
 		print("Unexpected error:", sys.exc_info()[0])
 		print(err)
-
-		pool.close()
-		pool.join()
 		
 	for output_idx, output in enumerate(results):
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output
@@ -302,6 +250,99 @@ def ht_1d_moments(
 		return adata
 
 	
+def ht_2d_moments(
+	adata, 
+	formula_like,
+	cov_column,
+	inplace=True, 
+	num_boot=10000, 
+	verbose=False,
+	num_cpu=1):
+	"""
+		Performs hypothesis testing for 1D moments.
+	"""
+	
+	if not inplace:
+		adata = adata.copy()
+	
+	# Get number of genes
+	G = adata.shape[1]
+	
+	# Create design DF
+	design_df_list, Nc_list = [], []
+	
+	# Create the design df
+	for group in adata.uns['scmemo']['groups']:
+		
+		design_df_list.append(group.split(adata.uns['scmemo']['label_delimiter'])[1:])
+		Nc_list.append(adata.uns['scmemo']['group_cells'][group].shape[0])
+		
+	# Create the design matrix from the patsy formula
+	design_df = pd.DataFrame(design_df_list, columns=adata.uns['scmemo']['label_columns'])
+	dmat = dmatrix(formula_like, design_df)
+	design_matrix_cols = dmat.design_info.column_names.copy()
+	design_matrix = np.array(dmat)
+	del dmat
+	Nc_list = np.array(Nc_list)
+	
+	# Find the covariate that actually matters
+	for idx, col_name in enumerate(design_matrix_cols):
+		if cov_column in col_name:
+			cov_idx = idx
+			break
+	
+	# Get gene idxs
+	gene_idx_1 = adata.uns['scmemo']['2d_moments']['gene_idx_1']
+	gene_idx_2 = adata.uns['scmemo']['2d_moments']['gene_idx_2']
+		
+	# Initialize empty arrays to hold fitted coefficients and achieved significance level
+	corr_coef, corr_asl = [np.zeros((gene_idx_1.shape[0], gene_idx_2.shape[0]))*np.nan for i in range(2)]
+	
+	partial_func = partial(
+		hypothesis_test._ht_2d,
+		adata_dict=adata.uns['scmemo'],
+		design_matrix=design_matrix,
+		Nc_list=Nc_list,
+		num_boot=num_boot,
+		cov_idx=cov_idx)
+	
+	# Multiprocess
+	
+# 	results = []
+# 	for conv_idx_1, conv_idx_2 in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0])):
+		
+# 		results.append(partial_func((gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2])))
+	
+	try:
+		pool = Pool(processes=num_cpu)
+		results = pool.map(partial_func, [
+			(gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2]) for conv_idx_1, conv_idx_2 \
+			in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))])
+		pool.close()
+		pool.join()
+				
+	except Exception as err:
+		print('pool failed')
+		print("Unexpected error:", sys.exc_info()[0])
+		print(err)
+
+		pool.close()
+		pool.join()
+
+	for output_idx, conv_idxs in enumerate(
+		itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))):
+		corr_coef[conv_idxs[0], conv_idxs[1]], corr_asl[conv_idxs[0], conv_idxs[1]] = results[output_idx]
+	
+	# Save the hypothesis test result
+	adata.uns['scmemo']['2d_ht'] = {}
+	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'cov_column', 'corr_coef', 'corr_asl']
+	for attr in attrs:
+		adata.uns['scmemo']['2d_ht'][attr] = eval(attr)
+		
+	if not inplace:
+		return adata
+	
+
 def get_1d_ht_result(adata):
 	"""
 		Getter function for 1d result. 
