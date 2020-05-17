@@ -73,7 +73,7 @@ def compute_1d_moments(
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
 	# Bin the size factors
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=50, statistic='median')
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=30, statistic='median')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
 	max_sf = size_factor.max()

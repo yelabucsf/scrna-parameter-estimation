@@ -216,7 +216,7 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	
 	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
 	
-	if boot_corr.shape[1] < num_boot*0.3:
+	if boot_corr.shape[1] < num_boot*0.5:
 		return np.nan, np.nan
 	
 	corr_coef = LinearRegression(fit_intercept=False)\

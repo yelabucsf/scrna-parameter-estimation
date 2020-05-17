@@ -21,12 +21,12 @@ if __name__ == '__main__':
 	with open(data_path + 'all_highcount_tfs.pkl', 'rb') as f:
 		tfs = pkl.load(f)
 		
-	for ct in cts[:3]:
+	for ct in cts:
 		
 		print('Starting ct', ct)
 				
 		adata_ct =  adata[adata.obs.cell == ct].copy()
-		scmemo.create_groups(adata_ct, label_columns=['stim', 'ind'], inplace=True)
+		scmemo.create_groups(adata_ct, label_columns=['stim'], inplace=True)
 		scmemo.compute_1d_moments(
 			adata_ct, inplace=True, filter_genes=True, 
 			residual_var=True, use_n_umi=False, filter_mean_thresh=0.07, 
@@ -39,6 +39,6 @@ if __name__ == '__main__':
 
 		scmemo.compute_2d_moments(adata_ct, available_tfs, target_genes)
 			
-		scmemo.ht_2d_moments(adata_ct, formula_like='1 + stim', cov_column='stim', num_cpu=11)
+		scmemo.ht_2d_moments(adata_ct, formula_like='1 + stim', cov_column='stim', num_cpu=10)
 				
-		adata_ct.write(data_path + 'result_2d/{}_2d_result_2.h5ad'.format(label_converter[ct]))
+		adata_ct.write(data_path + 'result_2d/{}_2d_result_pooled.h5ad'.format(label_converter[ct]))

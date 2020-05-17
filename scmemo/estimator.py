@@ -201,6 +201,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 		var_prod = np.sqrt(var_1*var_2)
 	else:
 		var_prod = np.sqrt(np.outer(var_1, var_2))
+		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
 	
 	if not boot:
