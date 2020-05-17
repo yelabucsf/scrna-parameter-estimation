@@ -187,16 +187,21 @@ def _ht_2d(
 			num_boot=num_boot,
 			n_umi=adata_dict['n_umi'])
 		
+		# Fischer transformation
+# 		corr = np.arctanh(corr)
+		
 		# Push NaNs to the back
-		nan_idx = np.isnan(corr)
-		nan_count = nan_idx.sum()
-		boot_corr[group_idx, 1:(num_boot-nan_count+1)] = corr[~nan_idx]
-		boot_corr[group_idx, (num_boot-nan_count+1):] = np.nan
+# 		nan_idx = np.isnan(corr)
+# 		nan_count = nan_idx.sum()
+# 		boot_corr[group_idx, 1:(num_boot-nan_count+1)] = corr[~nan_idx]
+# 		boot_corr[group_idx, (num_boot-nan_count+1):] = np.nan
+
+		boot_corr[group_idx, 1:] = corr
 	
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan
-			
+
 	vals = _regress_2d(
 			design_matrix=design_matrix[good_idxs, :],
 			boot_corr=boot_corr[good_idxs, :],
@@ -215,7 +220,7 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	
 	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
 	
-	if boot_corr.shape[1] < num_boot*0.5:
+	if boot_corr.shape[1] < num_boot*0.3:
 		return np.nan, np.nan
 	
 	corr_coef = LinearRegression(fit_intercept=False)\

@@ -73,7 +73,7 @@ def compute_1d_moments(
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
 	# Bin the size factors
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=30, statistic='median')
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=50, statistic='median')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
 	max_sf = size_factor.max()
@@ -99,7 +99,7 @@ def compute_1d_moments(
 		
 		obs_mean = adata.uns['scmemo']['group_cells'][group].mean(axis=0).A1 
 		expr_filter = (obs_mean > filter_mean_thresh)
-		expr_filter &= (adata.uns['scmemo']['1d_moments'][group][1] > 0)
+# 		expr_filter &= (adata.uns['scmemo']['1d_moments'][group][1] > 0)
 		adata.uns['scmemo']['gene_filter'][group] = expr_filter
 	
 	# Create overall gene mask

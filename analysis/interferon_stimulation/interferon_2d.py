@@ -21,7 +21,7 @@ if __name__ == '__main__':
 	with open(data_path + 'all_highcount_tfs.pkl', 'rb') as f:
 		tfs = pkl.load(f)
 		
-	for ct in cts[1:]:
+	for ct in cts[:3]:
 		
 		print('Starting ct', ct)
 				
@@ -41,4 +41,4 @@ if __name__ == '__main__':
 			
 		scmemo.ht_2d_moments(adata_ct, formula_like='1 + stim', cov_column='stim', num_cpu=11)
 				
-		adata_ct.write(data_path + 'result_2d/{}_2d_result.h5ad'.format(label_converter[ct]))
+		adata_ct.write(data_path + 'result_2d/{}_2d_result_2.h5ad'.format(label_converter[ct]))

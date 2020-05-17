@@ -107,11 +107,15 @@ def _bootstrap_2d(
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 	
-	var_1[var_1 < 0] = np.nan
-	var_2[var_2 < 0] = np.nan
-	
+# 	var_prod = var_1*var_2
+# 	to_add = var_prod[var_prod > 0].min() - var_prod.min()
+# 	corr = (cov + to_add) / np.sqrt(var_prod + to_add)
+# 	print(corr.min(), corr.max())
+
+# 	corr_sq = cov**2/var_prod
+		
 	# Convert to correlation
 	corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
-	
+		
 	return cov, corr, var_1, var_2
 		
