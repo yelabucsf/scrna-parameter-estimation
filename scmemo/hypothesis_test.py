@@ -109,12 +109,8 @@ def _ht_1d(
 		boot_var[group_idx, 1:] = estimator._residual_variance(mean, var, adata_dict['mv_regressor'][group])
 	
 	# Skip this gene
-	if good_idxs.sum() == 0:
-		return np.nan, np.nan, np.nan, np.nan
-	
-	boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
-	
-	boot_mean[good_idxs,] = np.log(np.clip(boot_mean[good_idxs,], a_min=1e-18, a_max=np.inf))
+	boot_var[good_idxs,] = np.log(boot_var[good_idxs,])
+	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,])
 
 	vals = _regress_1d(
 			design_matrix=design_matrix[good_idxs, :],

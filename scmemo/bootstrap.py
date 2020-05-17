@@ -58,7 +58,8 @@ def _bootstrap_1d(
 	if expr.shape[0] <= 1:
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
 		
-	gene_rvs = stats.poisson.rvs(counts, size=(num_boot, counts.shape[0])).T
+	gen = np.random.Generator(np.random.PCG64(5))
+	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
 	n_obs = Nc
 		
 	# Estimate mean and variance
@@ -87,7 +88,8 @@ def _bootstrap_2d(
 	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
 	
 	# Generate the bootstrap samples
-	gene_rvs = stats.poisson.rvs(counts, size=(num_boot, counts.shape[0])).T
+	gen = np.random.Generator(np.random.PCG64(5))
+	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
 	n_obs = Nc
 	
 	# Estimate the covariance and variance
@@ -107,12 +109,11 @@ def _bootstrap_2d(
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
 	
+	# Some trickery to allow for the full bootstrap distribution
 # 	var_prod = var_1*var_2
-# 	to_add = var_prod[var_prod > 0].min() - var_prod.min()
-# 	corr = (cov + to_add) / np.sqrt(var_prod + to_add)
-# 	print(corr.min(), corr.max())
-
+# 	sign = np.sign(cov)
 # 	corr_sq = cov**2/var_prod
+# 	corr = sign*np.sqrt(corr_sq + 1)
 		
 	# Convert to correlation
 	corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)

@@ -320,6 +320,7 @@ def ht_2d_moments(
 			in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))])
 		pool.close()
 		pool.join()
+		pool.close()
 				
 	except Exception as err:
 		print('pool failed')
@@ -328,6 +329,7 @@ def ht_2d_moments(
 
 		pool.close()
 		pool.join()
+		pool.close()
 
 	for output_idx, conv_idxs in enumerate(
 		itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))):
