@@ -70,7 +70,7 @@ def _residual_variance(mean, var, mv_fit):
 	return rv
 
 
-def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
+def _poisson_1d(data, n_obs, size_factor=None, n_umi=1, pad=False):
 	"""
 		Estimate the variance using the Poisson noise process.
 		
@@ -79,15 +79,23 @@ def _poisson_1d(data, n_obs, size_factor=None, n_umi=1):
 	if type(data) == tuple:
 		size_factor = size_factor if size_factor is not None else (1, 1)
 		mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
-		mm_M2 = (data[0]**2*data[1]*size_factor[1] - data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
+		mm_M2 = (data[0]**2*data[1]*size_factor[1] - 0.9*data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
 	else:
-		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0])
-		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
-
-		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
+		
+		if not pad:
+			row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0])
+			mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
+			mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - 0.9*sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
+		else:
+			row_weight = (1/size_factor).reshape([-1, 1]) if size_factor is not None else np.ones(data.shape[0])
+			dense_mat = data.toarray()
+			mm_M1 = (dense_mat*row_weight).mean(axis=0)
+			mm_M2 = (dense_mat**2*row_weight**2).mean(axis=0) - 0.9*(dense_mat*row_weight**2).mean(axis=0)
 	
 	mm_mean = mm_M1/n_umi
 	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
+    
+    
 
 	return [mm_mean, mm_var]
 
@@ -121,7 +129,7 @@ def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None, n_umi=1):
 		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0]).reshape([1, -1])
 		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
 		prod = (X.T*Y).toarray()/X.shape[0]
-		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - 0.9*data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
 		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
 					
 	return cov/n_umi**2
@@ -205,6 +213,6 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
 	
 	if not boot:
-		corr = np.clip(corr, a_min=-1, a_max=1)
+		corr[(corr > 1) | (corr < -1)] = np.nan
 	
 	return corr

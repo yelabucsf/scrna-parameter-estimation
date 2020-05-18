@@ -31,8 +31,10 @@ def _unique_expr(expr, size_factor):
 	code += np.random.random()*approx_sf
 	
 	_, index, count = np.unique(code, return_index=True, return_counts=True)
+    
+	expr_to_return = expr[index].toarray() + 1e-6
 	
-	return 1/approx_sf[index].reshape(-1, 1), 1/approx_sf[index].reshape(-1, 1)**2, expr[index].toarray(), count
+	return 1/approx_sf[index].reshape(-1, 1), 1/approx_sf[index].reshape(-1, 1)**2, expr_to_return, count
 
 
 def _bootstrap_1d(

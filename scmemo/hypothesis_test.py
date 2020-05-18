@@ -11,6 +11,19 @@ from sklearn.linear_model import LinearRegression
 import bootstrap
 import estimator
 
+
+def _push_nan(val, cond='nan'):
+	
+	if cond == 'nan':
+		nan_idx = np.isnan(val)
+	else:
+		nan_idx = (val < 0)
+	nan_count = nan_idx.sum()
+	val[:(val.shape[0]-nan_count)] = val[~nan_idx]
+	val[(val.shape[0]-nan_count):] = np.nan
+	
+	return val
+
 def _compute_asl(perm_diff):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
@@ -104,13 +117,19 @@ def _ht_1d(
 			size_factor=adata_dict['approx_size_factor'][group],
 			num_boot=num_boot,
 			n_umi=adata_dict['n_umi'])
+				
+		res_var = estimator._residual_variance(mean, var, adata_dict['mv_regressor'][group])
 		
-		boot_mean[group_idx, 1:] = mean
-		boot_var[group_idx, 1:] = estimator._residual_variance(mean, var, adata_dict['mv_regressor'][group])
+		boot_mean[group_idx, 1:] = _push_nan(mean)
+		boot_var[group_idx, 1:] = _push_nan(res_var)
 	
 	# Skip this gene
-	boot_var[good_idxs,] = np.log(boot_var[good_idxs,])
-	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,])
+	if good_idxs.sum() == 0:
+		return np.nan, np.nan, np.nan, np.nan
+		
+	# Push NaN's to the back
+	boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
+	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,]+5)
 
 	vals = _regress_1d(
 			design_matrix=design_matrix[good_idxs, :],
@@ -133,12 +152,12 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	boot_mean = boot_mean[:, ~np.any(~np.isfinite(boot_mean), axis=0)]
 	boot_var = boot_var[:, ~np.any(~np.isfinite(boot_var), axis=0)]
 	
-	if boot_var.shape[1] < num_boot*0.9:
+	if boot_var.shape[1] < num_boot*0.5:
 		return np.nan, np.nan, np.nan, np.nan
 	
-	mean_coef = LinearRegression(fit_intercept=False)\
+	mean_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
 		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
-	var_coef = LinearRegression(fit_intercept=False)\
+	var_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
 		.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
 
 	mean_asl = _compute_asl(mean_coef[1:])
@@ -219,7 +238,7 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	if boot_corr.shape[1] < num_boot*0.5:
 		return np.nan, np.nan
 	
-	corr_coef = LinearRegression(fit_intercept=False)\
+	corr_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
 		.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
 
 	corr_asl = _compute_asl(corr_coef[1:])

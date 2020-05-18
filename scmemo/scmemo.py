@@ -73,7 +73,7 @@ def compute_1d_moments(
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
 	# Bin the size factors
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=30, statistic='median')
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=20, statistic='median')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
 	max_sf = size_factor.max()
@@ -227,15 +227,12 @@ def ht_1d_moments(
 		num_boot=num_boot,
 		cov_idx=cov_idx)
 	
-	# Multiprocess
-	try:
-		pool = Pool(processes=num_cpus)
-		results = pool.map(partial_func, [idx for idx in range(G)])
-				
-	except Exception as err:
-		print('pool failed')
-		print("Unexpected error:", sys.exc_info()[0])
-		print(err)
+	results = []
+	for idx in range(G):
+		
+		if idx % 100 == 0:
+			print('On {} gene'.format(idx))
+		results.append(partial_func(idx))
 		
 	for output_idx, output in enumerate(results):
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output
@@ -305,31 +302,32 @@ def ht_2d_moments(
 		Nc_list=Nc_list,
 		num_boot=num_boot,
 		cov_idx=cov_idx)
-	
-	# Multiprocess
-	
-# 	results = []
-# 	for conv_idx_1, conv_idx_2 in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0])):
 		
-# 		results.append(partial_func((gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2])))
+	results = []
+	for conv_idx_1, conv_idx_2 in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0])):
+		
+		if conv_idx_2 == 0:
+			print(conv_idx_1)
+		
+		results.append(partial_func((gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2])))
 	
-	try:
-		pool = Pool(processes=num_cpu)
-		results = pool.map(partial_func, [
-			(gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2]) for conv_idx_1, conv_idx_2 \
-			in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))])
-		pool.close()
-		pool.join()
-		pool.close()
+# 	try:
+# 		pool = Pool(processes=num_cpu)
+# 		results = pool.map(partial_func, [
+# 			(gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2]) for conv_idx_1, conv_idx_2 \
+# 			in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))])
+# 		pool.close()
+# 		pool.join()
+# 		pool.close()
 				
-	except Exception as err:
-		print('pool failed')
-		print("Unexpected error:", sys.exc_info()[0])
-		print(err)
+# 	except Exception as err:
+# 		print('pool failed')
+# 		print("Unexpected error:", sys.exc_info()[0])
+# 		print(err)
 
-		pool.close()
-		pool.join()
-		pool.close()
+# 		pool.close()
+# 		pool.join()
+# 		pool.close()
 
 	for output_idx, conv_idxs in enumerate(
 		itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))):
@@ -358,5 +356,18 @@ def get_1d_ht_result(adata):
 	result_df['dv_pval'] = adata.uns['scmemo']['1d_ht']['var_asl']	
 	
 	return result_df
+
+def get_2d_ht_result(adata):
 	
+	result_df = pd.DataFrame(
+		itertools.product(
+			adata.uns['scmemo']['2d_moments']['gene_1'],
+			adata.uns['scmemo']['2d_moments']['gene_2']),
+		columns=['gene_1', 'gene_2'])
+	result_df['corr_coef'] = adata.uns['scmemo']['2d_ht']['corr_coef'].ravel()
+	result_df['corr_pval'] = adata.uns['scmemo']['2d_ht']['corr_asl'].ravel()
+	result_df['corr_fdr'] = util._fdrcorrect(result_df['corr_pval'].values)
+	
+	return result_df
+
 	
