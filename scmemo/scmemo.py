@@ -10,7 +10,7 @@ import pandas as pd
 from patsy import dmatrix
 import scipy.stats as stats
 import sys
-from multiprocessing import Pool
+from joblib import Parallel, delayed
 from functools import partial
 import itertools
 
@@ -73,7 +73,7 @@ def compute_1d_moments(
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
 	# Bin the size factors
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=20, statistic='median')
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=50, statistic='median')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
 	max_sf = size_factor.max()
@@ -181,7 +181,7 @@ def ht_1d_moments(
 	cov_column,
 	inplace=True, 
 	num_boot=10000, 
-	verbose=False,
+	verbose=1,
 	num_cpus=1):
 	"""
 		Performs hypothesis testing for 1D moments.
@@ -219,20 +219,24 @@ def ht_1d_moments(
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_asl, var_coef, var_asl = [np.zeros(G)*np.nan for i in range(4)]
 	
-	partial_func = partial(
-		hypothesis_test._ht_1d,
-		adata_dict=adata.uns['scmemo'],
-		design_matrix=design_matrix,
-		Nc_list=Nc_list,
-		num_boot=num_boot,
-		cov_idx=cov_idx)
-	
-	results = []
+	ht_funcs = []
 	for idx in range(G):
 		
-		if idx % 100 == 0:
-			print('On {} gene'.format(idx))
-		results.append(partial_func(idx))
+		ht_funcs.append(
+			partial(
+				hypothesis_test._ht_1d,
+				true_mean=[adata.uns['scmemo']['1d_moments'][group][0][idx] for group in adata.uns['scmemo']['groups']],
+				true_res_var=[adata.uns['scmemo']['1d_moments'][group][2][idx] for group in adata.uns['scmemo']['groups']],
+				cells=[adata.uns['scmemo']['group_cells'][group][:, idx] for group in adata.uns['scmemo']['groups']],
+				approx_sf=[adata.uns['scmemo']['approx_size_factor'][group] for group in adata.uns['scmemo']['groups']],
+				design_matrix=design_matrix,
+				Nc_list=Nc_list,
+				num_boot=num_boot,
+				cov_idx=cov_idx,
+				n_umi=adata.uns['scmemo']['n_umi'],
+				mv_fit=[adata.uns['scmemo']['mv_regressor'][group] for group in adata.uns['scmemo']['groups']]))
+
+	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
 		
 	for output_idx, output in enumerate(results):
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output

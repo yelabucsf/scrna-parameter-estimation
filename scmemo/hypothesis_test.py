@@ -13,7 +13,7 @@ import estimator
 
 
 def _push_nan(val, cond='nan'):
-	
+		
 	if cond == 'nan':
 		nan_idx = np.isnan(val)
 	else:
@@ -79,12 +79,17 @@ def _compute_asl(perm_diff):
 			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 
 def _ht_1d(
-	idx,
-	adata_dict, 
+	true_mean, # list of means
+	true_res_var, # list of residual variances
+	cells, # list of sparse vectors/matrices
+	approx_sf, # list of dense arrays
 	design_matrix,
 	Nc_list,
 	num_boot,
-	cov_idx):
+	cov_idx,
+	n_umi,
+	mv_fit # list of tuples
+	):
 	
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
@@ -92,36 +97,30 @@ def _ht_1d(
 	boot_mean = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 	boot_var = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 
-	for group_idx, group in enumerate(adata_dict['groups']):
+	for group_idx in range(len(true_mean)):
 
 		# Skip if any of the 1d moments are NaNs
-		if np.isnan(adata_dict['1d_moments'][group][0][idx]) or \
-			np.isnan(adata_dict['1d_moments'][group][1][idx]):
-			continue
-
-		# Skip if any of the 1d moments are 0s
-		if adata_dict['1d_moments'][group][0][idx] == 0 or \
-			adata_dict['1d_moments'][group][1][idx] == 0:
+		if np.isnan(true_mean[group_idx]) or np.isnan(true_res_var[group_idx]) or true_mean[group_idx] == 0:
 			continue
 
 		# This replicate is good
 		good_idxs[group_idx] = True
 
 		# Fill in the true value
-		boot_mean[group_idx, 0], boot_var[group_idx, 0] = \
-			adata_dict['1d_moments'][group][0][idx], adata_dict['1d_moments'][group][2][idx]		
+		boot_mean[group_idx, 0], boot_var[group_idx, 0] = true_mean[group_idx], true_res_var[group_idx]		
 
 		# Generate the bootstrap values
 		mean, var = bootstrap._bootstrap_1d(
-			data=adata_dict['group_cells'][group][:, idx],
-			size_factor=adata_dict['approx_size_factor'][group],
+			data=cells[group_idx],
+			size_factor=approx_sf[group_idx],
 			num_boot=num_boot,
-			n_umi=adata_dict['n_umi'])
+			n_umi=n_umi)
 				
-		res_var = estimator._residual_variance(mean, var, adata_dict['mv_regressor'][group])
+		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
 		
-		boot_mean[group_idx, 1:] = _push_nan(mean)
-		boot_var[group_idx, 1:] = _push_nan(res_var)
+		# Minimize invalid values
+		boot_mean[group_idx, 1:] = _push_nan(mean)#[:num_boot]
+		boot_var[group_idx, 1:] = _push_nan(res_var)#[:num_boot]
 	
 	# Skip this gene
 	if good_idxs.sum() == 0:
@@ -155,9 +154,9 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	if boot_var.shape[1] < num_boot*0.5:
 		return np.nan, np.nan, np.nan, np.nan
 	
-	mean_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
+	mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
-	var_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
+	var_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
 
 	mean_asl = _compute_asl(mean_coef[1:])
