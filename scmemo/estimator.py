@@ -95,7 +95,9 @@ def _poisson_1d(data, n_obs, size_factor=None, n_umi=1, pad=False):
 	mm_mean = mm_M1/n_umi
 	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
     
-    
+	# Filter out impossible values (e.g., negative variance)
+# 	mm_var[mm_var < 0] = np.nan
+# 	mm_mean[mm_mean < 0] = np.nan
 
 	return [mm_mean, mm_var]
 
@@ -200,19 +202,21 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 	
 	if type(cov) != np.ndarray:
 		return cov/np.sqrt(var_1*var_2)
-	
-	var_1[var_1 <= 0] = np.nan
-	var_2[var_2 <= 0] = np.nan
-	
+
+		
 	corr = np.full(cov.shape, np.nan)
 	if boot:
+		var_1[var_1 <= 0] = np.nan
+		var_2[var_2 <= 0] = np.nan
 		var_prod = np.sqrt(var_1*var_2)
 	else:
+		var_1[var_1 <= 0] = np.nan
+		var_2[var_2 <= 0] = np.nan
 		var_prod = np.sqrt(np.outer(var_1, var_2))
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
 	
-	if not boot:
-		corr[(corr > 1) | (corr < -1)] = np.nan
+# 	if not boot:
+# 		corr[(corr > 1) | (corr < -1)] = np.nan
 	
 	return corr

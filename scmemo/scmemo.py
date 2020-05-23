@@ -59,7 +59,7 @@ def compute_1d_moments(
 	min_perc_group=0.7, 
 	filter_genes=True, 
 	residual_var=True,
-	use_n_umi=True):
+	use_n_umi=False):
 	
 	assert 'scmemo' in adata.uns
 	
@@ -257,8 +257,8 @@ def ht_2d_moments(
 	cov_column,
 	inplace=True, 
 	num_boot=10000, 
-	verbose=False,
-	num_cpu=1):
+	verbose=3,
+	num_cpus=1):
 	"""
 		Performs hypothesis testing for 1D moments.
 	"""
@@ -299,43 +299,51 @@ def ht_2d_moments(
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	corr_coef, corr_asl = [np.zeros((gene_idx_1.shape[0], gene_idx_2.shape[0]))*np.nan for i in range(2)]
 	
-	partial_func = partial(
-		hypothesis_test._ht_2d,
-		adata_dict=adata.uns['scmemo'],
-		design_matrix=design_matrix,
-		Nc_list=Nc_list,
-		num_boot=num_boot,
-		cov_idx=cov_idx)
-		
-	results = []
+	# Create partial functions
+	ht_funcs = []
+	idx_list = []
+	idx_mapping = {}
+	
 	for conv_idx_1, conv_idx_2 in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0])):
 		
-		if conv_idx_2 == 0:
-			print(conv_idx_1)
+		idx_1 = gene_idx_1[conv_idx_1]
+		idx_2 = gene_idx_2[conv_idx_2]
+		idx_set = frozenset({idx_1, idx_2})
 		
-		results.append(partial_func((gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2])))
+		if idx_1 == idx_2: # Skip if its the same gene
+			continue
+			
+		if idx_set in idx_mapping: # Skip if this pair of gene was already calculated
+			idx_mapping[idx_set].append((conv_idx_1, conv_idx_2))
+			continue
+		
+		# Save the indices
+		idx_list.append((idx_1, idx_2))
+		idx_mapping[idx_set] = [(conv_idx_1, conv_idx_2)]
+		
+		# Create the partial function
+		ht_funcs.append(
+			partial(
+				hypothesis_test._ht_2d,
+				true_corr=[adata.uns['scmemo']['2d_moments'][group]['corr'][conv_idx_1, conv_idx_2] for group in adata.uns['scmemo']['groups']],
+				cells=[adata.uns['scmemo']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['scmemo']['groups']],
+				approx_sf=[adata.uns['scmemo']['approx_size_factor'][group] for group in adata.uns['scmemo']['groups']],
+				design_matrix=design_matrix,
+				Nc_list=Nc_list,
+				num_boot=num_boot,
+				cov_idx=cov_idx,
+				n_umi=adata.uns['scmemo']['n_umi']))
 	
-# 	try:
-# 		pool = Pool(processes=num_cpu)
-# 		results = pool.map(partial_func, [
-# 			(gene_idx_1[conv_idx_1], gene_idx_2[conv_idx_2]) for conv_idx_1, conv_idx_2 \
-# 			in itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))])
-# 		pool.close()
-# 		pool.join()
-# 		pool.close()
-				
-# 	except Exception as err:
-# 		print('pool failed')
-# 		print("Unexpected error:", sys.exc_info()[0])
-# 		print(err)
-
-# 		pool.close()
-# 		pool.join()
-# 		pool.close()
-
-	for output_idx, conv_idxs in enumerate(
-		itertools.product(range(gene_idx_1.shape[0]), range(gene_idx_2.shape[0]))):
-		corr_coef[conv_idxs[0], conv_idxs[1]], corr_asl[conv_idxs[0], conv_idxs[1]] = results[output_idx]
+	# Parallel processing
+	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
+	
+	for output_idx in range(len(results)):
+		
+		idx_1, idx_2 = idx_list[output_idx]
+		
+		# Fill in the value for every element that should have the same value
+		for conv_idx_1, conv_idx_2 in idx_mapping[frozenset({idx_1, idx_2})]:
+			corr_coef[conv_idx_1, conv_idx_2], corr_asl[conv_idx_1, conv_idx_2] = results[output_idx]
 	
 	# Save the hypothesis test result
 	adata.uns['scmemo']['2d_ht'] = {}

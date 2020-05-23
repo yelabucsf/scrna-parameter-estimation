@@ -12,12 +12,9 @@ import bootstrap
 import estimator
 
 
-def _push_nan(val, cond='nan'):
+def _push_nan(val):
 		
-	if cond == 'nan':
-		nan_idx = np.isnan(val)
-	else:
-		nan_idx = (val < 0)
+	nan_idx = np.isnan(val)
 	nan_count = nan_idx.sum()
 	val[:(val.shape[0]-nan_count)] = val[~nan_idx]
 	val[(val.shape[0]-nan_count):] = np.nan
@@ -119,16 +116,17 @@ def _ht_1d(
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
 		
 		# Minimize invalid values
-		boot_mean[group_idx, 1:] = _push_nan(mean)#[:num_boot]
-		boot_var[group_idx, 1:] = _push_nan(res_var)#[:num_boot]
+		boot_mean[group_idx, 1:] = mean#_push_nan(mean)#[:num_boot]
+		boot_var[group_idx, 1:] = res_var + 3#_push_nan(res_var)#[:num_boot]
 	
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan, np.nan
-		
-	# Push NaN's to the back
-	boot_var[good_idxs,] = np.log(boot_var[good_idxs,]+5)
-	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,]+5)
+	
+	# Log the values
+	# FIX: come up with a better solution to use the full bootstrap distribution for residual variance
+	boot_var[good_idxs,] = np.log(boot_var[good_idxs,])
+	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,])
 
 	vals = _regress_1d(
 			design_matrix=design_matrix[good_idxs, :],
@@ -166,56 +164,45 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 
 
 def _ht_2d(
-	idxs,
-	adata_dict, 
+	true_corr, # list of correlations for each group
+	cells, # list of Nx2 sparse matrices
+	approx_sf,
+	n_umi,
 	design_matrix,
 	Nc_list,
 	num_boot,
 	cov_idx):
-	
-	idx_1, idx_2 = idxs
-	conv_idx_1 = np.where(adata_dict['2d_moments']['gene_idx_1'] == idx_1)[0][0]
-	conv_idx_2 = np.where(adata_dict['2d_moments']['gene_idx_2'] == idx_2)[0][0]
-
+		
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
 	# the bootstrap arrays
 	boot_corr = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 
-	for group_idx, group in enumerate(adata_dict['groups']):
+	for group_idx in range(design_matrix.shape[0]):
 
 		# Skip if any of the 2d moments are NaNs
-		if np.isnan(adata_dict['2d_moments'][group]['corr'][conv_idx_1, conv_idx_2]):
+		if np.isnan(true_corr[group_idx]):
 			continue
 
 		# This replicate is good
 		good_idxs[group_idx] = True
 
 		# Fill in the true value
-		boot_corr[group_idx, 0] = adata_dict['2d_moments'][group]['corr'][conv_idx_1, conv_idx_2]
+		boot_corr[group_idx, 0] = true_corr[group_idx]
 		
 		# Generate the bootstrap values
 		cov, corr, _, _ = bootstrap._bootstrap_2d(
-			data=adata_dict['group_cells'][group][:, [idx_1, idx_2]],
-			size_factor=adata_dict['approx_size_factor'][group],
+			data=cells[group_idx],
+			size_factor=approx_sf[group_idx],
 			num_boot=num_boot,
-			n_umi=adata_dict['n_umi'])
-		
-		# Fischer transformation
-# 		corr = np.arctanh(corr)
-		
-		# Push NaNs to the back
-# 		nan_idx = np.isnan(corr)
-# 		nan_count = nan_idx.sum()
-# 		boot_corr[group_idx, 1:(num_boot-nan_count+1)] = corr[~nan_idx]
-# 		boot_corr[group_idx, (num_boot-nan_count+1):] = np.nan
+			n_umi=n_umi)
 
-		boot_corr[group_idx, 1:] = corr
+		boot_corr[group_idx, 1:] = _push_nan(corr)
 	
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan
-
+	
 	vals = _regress_2d(
 			design_matrix=design_matrix[good_idxs, :],
 			boot_corr=boot_corr[good_idxs, :],

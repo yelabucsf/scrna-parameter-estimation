@@ -22,6 +22,8 @@ def _unique_expr(expr, size_factor):
 		This function also serves to find and count unique values.
 		
 		:expr: is a sparse matrix, either one or two columns
+		
+		FIXIT: we don't need to sorting functionality of np.unique. try to do this faster.
 	"""
 	
 	code = expr.dot(np.random.random(expr.shape[1]))
@@ -32,7 +34,7 @@ def _unique_expr(expr, size_factor):
 	
 	_, index, count = np.unique(code, return_index=True, return_counts=True)
     
-	expr_to_return = expr[index].toarray() + 1e-6
+	expr_to_return = expr[index].toarray()
 	
 	return 1/approx_sf[index].reshape(-1, 1), 1/approx_sf[index].reshape(-1, 1)**2, expr_to_return, count
 
