@@ -112,15 +112,6 @@ def _bootstrap_2d(
 		n_obs=n_obs,
 		size_factor=(inv_sf, inv_sf_sq),
 		n_umi=n_umi)
-	
-	# Some trickery to allow for the full bootstrap distribution
-# 	var_prod = var_1*var_2
-# 	sign = np.sign(cov)
-# 	corr_sq = cov**2/var_prod
-# 	corr = sign*np.sqrt(corr_sq + 1)
-		
-	# Convert to correlation
-	corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
-		
-	return cov, corr, var_1, var_2
+			
+	return cov, var_1, var_2
 		

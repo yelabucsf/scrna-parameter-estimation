@@ -181,26 +181,39 @@ def _ht_2d(
 	for group_idx in range(design_matrix.shape[0]):
 
 		# Skip if any of the 2d moments are NaNs
-		if np.isnan(true_corr[group_idx]):
+		if np.isnan(true_corr[group_idx]) or (np.abs(true_corr[group_idx]) == 1):
 			continue
-
-		# This replicate is good
-		good_idxs[group_idx] = True
 
 		# Fill in the true value
 		boot_corr[group_idx, 0] = true_corr[group_idx]
 		
 		# Generate the bootstrap values
-		cov, corr, _, _ = bootstrap._bootstrap_2d(
+		cov, var_1, var_2 = bootstrap._bootstrap_2d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
-			num_boot=num_boot,
+			num_boot=int(num_boot),
 			n_umi=n_umi)
+		
+# 		var_1[var_1 < 0] = np.nanmean(var_1)
+# 		var_2[var_2 < 0] = np.nanmean(var_2)
+				
+		corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 
-		boot_corr[group_idx, 1:] = _push_nan(corr)
-	
+		# Skip if too many bootstrap iterations give NaNs
+		nan_count = (~np.isfinite(corr)).sum()
+		if nan_count > 0.2*num_boot:
+			continue
+			
+		# This replicate is good
+		good_idxs[group_idx] = True
+		boot_corr[group_idx, 1:] = corr#_push_nan(corr)#[:num_boot]
+
 	# Skip this gene
 	if good_idxs.sum() == 0:
+		return np.nan, np.nan
+	
+	# Skip if each covariate group is not represented
+	if np.unique(design_matrix[good_idxs, cov_idx]).shape[0] == 1:
 		return np.nan, np.nan
 	
 	vals = _regress_2d(
@@ -221,11 +234,11 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	
 	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
 	
-	if boot_corr.shape[1] < num_boot*0.5:
-		return np.nan, np.nan
-	
 	corr_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
 		.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
+	
+	if boot_corr.shape[1] < num_boot*0.7:
+		return corr_coef[0], np.nan
 
 	corr_asl = _compute_asl(corr_coef[1:])
 	
