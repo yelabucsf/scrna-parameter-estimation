@@ -11,6 +11,12 @@ from sklearn.linear_model import LinearRegression
 import bootstrap
 import estimator
 
+def _robust_log(val):
+	
+	val[np.less_equal(val, 0., where=~np.isnan(val))] = np.nanmean(val)
+	
+	return np.log(val)
+
 
 def _push_nan(val):
 		
@@ -97,11 +103,11 @@ def _ht_1d(
 	for group_idx in range(len(true_mean)):
 
 		# Skip if any of the 1d moments are NaNs
-		if np.isnan(true_mean[group_idx]) or np.isnan(true_res_var[group_idx]) or true_mean[group_idx] == 0:
-			continue
-
-		# This replicate is good
-		good_idxs[group_idx] = True
+# 		if np.isnan(true_mean[group_idx]) or \
+# 		   np.isnan(true_res_var[group_idx]) or \
+# 		   true_mean[group_idx] == 0 or \
+# 		   true_res_var[group_idx] < 0:
+# 			continue
 
 		# Fill in the true value
 		boot_mean[group_idx, 0], boot_var[group_idx, 0] = true_mean[group_idx], true_res_var[group_idx]		
@@ -112,22 +118,27 @@ def _ht_1d(
 			size_factor=approx_sf[group_idx],
 			num_boot=num_boot,
 			n_umi=n_umi)
-				
+		
+		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
+			
+		# This replicate is good
+		good_idxs[group_idx] = True
 		
 		# Minimize invalid values
 		boot_mean[group_idx, 1:] = mean#_push_nan(mean)#[:num_boot]
-		boot_var[group_idx, 1:] = res_var + 3#_push_nan(res_var)#[:num_boot]
-	
+		boot_var[group_idx, 1:] = res_var#_push_nan(res_var)#[:num_boot]
+		
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan, np.nan
 	
 	# Log the values
 	# FIX: come up with a better solution to use the full bootstrap distribution for residual variance
-	boot_var[good_idxs,] = np.log(boot_var[good_idxs,])
-	boot_mean[good_idxs,] = np.log(boot_mean[good_idxs,])
-
+	
+	boot_var[good_idxs,] = _robust_log(boot_var[good_idxs,]+5)
+	boot_mean[good_idxs,] = _robust_log(boot_mean[good_idxs,]+1e-10)
+	
 	vals = _regress_1d(
 			design_matrix=design_matrix[good_idxs, :],
 			boot_mean=boot_mean[good_idxs, :], 
@@ -149,17 +160,23 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	boot_mean = boot_mean[:, ~np.any(~np.isfinite(boot_mean), axis=0)]
 	boot_var = boot_var[:, ~np.any(~np.isfinite(boot_var), axis=0)]
 	
-	if boot_var.shape[1] < num_boot*0.5:
+	if boot_var.shape[1] == 0:
+		
+		print('skipped')
+		
 		return np.nan, np.nan, np.nan, np.nan
 	
 	mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
 	var_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
+	
+	if boot_var.shape[1] < num_boot*0.5:
+		return  mean_coef[0], np.nan, var_coef[0], np.nan
 
 	mean_asl = _compute_asl(mean_coef[1:])
 	var_asl = _compute_asl(var_coef[1:])
-	
+		
 	return mean_coef[0], mean_asl, var_coef[0], var_asl
 
 

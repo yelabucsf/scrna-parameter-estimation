@@ -92,6 +92,13 @@ def compute_1d_moments(
 		n_obs=adata.uns['scmemo']['group_cells'][group].shape[0],
 		size_factor=adata.uns['scmemo']['size_factor'][group],
 		n_umi=adata.uns['scmemo']['n_umi']) for group in adata.uns['scmemo']['groups']}
+
+	# Compute 1d moments for across all cells
+	adata.uns['scmemo']['1d_moments']['all'] = estimator._poisson_1d(
+		data=adata.X,
+		n_obs=adata.shape[0],
+		size_factor=adata.uns['scmemo']['all_size_factor'],
+		n_umi=adata.uns['scmemo']['n_umi'])
 	
 	# Create gene masks for each group
 	adata.uns['scmemo']['gene_filter'] = {}
@@ -113,17 +120,23 @@ def compute_1d_moments(
 	if filter_genes:
 		adata.uns['scmemo']['group_cells'] = \
 			{group:adata.uns['scmemo']['group_cells'][group][:, overall_gene_mask] for group in adata.uns['scmemo']['groups']}
+		
 		adata.uns['scmemo']['1d_moments'] = \
 			{group:[
 				adata.uns['scmemo']['1d_moments'][group][0][overall_gene_mask],
 				adata.uns['scmemo']['1d_moments'][group][1][overall_gene_mask]
-				] for group in adata.uns['scmemo']['groups']}
+				] for group in (adata.uns['scmemo']['groups'] + ['all'])}
 		adata._inplace_subset_var(overall_gene_mask)
 	
 	# Compute residual variance	
 	adata.uns['scmemo']['mv_regressor'] = {}
+	
+	adata.uns['scmemo']['mv_regressor']['all'] = estimator._fit_mv_regressor(
+		mean=adata.uns['scmemo']['1d_moments']['all'][0],
+		var=adata.uns['scmemo']['1d_moments']['all'][1])
+	
 	for group in adata.uns['scmemo']['groups']:
-
+		
 		adata.uns['scmemo']['mv_regressor'][group] = estimator._fit_mv_regressor(
 			mean=adata.uns['scmemo']['1d_moments'][group][0],
 			var=adata.uns['scmemo']['1d_moments'][group][1])
