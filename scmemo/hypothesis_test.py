@@ -18,6 +18,13 @@ def _robust_log(val):
 	return np.log(val)
 
 
+def _fill(val):
+	
+	val[np.isnan(val)] = np.nanmean(val)
+	
+	return val
+
+
 def _push_nan(val):
 		
 	nan_idx = np.isnan(val)
@@ -211,19 +218,21 @@ def _ht_2d(
 			num_boot=int(num_boot),
 			n_umi=n_umi)
 		
-# 		var_1[var_1 < 0] = np.nanmean(var_1)
-# 		var_2[var_2 < 0] = np.nanmean(var_2)
+# 		var_1[var_1 < 0] = np.mean(var_1[var_1 > 0])
+# 		var_2[var_2 < 0] = np.mean(var_2[var_2 > 0])
 				
 		corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
-
-		# Skip if too many bootstrap iterations give NaNs
-		nan_count = (~np.isfinite(corr)).sum()
-		if nan_count > 0.2*num_boot:
-			continue
 			
 		# This replicate is good
+		boot_corr[group_idx, 1:] = corr#[:num_boot]
+		vals = _fill(boot_corr[group_idx, :])
+		
+		# Skip if all NaNs
+		if np.all(np.isnan(vals)):
+			continue
+		
 		good_idxs[group_idx] = True
-		boot_corr[group_idx, 1:] = corr#_push_nan(corr)#[:num_boot]
+		boot_corr[group_idx, :] = vals
 
 	# Skip this gene
 	if good_idxs.sum() == 0:
@@ -250,6 +259,10 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	num_boot = boot_corr.shape[1]
 	
 	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
+	
+	if boot_corr.shape[1] == 0:
+		
+		return np.nan, np.nan
 	
 	corr_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
 		.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
