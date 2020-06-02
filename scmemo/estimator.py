@@ -43,7 +43,7 @@ def _estimate_size_factor(data):
 	Nrc = np.array(X.sum(axis=1)).reshape(-1)
 	Nr = Nrc.mean()
 	size_factor = Nrc/Nr
-	return size_factor
+	return Nrc
 
 
 def _fit_mv_regressor(mean, var):
@@ -70,7 +70,7 @@ def _residual_variance(mean, var, mv_fit):
 	return rv
 
 
-def _poisson_1d(data, n_obs, size_factor=None, n_umi=1, pad=False):
+def _poisson_1d(data, n_obs, size_factor=None):
 	"""
 		Estimate the variance using the Poisson noise process.
 		
@@ -82,27 +82,17 @@ def _poisson_1d(data, n_obs, size_factor=None, n_umi=1, pad=False):
 		mm_M2 = (data[0]**2*data[1]*size_factor[1] - data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
 	else:
 		
-		if not pad:
-			row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0])
-			mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
-			mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
-		else:
-			row_weight = (1/size_factor).reshape([-1, 1]) if size_factor is not None else np.ones(data.shape[0])
-			dense_mat = data.toarray()
-			mm_M1 = (dense_mat*row_weight).mean(axis=0)
-			mm_M2 = (dense_mat**2*row_weight**2).mean(axis=0) - (dense_mat*row_weight**2).mean(axis=0)
+		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0])
+		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
+		mm_M2 = sparse.csc_matrix.dot(row_weight**2, data.power(2)).ravel()/n_obs - sparse.csc_matrix.dot(row_weight**2, data).ravel()/n_obs
 	
-	mm_mean = mm_M1/n_umi
-	mm_var = (mm_M2 - mm_M1**2)/n_umi**2
-    
-	# Filter out impossible values (e.g., negative variance)
-# 	mm_var[mm_var < 0] = np.nan
-# 	mm_mean[mm_mean < 0] = np.nan
+	mm_mean = mm_M1
+	mm_var = (mm_M2 - mm_M1**2)
 
 	return [mm_mean, mm_var]
 
 
-def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None, n_umi=1):
+def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None):
 	"""
 		Estimate the covariance using the Poisson noise process between genes at idx1 and idx2.
 		
@@ -131,67 +121,67 @@ def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None, n_umi=1):
 		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0]).reshape([1, -1])
 		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
 		prod = (X.T*Y).toarray()/X.shape[0]
-		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - 0.9*data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
 		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
 					
-	return cov/n_umi**2
+	return cov
 
 
-def _hyper_mean(data, q, q_sq):
+def _hyper_1d(data, n_obs, q, size_factor=None):
 	"""
-		Estimate the mean using the (approximate) hypergeometric noise process.
-	"""
-	
-	if type(data) == tuple:
-		return (data[0]*data[1]).sum(axis=0)/q
-	else:
-		return data.mean(axis=0).A1/q
-
-
-def _hyper_1d(data, n_obs, q, q_sq):
-	"""
-		Estimate the variance using the (approximate) hypergeometric noise process.
-	"""
-	
-	if type(data) == tuple:
-		obs_M1 = (data[0]*data[1]).sum()/n_obs
-		obs_M2 = (data[0]**2*data[1]).sum()/n_obs
-	
-	else:
-		obs_M1 = data.mean(axis=0).A1
-		obs_M2 = data.power(2).mean(axis=0).A1
+		Estimate the variance using the Poisson noise process.
 		
-	mm_M1 = obs_m1/q
-	mm_M2 = (obs_M2 + (q_sq/q)*obs_M1 - obs_M1)/q_sq
-
-	return mm_M1, mm_M2 - mm_M1**2
-
-
-def _hyper_cov(data, idx1, idx2, q, q_sq):
+		If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
 	"""
-		Estimate the covariance using the (approximate) hypergeometric noise process.
-	"""
-
 	if type(data) == tuple:
-		obs_M1 = (data[0]*data[2]).sum(axis=0)/n_obs
-		obs_M2 = (data[1]*data[2]).sum(axis=0)/n_obs
-		obs_MX = (data[0]*data[1]*data[2]).sum(axis=0)/n_obs
-		cov = obs_MX/q_sq - obs_M1*obs_M2/q**2
+		size_factor = size_factor if size_factor is not None else (1, 1)
+		mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
+		mm_M2 = (data[0]**2*data[1]*size_factor[1] - (1-q)*data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
+	else:
+		
+		row_weight = (1/size_factor).reshape([1, -1])
+		row_weight_sq = (1/(size_factor**2 - size_factor*(1-q))).reshape([1, -1])
+		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
+		mm_M2 = sparse.csc_matrix.dot(row_weight_sq, data.power(2)).ravel()/n_obs - (1-q)*sparse.csc_matrix.dot(row_weight_sq, data).ravel()/n_obs
+	
+	mm_mean = mm_M1
+	mm_var = (mm_M2 - mm_M1**2)
+
+	return [mm_mean, mm_var]
+
+
+def _hyper_cov(data, n_obs, size_factor, q, idx1=None, idx2=None):
+	"""
+		Estimate the covariance using the hypergeometric noise process between genes at idx1 and idx2.
+		
+		If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
+	"""
+	
+	if type(data) == tuple:
+		obs_M1 = (data[0]*data[2]*size_factor[0]).sum(axis=0)/n_obs
+		obs_M2 = (data[1]*data[2]*size_factor[0]).sum(axis=0)/n_obs
+		obs_MX = (data[0]*data[1]*data[2]*size_factor[1]).sum(axis=0)/n_obs
+		cov = obs_MX - obs_M1*obs_M2
 
 	else:
+
+		idx1 = np.arange(0, data.shape[1]) if idx1 is None else np.array(idx1)
+		idx2 = np.arange(0, data.shape[1]) if idx2 is None else np.array(idx2)
+        
 		overlap = set(idx1) & set(idx2)
-		overlap_idx1 = np.array([1 if i in overlap else 0 for i in idx1])
-		overlap_idx2 = np.array([1 if i in overlap else 0 for i in idx2])
 		
-		X, Y = data[:, idx1], data[:, idx2]
-		obs_MX = (X.T*Y).toarray()/n_obs
-		obs_M1_1 = X.sum(axis=0).A1/n_obs
-		obs_M1_2 = Y.sum(axis=0).A1/n_obs
-		mm_MX = obs_MX/q_sq 
-		mm_MX[overlap_idx1[:, np.newaxis], overlap_idx2] += ((q_sq/q)*obs_M1_1[overlap_idx1]-obs_M1_1[overlap_idx1])/q_sq
-
-		cov = mm_MX - np.outer(obs_M1_1, obs_M1_2)/q**2
-			
+		overlap_idx1 = [i for i in idx1 if i in overlap]
+		overlap_idx2 = [i for i in idx2 if i in overlap]
+		
+		overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap ]
+		overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap ]
+		
+		row_weight = np.sqrt(1/(size_factor**2 + size_factor*(1-q))).reshape([1, -1])
+		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
+		prod = (X.T*Y).toarray()/X.shape[0]
+		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - (1-q)*data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
+					
 	return cov
 
 
