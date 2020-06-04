@@ -43,7 +43,6 @@ def _bootstrap_1d(
 	data, 
 	size_factor,
 	num_boot=1000, 
-	n_umi=1, 
 	return_times=False):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
@@ -70,8 +69,7 @@ def _bootstrap_1d(
 	mean, var = estimator._poisson_1d(
 		data=(expr, gene_rvs),
 		n_obs=n_obs,
-		size_factor=(inv_sf, inv_sf_sq),
-		n_umi=n_umi)
+		size_factor=(inv_sf, inv_sf_sq))
 	
 	if return_times:
 		return start_time, count_time, boot_time
@@ -82,8 +80,7 @@ def _bootstrap_1d(
 def _bootstrap_2d(
 	data, 
 	size_factor,
-	num_boot=1000, 
-	n_umi=1):
+	num_boot=1000):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
 	"""
@@ -100,18 +97,15 @@ def _bootstrap_2d(
 	cov = estimator._poisson_cov(
 		data=(expr[:, 0].reshape(-1, 1), expr[:, 1].reshape(-1, 1), gene_rvs), 
 		n_obs=n_obs, 
-		size_factor=(inv_sf, inv_sf_sq),
-		n_umi=n_umi)
+		size_factor=(inv_sf, inv_sf_sq))
 	_, var_1 = estimator._poisson_1d(
 		data=(expr[:, 0].reshape(-1, 1), gene_rvs),
 		n_obs=n_obs,
-		size_factor=(inv_sf, inv_sf_sq),
-		n_umi=n_umi)
+		size_factor=(inv_sf, inv_sf_sq))
 	_, var_2 = estimator._poisson_1d(
 		data=(expr[:, 1].reshape(-1, 1), gene_rvs),
 		n_obs=n_obs,
-		size_factor=(inv_sf, inv_sf_sq),
-		n_umi=n_umi)
+		size_factor=(inv_sf, inv_sf_sq))
 			
 	return cov, var_1, var_2
 		

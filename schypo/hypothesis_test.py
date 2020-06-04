@@ -97,7 +97,6 @@ def _ht_1d(
 	Nc_list,
 	num_boot,
 	cov_idx,
-	n_umi,
 	mv_fit # list of tuples
 	):
 	
@@ -123,8 +122,7 @@ def _ht_1d(
 		mean, var = bootstrap._bootstrap_1d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
-			num_boot=num_boot,
-			n_umi=n_umi)
+			num_boot=num_boot)
 		
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
@@ -191,7 +189,6 @@ def _ht_2d(
 	true_corr, # list of correlations for each group
 	cells, # list of Nx2 sparse matrices
 	approx_sf,
-	n_umi,
 	design_matrix,
 	Nc_list,
 	num_boot,
@@ -215,8 +212,7 @@ def _ht_2d(
 		cov, var_1, var_2 = bootstrap._bootstrap_2d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
-			num_boot=int(num_boot),
-			n_umi=n_umi)
+			num_boot=int(num_boot))
 		
 # 		var_1[var_1 < 0] = np.mean(var_1[var_1 > 0])
 # 		var_2[var_2 < 0] = np.mean(var_2[var_2 > 0])

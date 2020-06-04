@@ -1,7 +1,7 @@
 """
-	scmemo.py
+	schypo.py
 	
-	This file contains the public facing API for using scmemo.
+	This file contains the public facing API for using schypo.
 """
 
 
@@ -34,20 +34,20 @@ def create_groups(
 		adata = adata.copy()
 		
 	# Create group labels
-	adata.obs['scmemo_group'] = 'sg' + label_delimiter
+	adata.obs['schypo_group'] = 'sg' + label_delimiter
 	for idx, col_name in enumerate(label_columns):
-		adata.obs['scmemo_group'] += adata.obs[col_name].astype(str)
+		adata.obs['schypo_group'] += adata.obs[col_name].astype(str)
 		if idx != len(label_columns)-1:
-			adata.obs['scmemo_group'] += label_delimiter
+			adata.obs['schypo_group'] += label_delimiter
 	
 	# Create a dict in the uns object
-	adata.uns['scmemo'] = {}
-	adata.uns['scmemo']['label_columns'] = label_columns
-	adata.uns['scmemo']['label_delimiter'] = label_delimiter
-	adata.uns['scmemo']['groups'] = adata.obs['scmemo_group'].drop_duplicates().tolist()
+	adata.uns['schypo'] = {}
+	adata.uns['schypo']['label_columns'] = label_columns
+	adata.uns['schypo']['label_delimiter'] = label_delimiter
+	adata.uns['schypo']['groups'] = adata.obs['schypo_group'].drop_duplicates().tolist()
 	
 	# Create slices of the data based on the group
-	adata.uns['scmemo']['group_cells'] = {group:util._select_cells(adata, group) for group in adata.uns['scmemo']['groups']}
+	adata.uns['schypo']['group_cells'] = {group:util._select_cells(adata, group) for group in adata.uns['schypo']['groups']}
 	
 	if not inplace:
 		return adata
@@ -58,16 +58,12 @@ def compute_1d_moments(
 	filter_mean_thresh=0.07, 
 	min_perc_group=0.7, 
 	filter_genes=True, 
-	residual_var=True,
-	use_n_umi=False):
+	residual_var=True):
 	
-	assert 'scmemo' in adata.uns
+	assert 'schypo' in adata.uns
 	
 	if not inplace:
 		adata = adata.copy()
-		
-	# Compute n_umi for the entire dataset
-	adata.uns['scmemo']['n_umi'] = adata.X.sum(axis=1).mean() if use_n_umi else 1
 		
 	# Compute size factors for all groups
 	size_factor = estimator._estimate_size_factor(adata.X)
@@ -79,73 +75,71 @@ def compute_1d_moments(
 	max_sf = size_factor.max()
 	approx_sf[size_factor == max_sf] = max_sf
 	
-	adata.uns['scmemo']['all_size_factor'] = size_factor
-	adata.uns['scmemo']['all_approx_size_factor'] = approx_sf
-	adata.uns['scmemo']['approx_size_factor'] = \
-		{group:approx_sf[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
-	adata.uns['scmemo']['size_factor'] = \
-		{group:size_factor[(adata.obs['scmemo_group'] == group).values] for group in adata.uns['scmemo']['groups']}
+	adata.uns['schypo']['all_size_factor'] = size_factor
+	adata.uns['schypo']['all_approx_size_factor'] = approx_sf
+	adata.uns['schypo']['approx_size_factor'] = \
+		{group:approx_sf[(adata.obs['schypo_group'] == group).values] for group in adata.uns['schypo']['groups']}
+	adata.uns['schypo']['size_factor'] = \
+		{group:size_factor[(adata.obs['schypo_group'] == group).values] for group in adata.uns['schypo']['groups']}
 	
 	# Compute 1d moments for all groups
-	adata.uns['scmemo']['1d_moments'] = {group:estimator._poisson_1d(
-		data=adata.uns['scmemo']['group_cells'][group],
-		n_obs=adata.uns['scmemo']['group_cells'][group].shape[0],
-		size_factor=adata.uns['scmemo']['size_factor'][group],
-		n_umi=adata.uns['scmemo']['n_umi']) for group in adata.uns['scmemo']['groups']}
+	adata.uns['schypo']['1d_moments'] = {group:estimator._poisson_1d(
+		data=adata.uns['schypo']['group_cells'][group],
+		n_obs=adata.uns['schypo']['group_cells'][group].shape[0],
+		size_factor=adata.uns['schypo']['size_factor'][group]) for group in adata.uns['schypo']['groups']}
 
 	# Compute 1d moments for across all cells
-	adata.uns['scmemo']['1d_moments']['all'] = estimator._poisson_1d(
+	adata.uns['schypo']['1d_moments']['all'] = estimator._poisson_1d(
 		data=adata.X,
 		n_obs=adata.shape[0],
-		size_factor=adata.uns['scmemo']['all_size_factor'],
-		n_umi=adata.uns['scmemo']['n_umi'])
+		size_factor=adata.uns['schypo']['all_size_factor'])
 	
 	# Create gene masks for each group
-	adata.uns['scmemo']['gene_filter'] = {}
-	for group in adata.uns['scmemo']['groups']:
+	adata.uns['schypo']['gene_filter'] = {}
+	for group in adata.uns['schypo']['groups']:
 		
-		obs_mean = adata.uns['scmemo']['group_cells'][group].mean(axis=0).A1 
+		obs_mean = adata.uns['schypo']['group_cells'][group].mean(axis=0).A1 
 		expr_filter = (obs_mean > filter_mean_thresh)
-# 		expr_filter &= (adata.uns['scmemo']['1d_moments'][group][1] > 0)
-		adata.uns['scmemo']['gene_filter'][group] = expr_filter
+# 		expr_filter &= (adata.uns['schypo']['1d_moments'][group][1] > 0)
+		adata.uns['schypo']['gene_filter'][group] = expr_filter
 	
 	# Create overall gene mask
-	gene_masks = np.vstack([adata.uns['scmemo']['gene_filter'][group] for group in adata.uns['scmemo']['groups']])
+	gene_masks = np.vstack([adata.uns['schypo']['gene_filter'][group] for group in adata.uns['schypo']['groups']])
 	gene_filter_rate = gene_masks.mean(axis=0)
 	overall_gene_mask = (gene_filter_rate > min_perc_group)
-	adata.uns['scmemo']['overall_gene_filter'] = overall_gene_mask
-	adata.uns['scmemo']['gene_list'] = adata.var.index[overall_gene_mask].tolist()
+	adata.uns['schypo']['overall_gene_filter'] = overall_gene_mask
+	adata.uns['schypo']['gene_list'] = adata.var.index[overall_gene_mask].tolist()
 	
 	# Filter the genes from the data matrices as well as the 1D moments
 	if filter_genes:
-		adata.uns['scmemo']['group_cells'] = \
-			{group:adata.uns['scmemo']['group_cells'][group][:, overall_gene_mask] for group in adata.uns['scmemo']['groups']}
+		adata.uns['schypo']['group_cells'] = \
+			{group:adata.uns['schypo']['group_cells'][group][:, overall_gene_mask] for group in adata.uns['schypo']['groups']}
 		
-		adata.uns['scmemo']['1d_moments'] = \
+		adata.uns['schypo']['1d_moments'] = \
 			{group:[
-				adata.uns['scmemo']['1d_moments'][group][0][overall_gene_mask],
-				adata.uns['scmemo']['1d_moments'][group][1][overall_gene_mask]
-				] for group in (adata.uns['scmemo']['groups'] + ['all'])}
+				adata.uns['schypo']['1d_moments'][group][0][overall_gene_mask],
+				adata.uns['schypo']['1d_moments'][group][1][overall_gene_mask]
+				] for group in (adata.uns['schypo']['groups'] + ['all'])}
 		adata._inplace_subset_var(overall_gene_mask)
 	
 	# Compute residual variance	
-	adata.uns['scmemo']['mv_regressor'] = {}
+	adata.uns['schypo']['mv_regressor'] = {}
 	
-	adata.uns['scmemo']['mv_regressor']['all'] = estimator._fit_mv_regressor(
-		mean=adata.uns['scmemo']['1d_moments']['all'][0],
-		var=adata.uns['scmemo']['1d_moments']['all'][1])
+	adata.uns['schypo']['mv_regressor']['all'] = estimator._fit_mv_regressor(
+		mean=adata.uns['schypo']['1d_moments']['all'][0],
+		var=adata.uns['schypo']['1d_moments']['all'][1])
 	
-	for group in adata.uns['scmemo']['groups']:
+	for group in adata.uns['schypo']['groups']:
 		
-		adata.uns['scmemo']['mv_regressor'][group] = estimator._fit_mv_regressor(
-			mean=adata.uns['scmemo']['1d_moments'][group][0],
-			var=adata.uns['scmemo']['1d_moments'][group][1])
+		adata.uns['schypo']['mv_regressor'][group] = estimator._fit_mv_regressor(
+			mean=adata.uns['schypo']['1d_moments'][group][0],
+			var=adata.uns['schypo']['1d_moments'][group][1])
 
 		res_var = estimator._residual_variance(
-			adata.uns['scmemo']['1d_moments'][group][0],
-			adata.uns['scmemo']['1d_moments'][group][1],
-			adata.uns['scmemo']['mv_regressor'][group])
-		adata.uns['scmemo']['1d_moments'][group].append(res_var)
+			adata.uns['schypo']['1d_moments'][group][0],
+			adata.uns['schypo']['1d_moments'][group][1],
+			adata.uns['schypo']['mv_regressor'][group])
+		adata.uns['schypo']['1d_moments'][group].append(res_var)
 	
 	if not inplace:
 		return adata
@@ -161,28 +155,27 @@ def compute_2d_moments(adata, gene_1, gene_2, inplace=True):
 		adata = adata.copy()
 		
 	# Set up the result dictionary
-	adata.uns['scmemo']['2d_moments'] = {}
-	adata.uns['scmemo']['2d_moments']['gene_1'] = gene_1
-	adata.uns['scmemo']['2d_moments']['gene_2'] = gene_2
-	adata.uns['scmemo']['2d_moments']['gene_idx_1'] = util._get_gene_idx(adata, gene_1)
-	adata.uns['scmemo']['2d_moments']['gene_idx_2'] = util._get_gene_idx(adata, gene_2)
+	adata.uns['schypo']['2d_moments'] = {}
+	adata.uns['schypo']['2d_moments']['gene_1'] = gene_1
+	adata.uns['schypo']['2d_moments']['gene_2'] = gene_2
+	adata.uns['schypo']['2d_moments']['gene_idx_1'] = util._get_gene_idx(adata, gene_1)
+	adata.uns['schypo']['2d_moments']['gene_idx_2'] = util._get_gene_idx(adata, gene_2)
 	
-	for group in adata.uns['scmemo']['groups']:
+	for group in adata.uns['schypo']['groups']:
 		
 		cov = estimator._poisson_cov(
-			data=adata.uns['scmemo']['group_cells'][group], 
-			n_obs=adata.uns['scmemo']['group_cells'][group].shape[0], 
-			size_factor=adata.uns['scmemo']['size_factor'][group], 
-			idx1=adata.uns['scmemo']['2d_moments']['gene_idx_1'], 
-			idx2=adata.uns['scmemo']['2d_moments']['gene_idx_2'],
-			n_umi=adata.uns['scmemo']['n_umi'])
+			data=adata.uns['schypo']['group_cells'][group], 
+			n_obs=adata.uns['schypo']['group_cells'][group].shape[0], 
+			size_factor=adata.uns['schypo']['size_factor'][group], 
+			idx1=adata.uns['schypo']['2d_moments']['gene_idx_1'], 
+			idx2=adata.uns['schypo']['2d_moments']['gene_idx_2'])
 		
-		var_1 = adata.uns['scmemo']['1d_moments'][group][1][adata.uns['scmemo']['2d_moments']['gene_idx_1']]
-		var_2 = adata.uns['scmemo']['1d_moments'][group][1][adata.uns['scmemo']['2d_moments']['gene_idx_2']]
+		var_1 = adata.uns['schypo']['1d_moments'][group][1][adata.uns['schypo']['2d_moments']['gene_idx_1']]
+		var_2 = adata.uns['schypo']['1d_moments'][group][1][adata.uns['schypo']['2d_moments']['gene_idx_2']]
 		
 		corr = estimator._corr_from_cov(cov, var_1, var_2)
 		
-		adata.uns['scmemo']['2d_moments'][group] = {'cov':cov, 'corr':corr, 'var_1':var_1, 'var_2':var_2}
+		adata.uns['schypo']['2d_moments'][group] = {'cov':cov, 'corr':corr, 'var_1':var_1, 'var_2':var_2}
 
 	if not inplace:
 		return adata
@@ -210,13 +203,13 @@ def ht_1d_moments(
 	design_df_list, Nc_list = [], []
 	
 	# Create the design df
-	for group in adata.uns['scmemo']['groups']:
+	for group in adata.uns['schypo']['groups']:
 		
-		design_df_list.append(group.split(adata.uns['scmemo']['label_delimiter'])[1:])
-		Nc_list.append(adata.uns['scmemo']['group_cells'][group].shape[0])
+		design_df_list.append(group.split(adata.uns['schypo']['label_delimiter'])[1:])
+		Nc_list.append(adata.uns['schypo']['group_cells'][group].shape[0])
 		
 	# Create the design matrix from the patsy formula
-	design_df = pd.DataFrame(design_df_list, columns=adata.uns['scmemo']['label_columns'])
+	design_df = pd.DataFrame(design_df_list, columns=adata.uns['schypo']['label_columns'])
 	dmat = dmatrix(formula_like, design_df)
 	design_matrix_cols = dmat.design_info.column_names.copy()
 	design_matrix = np.array(dmat)
@@ -238,16 +231,15 @@ def ht_1d_moments(
 		ht_funcs.append(
 			partial(
 				hypothesis_test._ht_1d,
-				true_mean=[adata.uns['scmemo']['1d_moments'][group][0][idx] for group in adata.uns['scmemo']['groups']],
-				true_res_var=[adata.uns['scmemo']['1d_moments'][group][2][idx] for group in adata.uns['scmemo']['groups']],
-				cells=[adata.uns['scmemo']['group_cells'][group][:, idx] for group in adata.uns['scmemo']['groups']],
-				approx_sf=[adata.uns['scmemo']['approx_size_factor'][group] for group in adata.uns['scmemo']['groups']],
+				true_mean=[adata.uns['schypo']['1d_moments'][group][0][idx] for group in adata.uns['schypo']['groups']],
+				true_res_var=[adata.uns['schypo']['1d_moments'][group][2][idx] for group in adata.uns['schypo']['groups']],
+				cells=[adata.uns['schypo']['group_cells'][group][:, idx] for group in adata.uns['schypo']['groups']],
+				approx_sf=[adata.uns['schypo']['approx_size_factor'][group] for group in adata.uns['schypo']['groups']],
 				design_matrix=design_matrix,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
 				cov_idx=cov_idx,
-				n_umi=adata.uns['scmemo']['n_umi'],
-				mv_fit=[adata.uns['scmemo']['mv_regressor'][group] for group in adata.uns['scmemo']['groups']]))
+				mv_fit=[adata.uns['schypo']['mv_regressor'][group] for group in adata.uns['schypo']['groups']]))
 
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
 		
@@ -255,10 +247,10 @@ def ht_1d_moments(
 		mean_coef[output_idx], mean_asl[output_idx], var_coef[output_idx], var_asl[output_idx] = output
 
 	# Save the hypothesis test result
-	adata.uns['scmemo']['1d_ht'] = {}
+	adata.uns['schypo']['1d_ht'] = {}
 	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'cov_column', 'mean_coef', 'mean_asl', 'var_coef', 'var_asl']
 	for attr in attrs:
-		adata.uns['scmemo']['1d_ht'][attr] = eval(attr)
+		adata.uns['schypo']['1d_ht'][attr] = eval(attr)
 
 	if not inplace:
 		return adata
@@ -286,13 +278,13 @@ def ht_2d_moments(
 	design_df_list, Nc_list = [], []
 	
 	# Create the design df
-	for group in adata.uns['scmemo']['groups']:
+	for group in adata.uns['schypo']['groups']:
 		
-		design_df_list.append(group.split(adata.uns['scmemo']['label_delimiter'])[1:])
-		Nc_list.append(adata.uns['scmemo']['group_cells'][group].shape[0])
+		design_df_list.append(group.split(adata.uns['schypo']['label_delimiter'])[1:])
+		Nc_list.append(adata.uns['schypo']['group_cells'][group].shape[0])
 		
 	# Create the design matrix from the patsy formula
-	design_df = pd.DataFrame(design_df_list, columns=adata.uns['scmemo']['label_columns'])
+	design_df = pd.DataFrame(design_df_list, columns=adata.uns['schypo']['label_columns'])
 	dmat = dmatrix(formula_like, design_df)
 	design_matrix_cols = dmat.design_info.column_names.copy()
 	design_matrix = np.array(dmat)
@@ -306,8 +298,8 @@ def ht_2d_moments(
 			break
 	
 	# Get gene idxs
-	gene_idx_1 = adata.uns['scmemo']['2d_moments']['gene_idx_1']
-	gene_idx_2 = adata.uns['scmemo']['2d_moments']['gene_idx_2']
+	gene_idx_1 = adata.uns['schypo']['2d_moments']['gene_idx_1']
+	gene_idx_2 = adata.uns['schypo']['2d_moments']['gene_idx_2']
 		
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	corr_coef, corr_asl = [np.zeros((gene_idx_1.shape[0], gene_idx_2.shape[0]))*np.nan for i in range(2)]
@@ -338,14 +330,13 @@ def ht_2d_moments(
 		ht_funcs.append(
 			partial(
 				hypothesis_test._ht_2d,
-				true_corr=[adata.uns['scmemo']['2d_moments'][group]['corr'][conv_idx_1, conv_idx_2] for group in adata.uns['scmemo']['groups']],
-				cells=[adata.uns['scmemo']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['scmemo']['groups']],
-				approx_sf=[adata.uns['scmemo']['approx_size_factor'][group] for group in adata.uns['scmemo']['groups']],
+				true_corr=[adata.uns['schypo']['2d_moments'][group]['corr'][conv_idx_1, conv_idx_2] for group in adata.uns['schypo']['groups']],
+				cells=[adata.uns['schypo']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['schypo']['groups']],
+				approx_sf=[adata.uns['schypo']['approx_size_factor'][group] for group in adata.uns['schypo']['groups']],
 				design_matrix=design_matrix,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
-				cov_idx=cov_idx,
-				n_umi=adata.uns['scmemo']['n_umi']))
+				cov_idx=cov_idx))
 	
 	# Parallel processing
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
@@ -359,10 +350,10 @@ def ht_2d_moments(
 			corr_coef[conv_idx_1, conv_idx_2], corr_asl[conv_idx_1, conv_idx_2] = results[output_idx]
 	
 	# Save the hypothesis test result
-	adata.uns['scmemo']['2d_ht'] = {}
+	adata.uns['schypo']['2d_ht'] = {}
 	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'cov_column', 'corr_coef', 'corr_asl']
 	for attr in attrs:
-		adata.uns['scmemo']['2d_ht'][attr] = eval(attr)
+		adata.uns['schypo']['2d_ht'][attr] = eval(attr)
 		
 	if not inplace:
 		return adata
@@ -375,10 +366,10 @@ def get_1d_ht_result(adata):
 	
 	result_df = pd.DataFrame()
 	result_df['gene'] = adata.var.index.tolist()
-	result_df['de_coef'] = adata.uns['scmemo']['1d_ht']['mean_coef']
-	result_df['de_pval'] = adata.uns['scmemo']['1d_ht']['mean_asl']
-	result_df['dv_coef'] = adata.uns['scmemo']['1d_ht']['var_coef']
-	result_df['dv_pval'] = adata.uns['scmemo']['1d_ht']['var_asl']	
+	result_df['de_coef'] = adata.uns['schypo']['1d_ht']['mean_coef']
+	result_df['de_pval'] = adata.uns['schypo']['1d_ht']['mean_asl']
+	result_df['dv_coef'] = adata.uns['schypo']['1d_ht']['var_coef']
+	result_df['dv_pval'] = adata.uns['schypo']['1d_ht']['var_asl']	
 	
 	return result_df
 
@@ -386,11 +377,11 @@ def get_2d_ht_result(adata):
 	
 	result_df = pd.DataFrame(
 		itertools.product(
-			adata.uns['scmemo']['2d_moments']['gene_1'],
-			adata.uns['scmemo']['2d_moments']['gene_2']),
+			adata.uns['schypo']['2d_moments']['gene_1'],
+			adata.uns['schypo']['2d_moments']['gene_2']),
 		columns=['gene_1', 'gene_2'])
-	result_df['corr_coef'] = adata.uns['scmemo']['2d_ht']['corr_coef'].ravel()
-	result_df['corr_pval'] = adata.uns['scmemo']['2d_ht']['corr_asl'].ravel()
+	result_df['corr_coef'] = adata.uns['schypo']['2d_ht']['corr_coef'].ravel()
+	result_df['corr_pval'] = adata.uns['schypo']['2d_ht']['corr_asl'].ravel()
 	result_df['corr_fdr'] = util._fdrcorrect(result_df['corr_pval'].values)
 	
 	return result_df
