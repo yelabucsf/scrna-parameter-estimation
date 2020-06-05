@@ -20,14 +20,26 @@ def _robust_log(val):
 
 def _fill(val):
 	
-	val[np.isnan(val)] = np.nanmean(val)
+	condition = np.less_equal(val, 0., where=~np.isnan(val)) | np.isnan(val)
+	val[condition] = np.random.choice(val[~condition], condition.sum())
+	
+	return val
+
+def _fill_corr(val):
+	
+	condition = np.isnan(val)
+	val[condition] = np.random.choice(val[~condition], condition.sum())
 	
 	return val
 
 
-def _push_nan(val):
-		
-	nan_idx = np.isnan(val)
+def _push(val, cond='neg'):
+	
+	if cond == 'neg':
+		nan_idx = val < 0
+	else:
+		nan_idx = np.isnan(val)
+	
 	nan_count = nan_idx.sum()
 	val[:(val.shape[0]-nan_count)] = val[~nan_idx]
 	val[(val.shape[0]-nan_count):] = np.nan
@@ -39,26 +51,19 @@ def _compute_asl(perm_diff):
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
-	extreme_count = (perm_diff > 0).sum()
-	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
-	
-# 	c = (perm_diff < 0).mean()
-	
-# 	return 2*min(1-c, c )
+# 	null = perm_diff[1:] - perm_diff[0]
 	
 # 	stat = perm_diff[0]
-# 	boot_stat =  perm_diff[1:]
-# 	boot_stat = boot_stat[np.isfinite(boot_stat)]
 	
-# 	centered = boot_stat - stat
-
-# 	c = ((perm_diff[1:] > 0).sum() + 1)/(perm_diff[1:].shape[0]+1)
+# 	onesided = (stat > null).mean()
 	
-# 	return 2*min(c, 1-c)
+# 	return 2*min(onesided, 1-onesided)
 	
-# 	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+	extreme_count = (perm_diff > 0).sum()
+	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
+	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 	
-	if extreme_count > 2: # We do not need to use the GDP approximation. 
+	if extreme_count > 10: # We do not need to use the GDP approximation. 
 
 		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 
@@ -97,7 +102,8 @@ def _ht_1d(
 	Nc_list,
 	num_boot,
 	cov_idx,
-	mv_fit # list of tuples
+	mv_fit, # list of tuples
+	q
 	):
 	
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
@@ -109,20 +115,21 @@ def _ht_1d(
 	for group_idx in range(len(true_mean)):
 
 		# Skip if any of the 1d moments are NaNs
-# 		if np.isnan(true_mean[group_idx]) or \
-# 		   np.isnan(true_res_var[group_idx]) or \
-# 		   true_mean[group_idx] == 0 or \
-# 		   true_res_var[group_idx] < 0:
-# 			continue
+		if np.isnan(true_mean[group_idx]) or \
+		   np.isnan(true_res_var[group_idx]) or \
+		   true_mean[group_idx] == 0 or \
+		   true_res_var[group_idx] < 0:
+			continue
 
 		# Fill in the true value
-		boot_mean[group_idx, 0], boot_var[group_idx, 0] = true_mean[group_idx], true_res_var[group_idx]		
+		boot_mean[group_idx, 0], boot_var[group_idx, 0] = np.log(true_mean[group_idx]), np.log(true_res_var[group_idx])
 
 		# Generate the bootstrap values
 		mean, var = bootstrap._bootstrap_1d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
-			num_boot=num_boot)
+			num_boot=num_boot,
+			q=q)
 		
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
@@ -131,18 +138,12 @@ def _ht_1d(
 		good_idxs[group_idx] = True
 		
 		# Minimize invalid values
-		boot_mean[group_idx, 1:] = mean#_push_nan(mean)#[:num_boot]
-		boot_var[group_idx, 1:] = res_var#_push_nan(res_var)#[:num_boot]
+		boot_mean[group_idx, 1:] = np.log(_fill(mean))#_push_nan(mean)#[:num_boot]
+		boot_var[group_idx, 1:] = np.log(_fill(res_var))#_push_nan(res_var)#[:num_boot]
 		
 	# Skip this gene
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan, np.nan
-	
-	# Log the values
-	# FIX: come up with a better solution to use the full bootstrap distribution for residual variance
-	
-	boot_var[good_idxs,] = _robust_log(boot_var[good_idxs,]+5)
-	boot_mean[good_idxs,] = _robust_log(boot_mean[good_idxs,]+1e-10)
 	
 	vals = _regress_1d(
 			design_matrix=design_matrix[good_idxs, :],
@@ -192,7 +193,8 @@ def _ht_2d(
 	design_matrix,
 	Nc_list,
 	num_boot,
-	cov_idx):
+	cov_idx,
+	q):
 		
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
@@ -212,7 +214,8 @@ def _ht_2d(
 		cov, var_1, var_2 = bootstrap._bootstrap_2d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
-			num_boot=int(num_boot))
+			num_boot=int(num_boot),
+			q=q)
 		
 # 		var_1[var_1 < 0] = np.mean(var_1[var_1 > 0])
 # 		var_2[var_2 < 0] = np.mean(var_2[var_2 > 0])
@@ -221,7 +224,7 @@ def _ht_2d(
 			
 		# This replicate is good
 		boot_corr[group_idx, 1:] = corr#[:num_boot]
-		vals = _fill(boot_corr[group_idx, :])
+		vals = _fill_corr(boot_corr[group_idx, :])
 		
 		# Skip if all NaNs
 		if np.all(np.isnan(vals)):

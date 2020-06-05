@@ -42,7 +42,8 @@ def _unique_expr(expr, size_factor):
 def _bootstrap_1d(
 	data, 
 	size_factor,
-	num_boot=1000, 
+	q,
+	num_boot=1000,
 	return_times=False):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
@@ -51,9 +52,7 @@ def _bootstrap_1d(
 		
 		This function expects :data: to be a single sparse column vector.
 	"""
-	
-	Nc = data.shape[0]
-				
+					
 	# Pre-compute size factor
 	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
 		
@@ -63,12 +62,13 @@ def _bootstrap_1d(
 		
 	gen = np.random.Generator(np.random.PCG64(5))
 	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
-	n_obs = Nc
+	n_obs = data.shape[0]
 		
 	# Estimate mean and variance
-	mean, var = estimator._poisson_1d(
+	mean, var = estimator._hyper_1d(
 		data=(expr, gene_rvs),
 		n_obs=n_obs,
+		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
 	
 	if return_times:
@@ -80,6 +80,7 @@ def _bootstrap_1d(
 def _bootstrap_2d(
 	data, 
 	size_factor,
+	q,
 	num_boot=1000):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
@@ -94,17 +95,20 @@ def _bootstrap_2d(
 	n_obs = Nc
 	
 	# Estimate the covariance and variance
-	cov = estimator._poisson_cov(
+	cov = estimator._hyper_cov(
 		data=(expr[:, 0].reshape(-1, 1), expr[:, 1].reshape(-1, 1), gene_rvs), 
 		n_obs=n_obs, 
+		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
-	_, var_1 = estimator._poisson_1d(
+	_, var_1 = estimator._hyper_1d(
 		data=(expr[:, 0].reshape(-1, 1), gene_rvs),
 		n_obs=n_obs,
+		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
-	_, var_2 = estimator._poisson_1d(
+	_, var_2 = estimator._hyper_1d(
 		data=(expr[:, 1].reshape(-1, 1), gene_rvs),
 		n_obs=n_obs,
+		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
 			
 	return cov, var_1, var_2

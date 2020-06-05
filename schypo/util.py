@@ -8,7 +8,7 @@ from statsmodels.stats.multitest import fdrcorrection
 def _select_cells(adata, group):
 	""" Slice the data horizontally. """
 
-	cell_selector = (adata.obs['scmemo_group'] == group).values
+	cell_selector = (adata.obs['schypo_group'] == group).values
 	
 	return adata.X[cell_selector, :].tocsc()
 

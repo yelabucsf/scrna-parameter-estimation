@@ -42,8 +42,8 @@ def _estimate_size_factor(data):
 	X=data
 	Nrc = np.array(X.sum(axis=1)).reshape(-1)
 	Nr = Nrc.mean()
-	size_factor = Nrc/Nr
-	return Nrc
+	size_factor = Nrc
+	return size_factor
 
 
 def _fit_mv_regressor(mean, var):

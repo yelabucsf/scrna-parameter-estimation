@@ -30,29 +30,14 @@ def extract_parameters(data, q=0.1):
 		q=q,
 		size_factor=estimator._estimate_size_factor(data))
 	
-	good_idx = np.where(data.mean(axis=0).A1 > q)[0]
-
-	x_cov = estimator._hyper_cov(
-		data,
-		n_obs=data.shape[0], 
-		size_factor=estimator._estimate_size_factor(data), 
-		idx1=good_idx, idx2=good_idx, 
-		q=q)
-	
-# 	x_corr = x_cov/ np.outer(x_var[good_idx], x_var[good_idx])
-# 	x_corr = np.clip(x_corr, a_min=-1, a_max=1)
-	
-	x_corr = estimator._corr_from_cov(x_cov, x_var[good_idx], x_var[good_idx])
-	x_corr[np.absolute(x_corr) > 1] = np.nan
-	nan_count = (~np.isfinite(x_corr)).sum()
-	x_corr[~np.isfinite(x_corr)] = np.random.choice(x_corr[np.isfinite(x_corr)].ravel(), nan_count)
+	good_idx = np.where(data.mean(axis=0).A1 > 0.001)[0]
 	
 	Nc = data.sum(axis=1).A1/q
 	
 	z_mean = x_mean*Nc.mean()
 	z_var = (x_var + x_mean**2)*(Nc**2).mean() - x_mean**2*Nc.mean()**2
 	
-	return (x_mean[good_idx], x_var[good_idx], x_corr), (z_mean[good_idx], z_var[good_idx]), Nc, good_idx
+	return (x_mean[good_idx], x_var[good_idx]), (z_mean[good_idx], z_var[good_idx]), Nc, good_idx
 
 
 def gamma_params_from_moments(m, v):
@@ -76,8 +61,8 @@ def simulate_transcriptomes(
 	n_cells, 
 	means, 
 	variances,
-	corr,
-	Nc):
+	Nc,
+	norm_cov=None):
 	
 	n_genes = means.shape[0]
 	
@@ -86,9 +71,12 @@ def simulate_transcriptomes(
 	dispersions[dispersions < 0] = 1e-5
 	thetas = 1/dispersions
 	
+	if type(norm_cov) == str:
+		return stats.nbinom.rvs(*convert_params_nb(means, thetas), size=(n_cells, n_genes))
+	
 	# Generate the parameters for the copula
 	norm_mean = np.random.random(n_genes)
-	norm_cov = make_spd_matrix(n_genes)
+	norm_cov = make_spd_matrix(n_genes) if norm_cov is None else norm_cov
 	norm_var = np.diag(norm_cov)
 # 	corr = norm_cov / np.outer(np.sqrt(norm_var), np.sqrt(norm_var))
 	

@@ -21,7 +21,8 @@ import util
 
 
 def create_groups(
-	adata, 
+	adata,
+	q,
 	label_columns, 
 	label_delimiter='^', 
 	inplace=True,
@@ -45,6 +46,7 @@ def create_groups(
 	adata.uns['schypo']['label_columns'] = label_columns
 	adata.uns['schypo']['label_delimiter'] = label_delimiter
 	adata.uns['schypo']['groups'] = adata.obs['schypo_group'].drop_duplicates().tolist()
+	adata.uns['schypo']['q'] = q
 	
 	# Create slices of the data based on the group
 	adata.uns['schypo']['group_cells'] = {group:util._select_cells(adata, group) for group in adata.uns['schypo']['groups']}
@@ -83,15 +85,17 @@ def compute_1d_moments(
 		{group:size_factor[(adata.obs['schypo_group'] == group).values] for group in adata.uns['schypo']['groups']}
 	
 	# Compute 1d moments for all groups
-	adata.uns['schypo']['1d_moments'] = {group:estimator._poisson_1d(
+	adata.uns['schypo']['1d_moments'] = {group:estimator._hyper_1d(
 		data=adata.uns['schypo']['group_cells'][group],
 		n_obs=adata.uns['schypo']['group_cells'][group].shape[0],
+		q=adata.uns['schypo']['q'],
 		size_factor=adata.uns['schypo']['size_factor'][group]) for group in adata.uns['schypo']['groups']}
 
 	# Compute 1d moments for across all cells
-	adata.uns['schypo']['1d_moments']['all'] = estimator._poisson_1d(
+	adata.uns['schypo']['1d_moments']['all'] = estimator._hyper_1d(
 		data=adata.X,
 		n_obs=adata.shape[0],
+		q=adata.uns['schypo']['q'],
 		size_factor=adata.uns['schypo']['all_size_factor'])
 	
 	# Create gene masks for each group
@@ -163,9 +167,10 @@ def compute_2d_moments(adata, gene_1, gene_2, inplace=True):
 	
 	for group in adata.uns['schypo']['groups']:
 		
-		cov = estimator._poisson_cov(
+		cov = estimator._hyper_cov(
 			data=adata.uns['schypo']['group_cells'][group], 
 			n_obs=adata.uns['schypo']['group_cells'][group].shape[0], 
+			q=adata.uns['schypo']['q'],
 			size_factor=adata.uns['schypo']['size_factor'][group], 
 			idx1=adata.uns['schypo']['2d_moments']['gene_idx_1'], 
 			idx2=adata.uns['schypo']['2d_moments']['gene_idx_2'])
@@ -239,7 +244,8 @@ def ht_1d_moments(
 				Nc_list=Nc_list,
 				num_boot=num_boot,
 				cov_idx=cov_idx,
-				mv_fit=[adata.uns['schypo']['mv_regressor'][group] for group in adata.uns['schypo']['groups']]))
+				mv_fit=[adata.uns['schypo']['mv_regressor'][group] for group in adata.uns['schypo']['groups']],
+				q=adata.uns['schypo']['q']))
 
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
 		
@@ -336,7 +342,9 @@ def ht_2d_moments(
 				design_matrix=design_matrix,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
-				cov_idx=cov_idx))
+				cov_idx=cov_idx,
+				q=adata.uns['schypo']['q']))
+
 	
 	# Parallel processing
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
