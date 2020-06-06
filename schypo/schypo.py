@@ -104,9 +104,9 @@ def compute_1d_moments(
 		
 		obs_mean = adata.uns['schypo']['group_cells'][group].mean(axis=0).A1 
 		expr_filter = (obs_mean > filter_mean_thresh)
-# 		expr_filter &= (adata.uns['schypo']['1d_moments'][group][1] > 0)
+		expr_filter &= (adata.uns['schypo']['1d_moments'][group][1] > 0)
 		adata.uns['schypo']['gene_filter'][group] = expr_filter
-	
+		
 	# Create overall gene mask
 	gene_masks = np.vstack([adata.uns['schypo']['gene_filter'][group] for group in adata.uns['schypo']['groups']])
 	gene_filter_rate = gene_masks.mean(axis=0)

@@ -4,43 +4,40 @@ import numpy as np
 import pickle as pkl
 
 import sys
-sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/scmemo')
-import estimator, simulate, scmemo, bootstrap, util, hypothesis_test
+sys.path.append('/data/home/Github/scrna-parameter-estimation/schypo')
+import estimator, simulate, schypo, bootstrap, util, hypothesis_test
+
+fig_path = '/data/home/Github/scrna-parameter-estimation/figures/fig5/'
+data_path = '/data/parameter_estimation/'
 
 
 if __name__ == '__main__':
 	
-	data_path = '/data/'
-	cts = ['CD4 T cells', 'CD14+ Monocytes', 'FCGR3A+ Monocytes', 'NK cells','CD8 T cells', 'B cells']
-	label_converter = dict(zip(cts, ['Th', 'cM', 'ncM', 'NK', 'Tc', 'B']))
+	adata = sc.read(data_path + 'interferon_filtered.h5ad')
 	
-	adata = sc.read(data_path + 'interferon.h5ad')
-	adata = adata[(adata.obs.multiplets == 'singlet') & (adata.obs.cell != 'nan'), :].copy()
-	adata.X = adata.X.astype(np.int64)
+	adata_ct =  adata[adata.obs.cell == 'CD14+ Monocytes'].copy()
 	
-	with open(data_path + 'all_highcount_tfs.pkl', 'rb') as f:
-		tfs = pkl.load(f)
-		
-	for ct in cts:
-		
-		print('Starting ct', ct)
-				
-		adata_ct =  adata[adata.obs.cell == ct].copy()
-		scmemo.create_groups(adata_ct, label_columns=['stim'], inplace=True)
-		scmemo.compute_1d_moments(
-			adata_ct, inplace=True, filter_genes=True, 
-			residual_var=True, use_n_umi=False, filter_mean_thresh=0.07, 
-			min_perc_group=0.8)
-		print('Size of data', adata_ct.shape)
-		
-		available_tfs = list(set(tfs) & set(adata_ct.var.index.tolist()))
-		target_genes = adata_ct.var.index.tolist()
-		print('TF list length', len(available_tfs))
-
-		scmemo.compute_2d_moments(adata_ct, available_tfs, target_genes)
-			
-		scmemo.ht_2d_moments(adata_ct, formula_like='1 + stim', cov_column='stim', num_cpu=10)
-				
-		adata_ct.write(data_path + 'result_2d/{}_2d_result_pooled.h5ad'.format(label_converter[ct]))
-		
-		
+	schypo.create_groups(adata_ct, label_columns=['stim', 'ind'], inplace=True, q=0.07)
+	
+	schypo.compute_1d_moments(
+		adata_ct, inplace=True, filter_genes=True, 
+		residual_var=True,filter_mean_thresh=0.00, 
+		min_perc_group=0.99)
+	
+	target_genes = adata_ct.var.index.tolist()
+	target_genes = np.random.choice(target_genes, 50, replace=False)
+	
+	schypo.compute_2d_moments(
+		adata_ct, 
+		target_genes, 
+		target_genes)
+	
+	
+	schypo.ht_2d_moments(
+		adata_ct, 
+		formula_like='1 + stim', 
+		cov_column='stim', 
+		num_cpus=6, 
+		num_boot=2500)
+	
+	adata_ct.write(data_path + 'result_2d/mono_ifn_allgenes.h5ad')
