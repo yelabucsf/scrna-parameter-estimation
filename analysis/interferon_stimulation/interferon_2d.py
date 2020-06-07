@@ -25,19 +25,24 @@ if __name__ == '__main__':
 		min_perc_group=0.99)
 	
 	target_genes = adata_ct.var.index.tolist()
-	target_genes = np.random.choice(target_genes, 50, replace=False)
 	
-	schypo.compute_2d_moments(
-		adata_ct, 
-		target_genes, 
-		target_genes)
+	genes_per_batch = 20
 	
+	for batch in range(int(len(target_genes)/genes_per_batch)+1):
 	
-	schypo.ht_2d_moments(
-		adata_ct, 
-		formula_like='1 + stim', 
-		cov_column='stim', 
-		num_cpus=6, 
-		num_boot=2500)
+		schypo.compute_2d_moments(
+			adata_ct, 
+			target_genes[(genes_per_batch*batch):(genes_per_batch*(batch+1))], 
+			target_genes)
 	
-	adata_ct.write(data_path + 'result_2d/mono_ifn_allgenes.h5ad')
+		schypo.ht_2d_moments(
+			adata_ct, 
+			formula_like='1 + stim', 
+			cov_column='stim', 
+			num_cpus=90, 
+			num_boot=2500)
+	
+		adata_ct.write(data_path + 'result_2d/mono_ifn/{}.h5ad'.format(batch))
+		
+		del adata_ct.uns['schypo']['2d_moments']
+		del adata_ct.uns['schypo']['2d_ht']
