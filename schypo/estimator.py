@@ -206,7 +206,6 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
 	
-# 	if not boot:
-# 		corr[(corr > 1) | (corr < -1)] = np.nan
+	corr[(corr > 1) | (corr < -1)] = np.nan
 	
 	return corr

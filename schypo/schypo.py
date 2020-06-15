@@ -390,6 +390,7 @@ def get_2d_ht_result(adata):
 		columns=['gene_1', 'gene_2'])
 	result_df['corr_coef'] = adata.uns['schypo']['2d_ht']['corr_coef'].ravel()
 	result_df['corr_pval'] = adata.uns['schypo']['2d_ht']['corr_asl'].ravel()
+		
 	result_df['corr_fdr'] = util._fdrcorrect(result_df['corr_pval'].values)
 	
 	return result_df
