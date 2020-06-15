@@ -1,2 +1,2 @@
-from schypo import *
-from util import *
+from schypo.schypo import *
+from schypo.util import *
