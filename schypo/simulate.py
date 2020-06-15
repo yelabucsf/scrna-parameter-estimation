@@ -15,7 +15,7 @@ pd.set_option('display.max_colwidth', -1)
 import pickle as pkl
 import time
 
-import estimator
+from schypo import estimator
 
 
 def extract_parameters(data, q=0.1):

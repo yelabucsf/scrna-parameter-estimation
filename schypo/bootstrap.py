@@ -10,7 +10,7 @@ import pandas as pd
 import string
 import time
 
-import estimator
+from schypo import estimator
 
 def numpy_fill(arr):
 	nan_idxs = np.isnan(arr)

@@ -14,10 +14,10 @@ from joblib import Parallel, delayed
 from functools import partial
 import itertools
 
-import bootstrap
-import estimator
-import hypothesis_test
-import util
+from schypo import bootstrap
+from schypo import estimator
+from schypo import hypothesis_test
+from schypo import util
 
 
 def create_groups(
