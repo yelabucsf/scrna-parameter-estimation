@@ -18,7 +18,7 @@ import time
 from schypo import estimator
 
 
-def extract_parameters(data, q=0.1):
+def extract_parameters(data, q=0.1, min_mean=0.001):
 	"""
 		Extract the parameters of real dataset. 
 		:data: should be a sparse matrix.
@@ -30,7 +30,7 @@ def extract_parameters(data, q=0.1):
 		q=q,
 		size_factor=estimator._estimate_size_factor(data))
 	
-	good_idx = np.where(data.mean(axis=0).A1 > 0.001)[0]
+	good_idx = np.where(data.mean(axis=0).A1 > min_mean)[0]
 	
 	Nc = data.sum(axis=1).A1/q
 	

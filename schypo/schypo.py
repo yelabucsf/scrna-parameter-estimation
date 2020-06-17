@@ -59,7 +59,8 @@ def compute_1d_moments(
 	inplace=True, 
 	filter_mean_thresh=0.07, 
 	min_perc_group=0.7, 
-	filter_genes=True, 
+	filter_genes=True,
+	num_bins=50,
 	residual_var=True):
 	
 	assert 'schypo' in adata.uns
@@ -71,7 +72,7 @@ def compute_1d_moments(
 	size_factor = estimator._estimate_size_factor(adata.X)
 	
 	# Bin the size factors
-	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=50, statistic='median')
+	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=num_bins, statistic='mean')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
 	max_sf = size_factor.max()

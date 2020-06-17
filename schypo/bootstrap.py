@@ -52,16 +52,20 @@ def _bootstrap_1d(
 		
 		This function expects :data: to be a single sparse column vector.
 	"""
-					
+	start_time = time.time()
+	
 	# Pre-compute size factor
 	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
+	count_time = time.time()
 		
 	# Skip this gene if it has no expression
 	if expr.shape[0] <= 1:
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
 		
 	gen = np.random.Generator(np.random.PCG64(5))
-	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
+# 	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
+	gene_rvs = gen.multinomial(data.shape[0], counts/data.shape[0], size=num_boot).T
+
 	n_obs = data.shape[0]
 		
 	# Estimate mean and variance
@@ -70,6 +74,7 @@ def _bootstrap_1d(
 		n_obs=n_obs,
 		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
+	boot_time = time.time()
 	
 	if return_times:
 		return start_time, count_time, boot_time
