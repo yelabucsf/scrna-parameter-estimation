@@ -194,7 +194,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 		return cov/np.sqrt(var_1*var_2)
 
 		
-	corr = np.full(cov.shape, np.nan)
+	corr = np.full(cov.shape, 5.0)
 	if boot:
 		var_1[var_1 <= 0] = np.nan
 		var_2[var_2 <= 0] = np.nan
@@ -205,7 +205,6 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 		var_prod = np.sqrt(np.outer(var_1, var_2))
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
-	
 	corr[(corr > 1) | (corr < -1)] = np.nan
 	
 	return corr
