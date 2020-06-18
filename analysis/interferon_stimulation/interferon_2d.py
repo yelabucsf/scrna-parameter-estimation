@@ -2,6 +2,7 @@ import scanpy as sc
 import scipy as sp
 import numpy as np
 import pickle as pkl
+import pandas as pd
 
 import sys
 sys.path.append('/data/home/Github/scrna-parameter-estimation/dist/schypo-0.0.0-py3.7.egg')
@@ -52,4 +53,3 @@ if __name__ == '__main__':
 		del adata_ct.uns['schypo']['2d_moments']
 		del adata_ct.uns['schypo']['2d_ht']
 		
-		break
