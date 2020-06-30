@@ -10,11 +10,11 @@ import pandas as pd
 import string
 import time
 
-from schypo import estimator
 
 def numpy_fill(arr):
 	nan_idxs = np.isnan(arr)
 	arr[nan_idxs] = np.nanmedian(arr)
+	
 
 def _unique_expr(expr, size_factor):
 	"""
@@ -43,6 +43,7 @@ def _bootstrap_1d(
 	data, 
 	size_factor,
 	q,
+	_estimator_1d,
 	num_boot=1000,
 	return_times=False):
 	"""
@@ -69,7 +70,7 @@ def _bootstrap_1d(
 	n_obs = data.shape[0]
 		
 	# Estimate mean and variance
-	mean, var = estimator._hyper_1d(
+	mean, var = _estimator_1d(
 		data=(expr, gene_rvs),
 		n_obs=n_obs,
 		q=q,
@@ -86,6 +87,8 @@ def _bootstrap_2d(
 	data, 
 	size_factor,
 	q,
+	_estimator_1d,
+	_estimator_cov,
 	num_boot=1000):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
@@ -96,21 +99,22 @@ def _bootstrap_2d(
 	
 	# Generate the bootstrap samples
 	gen = np.random.Generator(np.random.PCG64(5))
-	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
+# 	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
+	gene_rvs = gen.multinomial(data.shape[0], counts/data.shape[0], size=num_boot).T
 	n_obs = Nc
 	
 	# Estimate the covariance and variance
-	cov = estimator._hyper_cov(
+	cov = _estimator_cov(
 		data=(expr[:, 0].reshape(-1, 1), expr[:, 1].reshape(-1, 1), gene_rvs), 
 		n_obs=n_obs, 
 		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
-	_, var_1 = estimator._hyper_1d(
+	_, var_1 = _estimator_1d(
 		data=(expr[:, 0].reshape(-1, 1), gene_rvs),
 		n_obs=n_obs,
 		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
-	_, var_2 = estimator._hyper_1d(
+	_, var_2 = _estimator_1d(
 		data=(expr[:, 1].reshape(-1, 1), gene_rvs),
 		n_obs=n_obs,
 		q=q,

@@ -51,44 +51,40 @@ def _compute_asl(perm_diff):
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
-# 	null = perm_diff[1:] - perm_diff[0]
+	null = perm_diff[1:] - perm_diff[1:].mean()
 	
-# 	stat = perm_diff[0]
-	
-# 	onesided = (stat > null).mean()
-	
-# 	return 2*min(onesided, 1-onesided)
-	
-	extreme_count = (perm_diff > 0).sum()
-	extreme_count = min(extreme_count, perm_diff.shape[0] - extreme_count)
+	stat = perm_diff[0]
+			
+	extreme_count = (null < stat).sum()
+	extreme_count = min(extreme_count, null.shape[0] - extreme_count)
 # 	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 	
 	if extreme_count > 3: # We do not need to use the GDP approximation. 
 
-		return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+		return 2 * ((extreme_count + 1) / (null.shape[0] + 1))
 
 	else: # We use the GDP approximation
 
 		try:
 
-			perm_mean = perm_diff.mean()
-			perm_dist = np.sort(perm_diff) if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+			perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
 			perm_dist = perm_dist[np.isfinite(perm_dist)]
 			N_exec = 300 # Starting value for number of exceendences
 
 			while N_exec > 50:
 
-				tail_data = perm_dist[-N_exec:]
+				tail_data = perm_dist[-N_exec:] if stat > 0 else perm_dist[:N_exec]
 				params = stats.genextreme.fit(tail_data)
 				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
 
 				if ks_pval > 0.05: # roughly a genpareto distribution
-					return 2 * (N_exec/perm_diff.shape[0]) * stats.genextreme.sf(1, *params)
+					val = stats.genextreme.sf(stat, *params) if stat > 0 else stats.genextreme.cdf(stat, *params)
+					return 2 * (N_exec/perm_diff.shape[0]) * val
 				else: # Failed to fit genpareto
 					N_exec -= 30
 			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 
-		except:
+		except: # catch any numerical errors
 
 			# Failed to fit genpareto, return the upper bound
 			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
@@ -103,8 +99,8 @@ def _ht_1d(
 	num_boot,
 	cov_idx,
 	mv_fit, # list of tuples
-	q
-	):
+	q,
+	_estimator_1d):
 	
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
@@ -129,7 +125,8 @@ def _ht_1d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
 			num_boot=num_boot,
-			q=q)
+			q=q,
+			_estimator_1d=_estimator_1d)
 		
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
@@ -194,7 +191,9 @@ def _ht_2d(
 	Nc_list,
 	num_boot,
 	cov_idx,
-	q):
+	q,
+	_estimator_1d,
+	_estimator_cov):
 		
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
@@ -215,7 +214,9 @@ def _ht_2d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
 			num_boot=int(num_boot),
-			q=q)
+			q=q,
+			_estimator_1d=_estimator_1d,
+			_estimator_cov=_estimator_cov)
 		
 # 		var_1[var_1 < 0] = np.mean(var_1[var_1 > 0])
 # 		var_2[var_2 < 0] = np.mean(var_2[var_2 > 0])
@@ -263,12 +264,12 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 		
 		return np.nan, np.nan
 	
-	corr_coef = LinearRegression(fit_intercept=False, n_jobs=4)\
+	corr_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
 	
 	if boot_corr.shape[1] < num_boot*0.7:
 		return corr_coef[0], np.nan
 
-	corr_asl = _compute_asl(corr_coef[1:])
+	corr_asl = _compute_asl(corr_coef)
 	
 	return corr_coef[0], corr_asl

@@ -3,6 +3,7 @@ import scipy as sp
 import numpy as np
 import pickle as pkl
 import pandas as pd
+import itertools
 
 import sys
 sys.path.append('/data/home/Github/scrna-parameter-estimation/dist/schypo-0.0.0-py3.7.egg')
@@ -20,36 +21,33 @@ if __name__ == '__main__':
 	tfs = tf_df['HGNC symbol'].tolist()
 	
 	adata_ct =  adata[adata.obs.cell == 'CD14+ Monocytes'].copy()
-	
-	schypo.create_groups(adata_ct, label_columns=['stim', 'ind'], inplace=True, q=0.07)
-	
+	# adata_ct.obs['stim'] = np.random.choice(adata_ct.obs['stim'], adata_ct.shape[0])
+
+	schypo.create_groups(adata_ct, label_columns=['ind','stim'], inplace=True, q=0.07)
+
 	schypo.compute_1d_moments(
 		adata_ct, inplace=True, filter_genes=True, 
-		residual_var=True,filter_mean_thresh=0.025, 
+		residual_var=True,
+		filter_mean_thresh=0.07, 
 		min_perc_group=0.85)
 	
-	target_genes = adata_ct.var.index.tolist()
-	filtered_tfs = list(set(target_genes) & set(tfs))
+	genes = adata_ct.var.index.tolist()
+	gene_1 = list(set(tfs) & set(genes))
+	gene_2 = genes
+	gene_pairs = list(itertools.product(gene_1, gene_2))
 	
-	genes_per_batch = 20
+# 	genes_per_batch = 20
 	
-	for batch in range(int(len(filtered_tfs)/genes_per_batch)+1):
+# 	for batch in range(int(len(filtered_tfs)/genes_per_batch)+1):
 	
-		schypo.compute_2d_moments(
-			adata_ct, 
-			filtered_tfs[(genes_per_batch*batch):(genes_per_batch*(batch+1))], 
-			target_genes)
+	schypo.compute_2d_moments(adata_ct,gene_pairs)
+
+	schypo.ht_2d_moments(
+		adata_ct, 
+		formula_like='1 + stim', 
+		cov_column='stim', 
+		num_cpus=6, 
+		num_boot=10000)
 	
-		schypo.ht_2d_moments(
-			adata_ct, 
-			formula_like='1 + stim', 
-			cov_column='stim', 
-			num_cpus=90, 
-			num_boot=5000)
-	
-		adata_ct.write(data_path + 'result_2d/mono_ifn/tf_{}.h5ad'.format(batch))
-		print('Completed batch', batch)
-		
-		del adata_ct.uns['schypo']['2d_moments']
-		del adata_ct.uns['schypo']['2d_ht']
+	adata_ct.write(data_path + 'result_2d/mono_ifn/tf.h5ad')
 		

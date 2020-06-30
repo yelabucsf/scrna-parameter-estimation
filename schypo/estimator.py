@@ -18,19 +18,35 @@ import matplotlib.pyplot as plt
 from sklearn import linear_model
 
 
-def _estimate_Nr(data):
-	"""
-		Estimate the average UMI count per cell
-	"""
+def _get_estimator_1d(estimator_type):
+	
+	if estimator_type == 'hyper_absolute':
+		return _hyper_1d_absolute
+	elif estimator_type == 'hyper_relative':
+		return _hyper_1d_relative
+	elif estimator_type == 'poi_absolute':
+		return _poi_1d_absolute
+	elif estimator_type == 'poi_relative':
+		return _poi_1d_relative
+	else: # Custom 1D estimator
+		return estimator_type[0]
 
+	
+def _get_estimator_cov(estimator_type):
+	
+	if estimator_type == 'hyper_absolute':
+		return _hyper_cov_absolute
+	elif estimator_type == 'hyper_relative':
+		return _hyper_cov_relative
+	elif estimator_type == 'poi_absolute':
+		return _poi_cov_absolute
+	elif estimator_type == 'poi_relative':
+		return _poi_cov_relative
+	else: # Custom covariance estimator
+		return estimator_type[1]
+	
 
-def _estimate_q_sq(data, q):
-	"""
-		Estimate q_sq from the data based on CV vs 1/mean.
-	"""
-	return
-
-def _estimate_size_factor(data):
+def _estimate_size_factor(data, estimator_type):
 	"""Calculate the size factor
 	
 	Args: 
@@ -39,6 +55,10 @@ def _estimate_size_factor(data):
 	Returns:
 		size_factor((Nc,) ndarray): the cell size factors.
 	"""
+	
+	if 'absolute' in estimator_type:
+		return np.ones(data.shape[0])
+	
 	X=data
 	Nrc = np.array(X.sum(axis=1)).reshape(-1)
 	Nr = Nrc.mean()
@@ -70,7 +90,7 @@ def _residual_variance(mean, var, mv_fit):
 	return rv
 
 
-def _poisson_1d(data, n_obs, size_factor=None):
+def _poisson_1d_relative(data, n_obs, size_factor=None):
 	"""
 		Estimate the variance using the Poisson noise process.
 		
@@ -92,7 +112,7 @@ def _poisson_1d(data, n_obs, size_factor=None):
 	return [mm_mean, mm_var]
 
 
-def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None):
+def _poisson_cov_relative(data, n_obs, size_factor, idx1=None, idx2=None):
 	"""
 		Estimate the covariance using the Poisson noise process between genes at idx1 and idx2.
 		
@@ -127,7 +147,7 @@ def _poisson_cov(data, n_obs, size_factor, idx1=None, idx2=None):
 	return cov
 
 
-def _hyper_1d(data, n_obs, q, size_factor=None):
+def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	"""
 		Estimate the variance using the Poisson noise process.
 		
@@ -150,7 +170,7 @@ def _hyper_1d(data, n_obs, q, size_factor=None):
 	return [mm_mean, mm_var]
 
 
-def _hyper_cov(data, n_obs, size_factor, q, idx1=None, idx2=None):
+def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
 	"""
 		Estimate the covariance using the hypergeometric noise process between genes at idx1 and idx2.
 		
@@ -168,19 +188,15 @@ def _hyper_cov(data, n_obs, size_factor, q, idx1=None, idx2=None):
 		idx1 = np.arange(0, data.shape[1]) if idx1 is None else np.array(idx1)
 		idx2 = np.arange(0, data.shape[1]) if idx2 is None else np.array(idx2)
         
-		overlap = set(idx1) & set(idx2)
-		
-		overlap_idx1 = [i for i in idx1 if i in overlap]
-		overlap_idx2 = [i for i in idx2 if i in overlap]
-		
-		overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap ]
-		overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap ]
+		overlap_location = (idx1 == idx2)
+		overlap_idx = [i for i,j in zip(idx1, idx2) if i == j]
 		
 		row_weight = np.sqrt(1/(size_factor**2 + size_factor*(1-q))).reshape([1, -1])
 		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
-		prod = (X.T*Y).toarray()/X.shape[0]
-		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - (1-q)*data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
-		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
+		
+		prod = X.multiply(Y).sum(axis=0).A1/n_obs
+		prod[overlap_location] = prod[overlap_location] - (1-q)*data[:, overlap_idx].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+		cov = prod - X.mean(axis=0).A1*Y.mean(axis=0).A1
 					
 	return cov
 
@@ -195,14 +211,10 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 
 		
 	corr = np.full(cov.shape, 5.0)
-	if boot:
-		var_1[var_1 <= 0] = np.nan
-		var_2[var_2 <= 0] = np.nan
-		var_prod = np.sqrt(var_1*var_2)
-	else:
-		var_1[var_1 <= 0] = np.nan
-		var_2[var_2 <= 0] = np.nan
-		var_prod = np.sqrt(np.outer(var_1, var_2))
+	
+	var_1[var_1 <= 0] = np.nan
+	var_2[var_2 <= 0] = np.nan
+	var_prod = np.sqrt(var_1*var_2)
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
 	corr[(corr > 1) | (corr < -1)] = np.nan
