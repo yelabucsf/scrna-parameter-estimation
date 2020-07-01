@@ -112,7 +112,7 @@ def _poisson_1d_relative(data, n_obs, size_factor=None):
 	return [mm_mean, mm_var]
 
 
-def _poisson_cov_relative(data, n_obs, size_factor, idx1=None, idx2=None):
+def _poisson_cov_relative(data, n_obs, size_factor, idx1, idx2):
 	"""
 		Estimate the covariance using the Poisson noise process between genes at idx1 and idx2.
 		
@@ -126,23 +126,17 @@ def _poisson_cov_relative(data, n_obs, size_factor, idx1=None, idx2=None):
 		cov = obs_MX - obs_M1*obs_M2
 
 	else:
-
-		idx1 = np.arange(0, data.shape[1]) if idx1 is None else np.array(idx1)
-		idx2 = np.arange(0, data.shape[1]) if idx2 is None else np.array(idx2)
-        
-		overlap = set(idx1) & set(idx2)
 		
-		overlap_idx1 = [i for i in idx1 if i in overlap]
-		overlap_idx2 = [i for i in idx2 if i in overlap]
+		overlap_location = (idx1 == idx2)
+		overlap_idx = [i for i,j in zip(idx1, idx2) if i == j]
 		
-		overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap ]
-		overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap ]
-		
-		row_weight = (1/size_factor).reshape([1, -1]) if size_factor is not None else np.ones(data.shape[0]).reshape([1, -1])
+		row_weight = np.sqrt(1/(size_factor**2)).reshape([1, -1])
 		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
-		prod = (X.T*Y).toarray()/X.shape[0]
-		prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
-		cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
+		
+		prod = X.multiply(Y).sum(axis=0).A1/n_obs
+		if len(overlap_idx) >0:
+			prod[overlap_location] = prod[overlap_location] - data[:, overlap_idx].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+		cov = prod - X.mean(axis=0).A1*Y.mean(axis=0).A1
 					
 	return cov
 
@@ -170,7 +164,7 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	return [mm_mean, mm_var]
 
 
-def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
+def _hyper_cov_relative(data, n_obs, size_factor, q, idx1, idx2):
 	"""
 		Estimate the covariance using the hypergeometric noise process between genes at idx1 and idx2.
 		
@@ -185,9 +179,6 @@ def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
 
 	else:
 
-		idx1 = np.arange(0, data.shape[1]) if idx1 is None else np.array(idx1)
-		idx2 = np.arange(0, data.shape[1]) if idx2 is None else np.array(idx2)
-        
 		overlap_location = (idx1 == idx2)
 		overlap_idx = [i for i,j in zip(idx1, idx2) if i == j]
 		
@@ -195,7 +186,8 @@ def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
 		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
 		
 		prod = X.multiply(Y).sum(axis=0).A1/n_obs
-		prod[overlap_location] = prod[overlap_location] - (1-q)*data[:, overlap_idx].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+		if len(overlap_idx) >0:
+			prod[overlap_location] = prod[overlap_location] - (1-q)*data[:, overlap_idx].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
 		cov = prod - X.mean(axis=0).A1*Y.mean(axis=0).A1
 					
 	return cov

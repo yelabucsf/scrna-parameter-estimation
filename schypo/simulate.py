@@ -24,11 +24,11 @@ def extract_parameters(data, q=0.1, min_mean=0.001):
 		:data: should be a sparse matrix.
 	"""
 		
-	x_mean, x_var = estimator._hyper_1d(
+	x_mean, x_var = estimator._hyper_1d_relative(
 		data, 
 		data.shape[0],
 		q=q,
-		size_factor=estimator._estimate_size_factor(data))
+		size_factor=estimator._estimate_size_factor(data, 'hyper_relative'))
 	
 	good_idx = np.where(data.mean(axis=0).A1 > min_mean)[0]
 	

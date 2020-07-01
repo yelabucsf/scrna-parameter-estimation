@@ -18,6 +18,7 @@ from schypo import bootstrap
 from schypo import estimator
 from schypo import hypothesis_test
 from schypo import util
+from schypo import simulate
 
 
 def create_groups(
