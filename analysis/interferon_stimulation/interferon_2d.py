@@ -19,9 +19,10 @@ if __name__ == '__main__':
 	tf_df = pd.read_csv('DatabaseExtract_v_1.01.csv', index_col=0)
 	tf_df = tf_df[tf_df['TF assessment'] == 'Known motif']
 	tfs = tf_df['HGNC symbol'].tolist()
+	tfs = ['NFKB1', 'JUN']
 	
 	adata_ct =  adata[adata.obs.cell == 'CD14+ Monocytes'].copy()
-	# adata_ct.obs['stim'] = np.random.choice(adata_ct.obs['stim'], adata_ct.shape[0])
+	# adata_ct.obs['stim'] = np.random.choice(cat ifnadata_ct.obs['stim'], adata_ct.shape[0])
 
 	schypo.create_groups(adata_ct, label_columns=['ind','stim'], inplace=True, q=0.07)
 
@@ -45,5 +46,5 @@ if __name__ == '__main__':
 		num_cpus=6, 
 		num_boot=10000)
 	
-	adata_ct.write(data_path + 'result_2d/mono_ifn/tf_20200722.h5ad')
+	adata_ct.write(data_path + 'result_2d/mono_ifn/tf_NFKB1_JUN.h5ad')
 		

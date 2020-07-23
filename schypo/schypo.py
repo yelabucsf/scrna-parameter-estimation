@@ -92,8 +92,7 @@ def compute_1d_moments(
 	rv_mask = all_res_var < rv_ulim
 	
 	mask = rv_mask
-	print('Normalizing with {} genes'.format(mask.sum()))
-	adata.uns['schypo']['least_variable_genes'] = adata.var.index[mask]
+	adata.uns['schypo']['least_variable_genes'] = adata.var.index[mask].tolist()
 	
 	size_factor = estimator._estimate_size_factor(adata.X, adata.uns['schypo']['estimator_type'], mask=mask)
 	
