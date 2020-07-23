@@ -46,7 +46,7 @@ def _get_estimator_cov(estimator_type):
 		return estimator_type[1]
 	
 
-def _estimate_size_factor(data, estimator_type):
+def _estimate_size_factor(data, estimator_type, mask=None, perc=None, total=False):
 	"""Calculate the size factor
 	
 	Args: 
@@ -60,9 +60,20 @@ def _estimate_size_factor(data, estimator_type):
 		return np.ones(data.shape[0])
 	
 	X=data
-	Nrc = np.array(X.sum(axis=1)).reshape(-1)
-	Nr = Nrc.mean()
-	size_factor = Nrc
+	
+	if total:
+		Nrc = np.array(X.sum(axis=1)).reshape(-1)
+		Nr = Nrc.mean()
+		size_factor = Nrc/Nr
+		
+	if mask is not None:
+				
+		print('Using mask...')
+		Nrc = X.multiply(mask).sum(axis=1).A1
+		Nrc += np.quantile(Nrc, 0.5)
+		Nr = Nrc.mean()
+		size_factor = Nrc/Nr
+
 	return size_factor
 
 
@@ -154,7 +165,7 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	else:
 		
 		row_weight = (1/size_factor).reshape([1, -1])
-		row_weight_sq = (1/(size_factor**2 - size_factor*(1-q))).reshape([1, -1])
+		row_weight_sq = (1/size_factor**2).reshape([1, -1])
 		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
 		mm_M2 = sparse.csc_matrix.dot(row_weight_sq, data.power(2)).ravel()/n_obs - (1-q)*sparse.csc_matrix.dot(row_weight_sq, data).ravel()/n_obs
 	
@@ -164,7 +175,7 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	return [mm_mean, mm_var]
 
 
-def _hyper_cov_relative(data, n_obs, size_factor, q, idx1, idx2):
+def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
 	"""
 		Estimate the covariance using the hypergeometric noise process between genes at idx1 and idx2.
 		
@@ -182,7 +193,7 @@ def _hyper_cov_relative(data, n_obs, size_factor, q, idx1, idx2):
 		overlap_location = (idx1 == idx2)
 		overlap_idx = [i for i,j in zip(idx1, idx2) if i == j]
 		
-		row_weight = np.sqrt(1/(size_factor**2 + size_factor*(1-q))).reshape([1, -1])
+		row_weight = np.sqrt(1/size_factor**2).reshape([1, -1])
 		X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
 		
 		prod = X.multiply(Y).sum(axis=0).A1/n_obs
@@ -200,7 +211,6 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 	
 	if type(cov) != np.ndarray:
 		return cov/np.sqrt(var_1*var_2)
-
 		
 	corr = np.full(cov.shape, 5.0)
 	
@@ -209,6 +219,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 	var_prod = np.sqrt(var_1*var_2)
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
+	corr[(corr < 1.05) & (corr > -1.05)] = np.clip(corr[(corr < 1.05) & (corr > -1.05)], a_min=-1, a_max=1)
 	corr[(corr > 1) | (corr < -1)] = np.nan
 	
 	return corr

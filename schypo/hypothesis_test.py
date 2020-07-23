@@ -51,13 +51,21 @@ def _compute_asl(perm_diff):
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
-	null = perm_diff[1:] - perm_diff[1:].mean()
+	null = perm_diff[1:] - perm_diff[0]#np.mean(perm_diff[1:])
 	
-	stat = perm_diff[0]
+	stat = perm_diff[0]#np.mean(perm_diff[1:])
+	
+	if stat > 0:
+		extreme_count = (null > stat).sum() + (null < -stat).sum()
+	else:
+		extreme_count = (null > -stat).sum() + (null < stat).sum()
+		
+	return extreme_count / (perm_diff.shape[0]-1)
 			
-	extreme_count = (null < stat).sum()
-	extreme_count = min(extreme_count, null.shape[0] - extreme_count)
-# 	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+# 	extreme_count = (null < stat).sum()
+# 	extreme_count = min(extreme_count, null.shape[0] - extreme_count)
+	
+	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
 	
 	if extreme_count > 10: # We do not need to use the GDP approximation. 
 

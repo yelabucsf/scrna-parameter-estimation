@@ -29,16 +29,12 @@ if __name__ == '__main__':
 		adata_ct, inplace=True, filter_genes=True, 
 		residual_var=True,
 		filter_mean_thresh=0.07, 
-		min_perc_group=0.85)
+		min_perc_group=0.8)
 	
 	genes = adata_ct.var.index.tolist()
 	gene_1 = list(set(tfs) & set(genes))
 	gene_2 = genes
 	gene_pairs = list(itertools.product(gene_1, gene_2))
-	
-# 	genes_per_batch = 20
-	
-# 	for batch in range(int(len(filtered_tfs)/genes_per_batch)+1):
 	
 	schypo.compute_2d_moments(adata_ct,gene_pairs)
 
@@ -49,5 +45,5 @@ if __name__ == '__main__':
 		num_cpus=6, 
 		num_boot=10000)
 	
-	adata_ct.write(data_path + 'result_2d/mono_ifn/tf.h5ad')
+	adata_ct.write(data_path + 'result_2d/mono_ifn/tf_20200722.h5ad')
 		

@@ -64,6 +64,7 @@ def compute_1d_moments(
 	min_perc_group=0.7, 
 	filter_genes=True,
 	num_bins=50,
+	trim_percs=0.05,
 	residual_var=True):
 	
 	assert 'schypo' in adata.uns
@@ -72,7 +73,29 @@ def compute_1d_moments(
 		adata = adata.copy()
 		
 	# Compute size factors for all groups
-	size_factor = estimator._estimate_size_factor(adata.X, adata.uns['schypo']['estimator_type'])
+	naive_size_factor = estimator._estimate_size_factor(
+		adata.X, 
+		adata.uns['schypo']['estimator_type'], 
+		total=True)
+	
+	# Compute residual variance over all cells
+	all_1d = estimator._get_estimator_1d(adata.uns['schypo']['estimator_type'])(
+		data=adata.X,
+		n_obs=adata.shape[0],
+		q=adata.uns['schypo']['q'],
+		size_factor=naive_size_factor)
+	all_res_var = estimator._residual_variance(*all_1d, estimator._fit_mv_regressor(*all_1d))
+	
+	# Select genes for normalization
+	rv_ulim = np.quantile(all_res_var[np.isfinite(all_res_var)], trim_percs)
+	all_res_var[~np.isfinite(all_res_var)] = np.inf
+	rv_mask = all_res_var < rv_ulim
+	
+	mask = rv_mask
+	print('Normalizing with {} genes'.format(mask.sum()))
+	adata.uns['schypo']['least_variable_genes'] = adata.var.index[mask]
+	
+	size_factor = estimator._estimate_size_factor(adata.X, adata.uns['schypo']['estimator_type'], mask=mask)
 	
 	# Bin the size factors
 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=num_bins, statistic='mean')
@@ -82,6 +105,7 @@ def compute_1d_moments(
 	approx_sf[size_factor == max_sf] = max_sf
 	
 	adata.uns['schypo']['all_size_factor'] = size_factor
+	adata.uns['schypo']['all_total_size_factor'] = naive_size_factor = estimator._estimate_size_factor(adata.X, 'relative', total=True)
 	adata.uns['schypo']['all_approx_size_factor'] = approx_sf
 	adata.uns['schypo']['approx_size_factor'] = \
 		{group:approx_sf[(adata.obs['schypo_group'] == group).values] for group in adata.uns['schypo']['groups']}
