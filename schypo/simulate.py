@@ -28,7 +28,7 @@ def extract_parameters(data, q=0.1, min_mean=0.001):
 		data, 
 		data.shape[0],
 		q=q,
-		size_factor=estimator._estimate_size_factor(data, 'hyper_relative'))
+		size_factor=estimator._estimate_size_factor(data, 'hyper_relative', total=True))
 	
 	good_idx = np.where(data.mean(axis=0).A1 > min_mean)[0]
 	

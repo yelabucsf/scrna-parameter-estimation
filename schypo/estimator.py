@@ -64,15 +64,18 @@ def _estimate_size_factor(data, estimator_type, mask=None, perc=None, total=Fals
 	if total:
 		Nrc = np.array(X.sum(axis=1)).reshape(-1)
 		Nr = Nrc.mean()
-		size_factor = Nrc/Nr
+		size_factor = Nrc
 		
 	if mask is not None:
-				
+	
 		print('Using mask...')
 		Nrc = X.multiply(mask).sum(axis=1).A1
 		Nrc += np.quantile(Nrc, 0.5)
 		Nr = Nrc.mean()
 		size_factor = Nrc/Nr
+		
+		n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
+		size_factor *= n_umi
 
 	return size_factor
 
