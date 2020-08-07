@@ -169,7 +169,7 @@ def compute_1d_moments(
 		res_var = estimator._residual_variance(
 			adata.uns['schypo']['1d_moments'][group][0],
 			adata.uns['schypo']['1d_moments'][group][1],
-			adata.uns['schypo']['mv_regressor'][group])
+			adata.uns['schypo']['mv_regressor']['all'])
 		adata.uns['schypo']['1d_moments'][group].append(res_var)
 	
 	if not inplace:
