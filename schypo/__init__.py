@@ -1,1 +1,0 @@
-from schypo.schypo import *

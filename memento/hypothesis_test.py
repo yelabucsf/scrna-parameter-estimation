@@ -8,8 +8,8 @@ import numpy as np
 import scipy.stats as stats
 from sklearn.linear_model import LinearRegression
 
-from schypo import bootstrap
-from schypo import estimator
+from memento import bootstrap
+from memento import estimator
 
 def _robust_log(val):
 	
@@ -46,6 +46,7 @@ def _push(val, cond='neg'):
 	
 	return val
 
+
 def _compute_asl(perm_diff):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
@@ -60,16 +61,11 @@ def _compute_asl(perm_diff):
 	else:
 		extreme_count = (null > -stat).sum() + (null < stat).sum()
 		
-	return extreme_count / (perm_diff.shape[0]-1)
-			
-# 	extreme_count = (null < stat).sum()
-# 	extreme_count = min(extreme_count, null.shape[0] - extreme_count)
-	
-	return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+# 	return (extreme_count+1) / (null.shape[0]+1)
 	
 	if extreme_count > 10: # We do not need to use the GDP approximation. 
 
-		return 2 * ((extreme_count + 1) / (null.shape[0] + 1))
+		return (extreme_count+1) / (null.shape[0]+1)
 
 	else: # We use the GDP approximation
 
@@ -87,16 +83,17 @@ def _compute_asl(perm_diff):
 
 				if ks_pval > 0.05: # roughly a genpareto distribution
 					val = stats.genextreme.sf(stat, *params) if stat > 0 else stats.genextreme.cdf(stat, *params)
-					return 2 * (N_exec/perm_diff.shape[0]) * val
+					return 2 * (N_exec/perm_dist.shape[0]) * val
 				else: # Failed to fit genpareto
 					N_exec -= 30
-			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
+			return (extreme_count+1) / (null.shape[0]+1)
 
 		except: # catch any numerical errors
 
 			# Failed to fit genpareto, return the upper bound
-			return 2 * ((extreme_count + 1) / (perm_diff.shape[0] + 1))
-
+			return (extreme_count+1) / (null.shape[0]+1)
+		
+		
 def _ht_1d(
 	true_mean, # list of means
 	true_res_var, # list of residual variances

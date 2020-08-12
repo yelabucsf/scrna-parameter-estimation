@@ -1,4 +1,4 @@
 # scrna-parameter-estimation
-Direct estimation of mean and variance-covariance from single cell RNA seq experiments
 
-Lognormal assumption with simple binomial dropout.
+`memento`: Hypothesis testing of single cell RNA-sequencing datawith method of moments estimation and efficient resampling
+

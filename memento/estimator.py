@@ -15,7 +15,6 @@ import numpy as np
 import time
 import scipy as sp
 import matplotlib.pyplot as plt
-from sklearn import linear_model
 
 
 def _get_estimator_1d(estimator_type):
@@ -68,14 +67,13 @@ def _estimate_size_factor(data, estimator_type, mask=None, perc=None, total=Fals
 		
 	if mask is not None:
 	
-		print('Using mask...')
 		Nrc = X.multiply(mask).sum(axis=1).A1
 		Nrc += np.quantile(Nrc, 0.5)
 		Nr = Nrc.mean()
 		size_factor = Nrc/Nr
 		
 		n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
-		size_factor *= n_umi
+		size_factor
 
 	return size_factor
 
