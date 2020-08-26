@@ -11,10 +11,9 @@
 
 import scipy.sparse as sparse
 import scipy.stats as stats
+import scipy.interpolate as inter
 import numpy as np
-import time
-import scipy as sp
-import matplotlib.pyplot as plt
+import pickle as pkl
 
 
 def _get_estimator_1d(estimator_type):
@@ -45,7 +44,7 @@ def _get_estimator_cov(estimator_type):
 		return estimator_type[1]
 	
 
-def _estimate_size_factor(data, estimator_type, mask=None, perc=None, total=False):
+def _estimate_size_factor(data, estimator_type, mask=None, total=False, shrinkage=0.01):
 	"""Calculate the size factor
 	
 	Args: 
@@ -68,7 +67,7 @@ def _estimate_size_factor(data, estimator_type, mask=None, perc=None, total=Fals
 	if mask is not None:
 	
 		Nrc = X.multiply(mask).sum(axis=1).A1
-		Nrc += np.quantile(Nrc, 0.5)
+		Nrc += np.quantile(Nrc, shrinkage) # Shrinkage
 		Nr = Nrc.mean()
 		size_factor = Nrc/Nr
 		
@@ -87,17 +86,18 @@ def _fit_mv_regressor(mean, var):
 	
 	cond = (mean > 0) & (var > 0)
 	m, v = np.log(mean[cond]), np.log(var[cond])
-	slope, inter, _, _, _ = stats.linregress(m, v)
+	spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)])
 	
-	return [slope, inter]
+	return list(pkl.dumps(spline))
 
 
 def _residual_variance(mean, var, mv_fit):
 	
 	cond = (mean > 0)
 	rv = np.zeros(mean.shape)*np.nan
-	rv[cond] = var[cond] / (np.exp(mv_fit[1])*mean[cond]**mv_fit[0])
-# 	rv[cond] = var[cond]/mean[cond]
+	
+	spline = pkl.loads(bytes(mv_fit))
+	rv[cond] = np.exp(np.log(var[cond]) - spline(np.log(mean[cond])))
 	
 	return rv
 

@@ -1,19 +1,11 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import scanpy.api as sc
+import scanpy as sc
 import scipy as sp
 import itertools
 import numpy as np
 import scipy.stats as stats
-from scipy.integrate import dblquad
-import seaborn as sns
-from statsmodels.stats.multitest import fdrcorrection
 from sklearn.datasets import make_spd_matrix
-import imp
-pd.options.display.max_rows = 999
-pd.set_option('display.max_colwidth', -1)
-import pickle as pkl
-import time
 
 from memento import estimator
 

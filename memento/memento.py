@@ -35,6 +35,8 @@ def create_groups(
 	
 	if not inplace:
 		adata = adata.copy()
+	
+	assert q < 1
 		
 	# Create group labels
 	adata.obs['memento_group'] = 'sg' + label_delimiter
@@ -57,15 +59,12 @@ def create_groups(
 	if not inplace:
 		return adata
 
-def compute_1d_moments(
-	adata, 
-	inplace=True, 
-	filter_mean_thresh=0.07, 
-	min_perc_group=0.7, 
-	filter_genes=True,
-	num_bins=50,
-	trim_percs=0.1,
-	residual_var=True):
+
+def compute_size_factors(
+	adata,
+	inplace=True,
+	trim_percent=0.1,
+	shrinkage=0.5):
 	
 	assert 'memento' in adata.uns
 	
@@ -76,35 +75,56 @@ def compute_1d_moments(
 	naive_size_factor = estimator._estimate_size_factor(
 		adata.X, 
 		adata.uns['memento']['estimator_type'], 
-		total=True)
+		total=True,
+		shrinkage=0.0)
 	
 	# Compute residual variance over all cells
-	all_1d = estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])(
+	all_m, all_v = estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])(
 		data=adata.X,
 		n_obs=adata.shape[0],
 		q=adata.uns['memento']['q'],
 		size_factor=naive_size_factor)
-	all_res_var = estimator._residual_variance(*all_1d, estimator._fit_mv_regressor(*all_1d))
+	all_m[adata.X.mean(axis=0).A1 < 0.1] = 0 # mean filter
+	all_res_var = estimator._residual_variance(all_m, all_v, estimator._fit_mv_regressor(all_m, all_v))
 	
 	# Select genes for normalization
-	rv_ulim = np.quantile(all_res_var[np.isfinite(all_res_var)], trim_percs)
+	rv_ulim = np.quantile(all_res_var[np.isfinite(all_res_var)], trim_percent)
 	all_res_var[~np.isfinite(all_res_var)] = np.inf
 	rv_mask = all_res_var < rv_ulim
-	
 	mask = rv_mask
 	adata.uns['memento']['least_variable_genes'] = adata.var.index[mask].tolist()
 	
-	size_factor = estimator._estimate_size_factor(adata.X, adata.uns['memento']['estimator_type'], mask=mask)
+	# Re-estimate the size factor
+	size_factor = estimator._estimate_size_factor(
+		adata.X, 
+		adata.uns['memento']['estimator_type'], 
+		mask=mask,
+		shrinkage=shrinkage)
+	adata.uns['memento']['all_size_factor'] = size_factor
+	
+	
+def compute_1d_moments(
+	adata, 
+	inplace=True, 
+	filter_mean_thresh=0.07, 
+	min_perc_group=0.7, 
+	filter_genes=True,
+	num_bins=30):
+	
+	assert 'memento' in adata.uns
+	
+	if not inplace:
+		adata = adata.copy()
 	
 	# Bin the size factors
+	size_factor = adata.uns['memento']['all_size_factor']
 	binned_stat = stats.binned_statistic(size_factor, size_factor, bins=num_bins, statistic='mean')
 	bin_idx = np.clip(binned_stat[2], a_min=1, a_max=binned_stat[0].shape[0])
 	approx_sf = binned_stat[0][bin_idx-1]
 	max_sf = size_factor.max()
 	approx_sf[size_factor == max_sf] = max_sf
 	
-	adata.uns['memento']['all_size_factor'] = size_factor
-	adata.uns['memento']['all_total_size_factor'] = naive_size_factor = estimator._estimate_size_factor(adata.X, 'relative', total=True)
+	adata.uns['memento']['all_total_size_factor'] = estimator._estimate_size_factor(adata.X, 'relative', total=True)
 	adata.uns['memento']['all_approx_size_factor'] = approx_sf
 	adata.uns['memento']['approx_size_factor'] = \
 		{group:approx_sf[(adata.obs['memento_group'] == group).values] for group in adata.uns['memento']['groups']}
@@ -169,7 +189,7 @@ def compute_1d_moments(
 		res_var = estimator._residual_variance(
 			adata.uns['memento']['1d_moments'][group][0],
 			adata.uns['memento']['1d_moments'][group][1],
-			adata.uns['memento']['mv_regressor']['all'])
+			adata.uns['memento']['mv_regressor'][group])
 		adata.uns['memento']['1d_moments'][group].append(res_var)
 	
 	if not inplace:
@@ -395,11 +415,111 @@ def ht_2d_moments(
 		
 	if not inplace:
 		return adata
-	
 
+
+def get_1d_moments(adata, groupby=None):
+	"""
+		Getter function for 1d moments.
+		If groupby is used, take the mean of the moments weighted by cell counts
+	"""
+	
+	moment_mean_df = pd.DataFrame()
+	moment_mean_df['gene'] = adata.var.index.tolist()
+	moment_var_df = pd.DataFrame()
+	moment_var_df['gene'] = adata.var.index.tolist()
+	
+	cell_counts = {k:v.shape[0] for k,v in adata.uns['memento']['group_cells'].items()}
+	for group, val in adata.uns['memento']['1d_moments'].items():
+		if group == 'all':
+			continue
+		moment_mean_df[group] = np.log(val[0])
+		moment_var_df[group] = np.log(val[2])
+	
+	if groupby is None:
+		return moment_mean_df, moment_var_df, cell_counts
+	
+	unique_groupby = adata.obs[groupby].drop_duplicates().values
+	groupby_mean = {k:0 for k in unique_groupby}
+	groupby_var = {k:0 for k in unique_groupby}
+	groupby_mean_count = {k:0 for k in unique_groupby}
+	groupby_var_count = {k:0 for k in unique_groupby}
+
+	for key in unique_groupby:
+		for group, val in adata.uns['memento']['1d_moments'].items():
+			if group == 'all':
+				continue
+				
+			if key in group:
+				
+				m = np.log(val[0])
+				v = np.log(val[2])
+				m[np.isnan(m)] = 0
+				v[np.isnan(v)] = 0
+				
+				groupby_mean[key] += m*cell_counts[group]
+				groupby_mean_count[key] += (val[0] > 0)*cell_counts[group]
+
+				groupby_var[key] += v*cell_counts[group]
+				groupby_var_count[key] += (val[2] > 0)*cell_counts[group]
+
+		groupby_mean[key] /= groupby_mean_count[key]
+		groupby_var[key] /= groupby_var_count[key]
+	
+	groupby_mean_df = pd.DataFrame(groupby_mean)
+	groupby_mean_df['gene'] = adata.var.index.tolist()
+	groupby_var_df = pd.DataFrame(groupby_var)
+	groupby_var_df['gene'] = adata.var.index.tolist()
+	
+	return groupby_mean_df.iloc[:, [2, 0, 1]].copy(), groupby_var_df.iloc[:, [2, 0, 1]].copy()
+
+
+def get_2d_moments(adata, groupby=None):
+	"""
+		Getter function for 1d moments.
+		If groupby is used, take the mean of the moments weighted by cell counts
+	"""
+	
+	moment_corr_df = pd.DataFrame()
+	moment_corr_df['gene'] = adata.var.index.tolist()
+	
+	cell_counts = {k:v.shape[0] for k,v in adata.uns['memento']['group_cells'].items()}
+	for group, val in adata.uns['memento']['2d_moments'].items():
+		if 'sg^' not in group:
+			continue
+		moment_corr_df[group] = val['corr']
+	
+	if groupby is None:
+		return moment_corr_df, cell_counts
+	
+	unique_groupby = adata.obs[groupby].drop_duplicates().values
+	groupby_corr = {k:0 for k in unique_groupby}
+	groupby_corr_count = {k:0 for k in unique_groupby}
+
+	for key in unique_groupby:
+		for group, val in adata.uns['memento']['2d_moments'].items():
+			if 'sg^' not in group:
+				continue
+				
+			if key in group:
+				
+				c = val['corr']
+				valid = ~np.isnan(c)
+				c[np.isnan(c)] = 0
+				
+				groupby_corr[key] += c*cell_counts[group]
+				groupby_corr_count[key] += valid*cell_counts[group]
+
+		groupby_corr[key] /= groupby_corr_count[key]
+	
+	groupby_corr_df = pd.DataFrame(groupby_corr)
+	groupby_corr_df['gene'] = adata.var.index.tolist()
+	
+	return groupby_corr_df.iloc[:, [2, 0, 1]].copy()
+
+	
 def get_1d_ht_result(adata):
 	"""
-		Getter function for 1d result. 
+		Getter function for 1d HT result. 
 	"""
 	
 	result_df = pd.DataFrame()
@@ -409,21 +529,19 @@ def get_1d_ht_result(adata):
 	result_df['dv_coef'] = adata.uns['memento']['1d_ht']['var_coef']
 	result_df['dv_pval'] = adata.uns['memento']['1d_ht']['var_asl']
 	
-	result_df['de_fdr'] = util._fdrcorrect(result_df['de_pval'].values)
-	result_df['dv_fdr'] = util._fdrcorrect(result_df['dv_pval'].values)
-	
 	return result_df
 
+
 def get_2d_ht_result(adata):
+	"""
+		Getter function for 2d HT result
+	"""
 	
 	result_df = pd.DataFrame(
 		adata.uns['memento']['2d_moments']['gene_pairs'],
 		columns=['gene_1', 'gene_2'])
 	result_df['corr_coef'] = adata.uns['memento']['2d_ht']['corr_coef']
 	result_df['corr_pval'] = adata.uns['memento']['2d_ht']['corr_asl']
-
-	result_df['corr_fdr'] = util._fdrcorrect(result_df['corr_pval'].values)
 	
 	return result_df
-
 	
