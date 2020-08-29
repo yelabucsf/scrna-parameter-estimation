@@ -88,7 +88,7 @@ def _fit_mv_regressor(mean, var):
 	m, v = np.log(mean[cond]), np.log(var[cond])
 	spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)])
 	
-	return list(pkl.dumps(spline))
+	return spline#list(pkl.dumps(spline))
 
 
 def _residual_variance(mean, var, mv_fit):
@@ -96,7 +96,7 @@ def _residual_variance(mean, var, mv_fit):
 	cond = (mean > 0)
 	rv = np.zeros(mean.shape)*np.nan
 	
-	spline = pkl.loads(bytes(mv_fit))
+	spline = mv_fit#pkl.loads(bytes(mv_fit))
 	rv[cond] = np.exp(np.log(var[cond]) - spline(np.log(mean[cond])))
 	
 	return rv
