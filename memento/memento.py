@@ -195,7 +195,7 @@ def compute_1d_moments(
 		except: # Spline fitting failed
 			
 			logging.info('group {} spline for mean-var regression failed, defaulting'.format(group))
-			adata.uns['memento']['mv_regressor'][group] = adata.uns['memento']['mv_regressor']['all'].copy()
+			adata.uns['memento']['mv_regressor'][group] = adata.uns['memento']['mv_regressor']['all']
 			
 		res_var = estimator._residual_variance(
 			adata.uns['memento']['1d_moments'][group][0],
