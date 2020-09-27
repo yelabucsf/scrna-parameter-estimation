@@ -104,7 +104,7 @@ def _ht_1d(
 	num_boot,
 	cov_idx,
 	mv_fit, # list of tuples
-	q,
+	q, # list of numbers
 	_estimator_1d):
 	
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
@@ -130,7 +130,7 @@ def _ht_1d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
 			num_boot=num_boot,
-			q=q,
+			q=q[group_idx],
 			_estimator_1d=_estimator_1d)
 		
 		# Compute the residual variance
@@ -219,7 +219,7 @@ def _ht_2d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
 			num_boot=int(num_boot),
-			q=q,
+			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
 			_estimator_cov=_estimator_cov)
 		

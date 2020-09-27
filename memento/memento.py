@@ -13,6 +13,7 @@ import sys
 from joblib import Parallel, delayed
 from functools import partial
 import itertools
+import logging
 
 from memento import bootstrap
 from memento import estimator
@@ -23,7 +24,7 @@ from memento import simulate
 
 def create_groups(
 	adata,
-	q,
+	q_column,
 	label_columns, 
 	label_delimiter='^', 
 	inplace=True,
@@ -36,7 +37,7 @@ def create_groups(
 	if not inplace:
 		adata = adata.copy()
 	
-	assert q < 1
+	assert adata.obs[q_column].max() < 1
 		
 	# Create group labels
 	adata.obs['memento_group'] = 'sg' + label_delimiter
@@ -50,12 +51,16 @@ def create_groups(
 	adata.uns['memento']['label_columns'] = label_columns
 	adata.uns['memento']['label_delimiter'] = label_delimiter
 	adata.uns['memento']['groups'] = adata.obs['memento_group'].drop_duplicates().tolist()
-	adata.uns['memento']['q'] = q
+	adata.uns['memento']['q'] = adata.obs[q_column].values
+	adata.uns['memento']['all_q'] = adata.obs[q_column].values.mean()
 	adata.uns['memento']['estimator_type'] = estimator_type
 	
 	# Create slices of the data based on the group
 	adata.uns['memento']['group_cells'] = {group:util._select_cells(adata, group) for group in adata.uns['memento']['groups']}
 	
+	# For each slice, get mean q
+	adata.uns['memento']['group_q'] = {group:adata.uns['memento']['q'][(adata.obs['memento_group'] == group).values].mean() \
+		for group in adata.uns['memento']['groups']}
 	if not inplace:
 		return adata
 
@@ -82,7 +87,7 @@ def compute_size_factors(
 	all_m, all_v = estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])(
 		data=adata.X,
 		n_obs=adata.shape[0],
-		q=adata.uns['memento']['q'],
+		q=adata.uns['memento']['all_q'],
 		size_factor=naive_size_factor)
 	all_m[adata.X.mean(axis=0).A1 < 0.1] = 0 # mean filter
 	all_res_var = estimator._residual_variance(all_m, all_v, estimator._fit_mv_regressor(all_m, all_v))
@@ -135,14 +140,14 @@ def compute_1d_moments(
 	adata.uns['memento']['1d_moments'] = {group:estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])(
 		data=adata.uns['memento']['group_cells'][group],
 		n_obs=adata.uns['memento']['group_cells'][group].shape[0],
-		q=adata.uns['memento']['q'],
+		q=adata.uns['memento']['group_q'][group],
 		size_factor=adata.uns['memento']['size_factor'][group]) for group in adata.uns['memento']['groups']}
 
 	# Compute 1d moments for across all cells
 	adata.uns['memento']['1d_moments']['all'] = estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])(
 		data=adata.X,
 		n_obs=adata.shape[0],
-		q=adata.uns['memento']['q'],
+		q=adata.uns['memento']['all_q'],
 		size_factor=adata.uns['memento']['all_size_factor'])
 	
 	# Create gene masks for each group
@@ -182,16 +187,23 @@ def compute_1d_moments(
 	
 	for group in adata.uns['memento']['groups']:
 		
-		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(
-			mean=adata.uns['memento']['1d_moments'][group][0],
-			var=adata.uns['memento']['1d_moments'][group][1])
+		try:
+			adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(
+				mean=adata.uns['memento']['1d_moments'][group][0],
+				var=adata.uns['memento']['1d_moments'][group][1])
 
+		except: # Spline fitting failed
+			
+			logging.info('group {} spline for mean-var regression failed, defaulting'.format(group))
+			adata.uns['memento']['mv_regressor'][group] = adata.uns['memento']['mv_regressor']['all'].copy()
+			
 		res_var = estimator._residual_variance(
 			adata.uns['memento']['1d_moments'][group][0],
 			adata.uns['memento']['1d_moments'][group][1],
 			adata.uns['memento']['mv_regressor'][group])
+		
 		adata.uns['memento']['1d_moments'][group].append(res_var)
-	
+			
 	if not inplace:
 		return adata
 
@@ -218,7 +230,7 @@ def compute_2d_moments(adata, gene_pairs, inplace=True):
 		cov = estimator._get_estimator_cov(adata.uns['memento']['estimator_type'])(
 			data=adata.uns['memento']['group_cells'][group], 
 			n_obs=adata.uns['memento']['group_cells'][group].shape[0], 
-			q=adata.uns['memento']['q'],
+			q=adata.uns['memento']['group_q'][group],
 			size_factor=adata.uns['memento']['size_factor'][group], 
 			idx1=adata.uns['memento']['2d_moments']['gene_idx_1'], 
 			idx2=adata.uns['memento']['2d_moments']['gene_idx_2'])
@@ -293,7 +305,7 @@ def ht_1d_moments(
 				num_boot=num_boot,
 				cov_idx=cov_idx,
 				mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
-				q=adata.uns['memento']['q'],
+				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
 				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])))
 
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
@@ -392,7 +404,7 @@ def ht_2d_moments(
 				Nc_list=Nc_list,
 				num_boot=num_boot,
 				cov_idx=cov_idx,
-				q=adata.uns['memento']['q'],
+				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
 				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
 				_estimator_cov=estimator._get_estimator_cov(adata.uns['memento']['estimator_type'])))
 	
@@ -544,4 +556,16 @@ def get_2d_ht_result(adata):
 	result_df['corr_pval'] = adata.uns['memento']['2d_ht']['corr_asl']
 	
 	return result_df
+
+
+def prepare_to_save(adata, keep=False):
+	"""
+		pickle all objects that aren't compatible with scanpy write
+	"""
 	
+	for group in adata.uns['memento']['groups'] + ['all']:
+		
+		if not keep:
+			del adata.uns['memento']['mv_regressor'][group]
+		else:
+			adata.uns['memento']['mv_regressor'][group] = str(pkl.dumps(adata.uns['memento']['mv_regressor'][group]))
