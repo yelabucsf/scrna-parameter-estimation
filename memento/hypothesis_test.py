@@ -182,10 +182,13 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 	if boot_var.shape[1] < num_boot*0.5:
 		return  mean_coef[0], np.nan, var_coef[0], np.nan
 
-	mean_asl = _compute_asl(mean_coef[1:])
-	var_asl = _compute_asl(var_coef[1:])
+	mean_asl = _compute_asl(mean_coef)
+	var_asl = _compute_asl(var_coef)
+	
+	mean_se = np.nanstd(mean_coef[1:])
+	var_se = np.nanstd(var_coef[1:])
 		
-	return mean_coef[0], mean_asl, var_coef[0], var_asl
+	return mean_coef[0], mean_se, mean_asl, var_coef[0], var_se, var_asl
 
 
 def _ht_2d(
@@ -277,4 +280,6 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 
 	corr_asl = _compute_asl(corr_coef)
 	
-	return corr_coef[0], corr_asl
+	corr_se = np.nanstd(corr_coef[1:])
+	
+	return corr_coef[0], corr_se, corr_asl
