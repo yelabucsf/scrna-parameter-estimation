@@ -7,7 +7,7 @@ import numpy as np
 import scipy.stats as stats
 from sklearn.datasets import make_spd_matrix
 
-from . import estimator
+import estimator
 
 
 def extract_parameters(data, q=0.1, min_mean=0.001):

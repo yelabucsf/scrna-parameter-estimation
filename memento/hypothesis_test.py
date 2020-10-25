@@ -8,8 +8,8 @@ import numpy as np
 import scipy.stats as stats
 from sklearn.linear_model import LinearRegression
 
-from . import bootstrap
-from . import estimator
+import bootstrap
+import estimator
 
 def _robust_log(val):
 	

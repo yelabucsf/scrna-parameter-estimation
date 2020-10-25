@@ -1,10 +1,13 @@
 memento package
 ===============
 
-memento.memento module
-----------------------
+Submodules
+----------
 
-.. automodule:: memento.memento
+memento.main module
+-------------------
+
+.. automodule:: main
    :members:
    :undoc-members:
    :show-inheritance:
