@@ -15,11 +15,11 @@ from functools import partial
 import itertools
 import logging
 
-from memento import bootstrap
-from memento import estimator
-from memento import hypothesis_test
-from memento import util
-from memento import simulate
+from . import bootstrap
+from . import estimator
+from . import hypothesis_test
+from . import util
+from . import simulate
 
 
 def setup_memento(
