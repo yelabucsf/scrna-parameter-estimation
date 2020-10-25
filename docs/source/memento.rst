@@ -1,11 +1,5 @@
-memento package
+memento API
 ===============
-
-Submodules
-----------
-
-memento.main module
--------------------
 
 .. automodule:: main
    :members:
