@@ -1,5 +1,6 @@
+""""""
 """
-	memento.py
+	main.py
 	
 	This file contains the public facing API for using memento.
 """
@@ -15,11 +16,11 @@ from functools import partial
 import itertools
 import logging
 
-from memento import bootstrap
-from memento import estimator
-from memento import hypothesis_test
-from memento import util
-from memento import simulate
+import memento.bootstrap as bootstrap
+import memento.estimator as estimator
+import memento.hypothesis_test as hypothesis_test
+import memento.util as util
+import memento.simulate as simulate
 
 
 def setup_memento(
