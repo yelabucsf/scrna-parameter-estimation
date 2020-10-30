@@ -87,9 +87,6 @@ def setup_memento(
 		q=adata.uns['memento']['all_q'],
 		size_factor=size_factor)
 	adata.uns['memento']['all_1d_moments'] = [all_m, all_v]
-	filtered_all_m = all_m.copy()
-	filtered_all_m[adata.X.mean(axis=0).A1 < filter_mean_thresh] = 0
-	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(all_m, all_v)}
 
 
 def create_groups(
@@ -199,6 +196,16 @@ def compute_1d_moments(
 				adata.uns['memento']['1d_moments'][group][1][overall_gene_mask]
 				] for group in (adata.uns['memento']['groups'])}
 		adata._inplace_subset_var(overall_gene_mask)
+	
+	# Estimate the residual variance spline
+	mean_list = []
+	var_list = []
+	for group in adata.uns['memento']['groups']:
+		mean_list.append(adata.uns['memento']['1d_moments'][group][0])
+		var_list.append(adata.uns['memento']['1d_moments'][group][1])
+	mean_concat = np.concatenate(mean_list)
+	var_concat = np.concatenate(var_list)
+	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
 	
 	# Compute the residual variance
 	for group in adata.uns['memento']['groups']:
@@ -466,6 +473,11 @@ def get_1d_moments(adata, groupby=None):
 	groupby_var = {k:0 for k in unique_groupby}
 	groupby_mean_count = {k:0 for k in unique_groupby}
 	groupby_var_count = {k:0 for k in unique_groupby}
+	
+	groupby_mean_df = pd.DataFrame()
+	groupby_mean_df['gene'] = adata.var.index.tolist()
+	groupby_var_df = pd.DataFrame()
+	groupby_var_df['gene'] = adata.var.index.tolist()
 
 	for key in unique_groupby:
 		for group, val in adata.uns['memento']['1d_moments'].items():
@@ -488,10 +500,8 @@ def get_1d_moments(adata, groupby=None):
 		groupby_mean[key] /= groupby_mean_count[key]
 		groupby_var[key] /= groupby_var_count[key]
 	
-	groupby_mean_df = pd.DataFrame(groupby_mean)
-	groupby_mean_df['gene'] = adata.var.index.tolist()
-	groupby_var_df = pd.DataFrame(groupby_var)
-	groupby_var_df['gene'] = adata.var.index.tolist()
+		groupby_mean_df[groupby + '_' + key] = groupby_mean[key]
+		groupby_var_df[groupby + '_' + key] = groupby_var[key]
 	
 	return groupby_mean_df.copy(), groupby_var_df.copy()
 
