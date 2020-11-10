@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from patsy import dmatrix
 import scipy.stats as stats
+from scipy.sparse.csr import csr_matrix
 import sys
 from joblib import Parallel, delayed
 from functools import partial
@@ -40,6 +41,8 @@ def setup_memento(
 		adata = adata.copy()
 		
 	assert adata.obs[q_column].max() < 1
+	
+	assert type(adata.X) == csr_matrix, 'please make sure that adata.X is a scipy CSR matrix'
 	
 	# Setup the memento dictionary in uns
 	adata.uns['memento'] = {}
@@ -221,8 +224,26 @@ def compute_1d_moments(
 			
 	if not inplace:
 		return adata
-
-
+	
+def get_corr_matrix(adata):
+	"""
+		Computes the all by all correlation matrix.
+	"""
+	
+	corr_matrices = {}
+	
+	for group in adata.uns['memento']['groups']:
+		corr_matrices[group] = estimator._hyper_corr_symmetric(
+			data=adata.uns['memento']['group_cells'][group], 
+			n_obs=adata.uns['memento']['group_cells'][group].shape[0], 
+			size_factor=adata.uns['memento']['size_factor'][group], 
+			q=adata.uns['memento']['group_q'][group], 
+			var=adata.uns['memento']['1d_moments'][group][1], 
+			idx1=None, 
+			idx2=None)
+		
+	return corr_matrices
+	
 def compute_2d_moments(adata, gene_pairs, inplace=True):
 	"""
 		Compute the covariance and correlation for given genes.
@@ -239,10 +260,17 @@ def compute_2d_moments(adata, gene_pairs, inplace=True):
 	adata.uns['memento']['2d_moments'] = {}
 	adata.uns['memento']['2d_moments']['gene_pairs'] = gene_pairs
 	
-	# Get gene idxs 
-	adata.uns['memento']['2d_moments']['gene_idx_1'] = util._get_gene_idx(adata, [gene_1 for gene_1, gene_2 in gene_pairs])
-	adata.uns['memento']['2d_moments']['gene_idx_2'] = util._get_gene_idx(adata, [gene_2 for gene_1, gene_2 in gene_pairs])
-	
+	# Get gene idxs
+	n_pairs = len(gene_pairs)
+	mapping = dict(zip(adata.var.index.values, np.arange(adata.var.shape[0])))
+	adata.uns['memento']['2d_moments']['gene_idx_1'] = np.zeros(n_pairs, dtype=int)
+	adata.uns['memento']['2d_moments']['gene_idx_2'] = np.zeros(n_pairs, dtype=int)
+	pair_idx = 0
+	for gene_1, gene_2 in gene_pairs:
+		adata.uns['memento']['2d_moments']['gene_idx_1'][pair_idx] = mapping[gene_1]
+		adata.uns['memento']['2d_moments']['gene_idx_2'][pair_idx] = mapping[gene_2]
+		pair_idx += 1
+		
 	for group in adata.uns['memento']['groups']:
 		
 		cov = estimator._get_estimator_cov(adata.uns['memento']['estimator_type'])(
@@ -561,10 +589,12 @@ def get_1d_ht_result(adata):
 	result_df = pd.DataFrame()
 	result_df['gene'] = adata.var.index.tolist()
 	result_df['de_coef'] = adata.uns['memento']['1d_ht']['mean_coef']
-	result_df['de_se'] = adata.uns['memento']['1d_ht']['mean_se']
+	if 'mean_se' in adata.uns['memento']['1d_ht']:
+		result_df['de_se'] = adata.uns['memento']['1d_ht']['mean_se']
 	result_df['de_pval'] = adata.uns['memento']['1d_ht']['mean_asl']
 	result_df['dv_coef'] = adata.uns['memento']['1d_ht']['var_coef']
-	result_df['dv_se'] = adata.uns['memento']['1d_ht']['var_se']
+	if 'var_se' in adata.uns['memento']['1d_ht']:
+		result_df['dv_se'] = adata.uns['memento']['1d_ht']['var_se']
 	result_df['dv_pval'] = adata.uns['memento']['1d_ht']['var_asl']
 	
 	return result_df

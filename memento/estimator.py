@@ -205,6 +205,43 @@ def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
 	return cov
 
 
+def _hyper_corr_symmetric(data, n_obs, size_factor, q, var, idx1=None, idx2=None):
+	"""
+		Estimate the correlation matrix given a dataset.
+		This function is useful for computing an all by all correlation matrix for clustering, input to other algorithms.
+	"""
+
+	idx1 = np.arange(0, data.shape[1])
+	idx2 = np.arange(0, data.shape[1])
+
+	overlap = set(idx1) & set(idx2)
+
+	overlap_idx1 = [i for i in idx1 if i in overlap]
+	overlap_idx2 = [i for i in idx2 if i in overlap]
+
+	overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap ]
+	overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap ]
+
+	row_weight = np.sqrt(1/(size_factor**2 + size_factor*(1-q))).reshape([1, -1])
+	X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
+	prod = (X.T*Y).toarray()/X.shape[0]
+	prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - (1-q)*data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs
+	cov = prod - np.outer(X.mean(axis=0).A1, Y.mean(axis=0).A1)
+	
+	var_1 = var[idx1]
+	var_2 = var[idx2]
+	var_1[var_1 <= 0] = np.nan
+	var_2[var_2 <= 0] = np.nan
+	var_prod = np.sqrt(np.outer(var[idx1], var[idx2]))
+	
+	corr = np.full(cov.shape, 5.0)
+	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
+	corr[(corr < 1.05) & (corr > -1.05)] = np.clip(corr[(corr < 1.05) & (corr > -1.05)], a_min=-1, a_max=1)
+	corr[(corr > 1) | (corr < -1)] = np.nan
+	
+	return corr
+	
+	
 def _corr_from_cov(cov, var_1, var_2, boot=False):
 	"""
 		Convert the estimation of the covariance to the estimation of correlation.
@@ -220,7 +257,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 	var_prod = np.sqrt(var_1*var_2)
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
-	corr[(corr < 1.05) & (corr > -1.05)] = np.clip(corr[(corr < 1.05) & (corr > -1.05)], a_min=-1, a_max=1)
+	
 	corr[(corr > 1) | (corr < -1)] = np.nan
 	
 	return corr

@@ -145,7 +145,7 @@ def _ht_1d(
 		
 	# Skip this gene
 	if good_idxs.sum() == 0:
-		return np.nan, np.nan, np.nan, np.nan
+		return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 	
 	vals = _regress_1d(
 			design_matrix=design_matrix[good_idxs, :],
@@ -172,7 +172,7 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 		
 		print('skipped')
 		
-		return np.nan, np.nan, np.nan, np.nan
+		return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 	
 	mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
@@ -180,7 +180,7 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 		.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
 	
 	if boot_var.shape[1] < num_boot*0.5:
-		return  mean_coef[0], np.nan, var_coef[0], np.nan
+		return  mean_coef[0], np.nan, np.nan, var_coef[0], np.nan, np.nan
 
 	mean_asl = _compute_asl(mean_coef)
 	var_asl = _compute_asl(var_coef)
@@ -244,11 +244,11 @@ def _ht_2d(
 
 	# Skip this gene
 	if good_idxs.sum() == 0:
-		return np.nan, np.nan
+		return np.nan, np.nan, np.nan
 	
 	# Skip if each covariate group is not represented
 	if np.unique(design_matrix[good_idxs, cov_idx]).shape[0] == 1:
-		return np.nan, np.nan
+		return np.nan, np.nan, np.nan
 	
 	vals = _regress_2d(
 			design_matrix=design_matrix[good_idxs, :],
@@ -270,13 +270,13 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	
 	if boot_corr.shape[1] == 0:
 		
-		return np.nan, np.nan
+		return np.nan, np.nan, np.nan
 	
 	corr_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
 		.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
 	
 	if boot_corr.shape[1] < num_boot*0.7:
-		return corr_coef[0], np.nan
+		return corr_coef[0], np.nan, np.nan
 
 	corr_asl = _compute_asl(corr_coef)
 	
