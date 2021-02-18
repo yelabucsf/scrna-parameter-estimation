@@ -61,7 +61,7 @@ def _compute_asl(perm_diff):
 	else:
 		extreme_count = (null > -stat).sum() + (null < stat).sum()
 		
-# 	return (extreme_count+1) / (null.shape[0]+1)
+	return (extreme_count+1) / (null.shape[0]+1)
 	
 	if extreme_count > 10: # We do not need to use the GDP approximation. 
 
