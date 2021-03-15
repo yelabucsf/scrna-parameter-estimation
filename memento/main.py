@@ -1,4 +1,3 @@
-""""""
 """
 	main.py
 	
@@ -101,10 +100,17 @@ def create_groups(
 	"""
 		Creates discrete groups of the data, based on the columns in :label_columns:
 	"""
-	
 	if not inplace:
 		adata = adata.copy()
-		
+	
+	# Clean up the uns object
+	# These are the keys that should be present after computing size factors.
+	# All others are from prior manipulations (bug?)
+# 	key_list = ['q_column', 'all_q', 'estimator_type', 'filter_mean_thresh', 'num_bins', 'least_variable_genes', 'all_1d_moments']
+# 	for key in list(adata.uns['memento'].keys()):
+# 		if key not in key_list:
+# 			del adata.uns['memento'][key]
+			
 	# Create group labels
 	adata.obs['memento_group'] = 'sg' + label_delimiter
 	for idx, col_name in enumerate(label_columns):
@@ -200,7 +206,7 @@ def compute_1d_moments(
 				] for group in (adata.uns['memento']['groups'])}
 		adata._inplace_subset_var(overall_gene_mask)
 	
-	# Estimate the residual variance spline
+	# Estimate the residual variance transformer for all cells
 	mean_list = []
 	var_list = []
 	for group in adata.uns['memento']['groups']:
@@ -210,10 +216,14 @@ def compute_1d_moments(
 	var_concat = np.concatenate(var_list)
 	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
 	
+	# Estimate the residual variance transformer for each group
+	for group in adata.uns['memento']['groups']:
+		m = adata.uns['memento']['1d_moments'][group][0]
+		v = adata.uns['memento']['1d_moments'][group][1]
+		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(mean_concat, var_concat)
+	
 	# Compute the residual variance
 	for group in adata.uns['memento']['groups']:
-		
-		adata.uns['memento']['mv_regressor'][group] = adata.uns['memento']['mv_regressor']['all']
 		
 		res_var = estimator._residual_variance(
 			adata.uns['memento']['1d_moments'][group][0],
@@ -596,7 +606,7 @@ def get_1d_ht_result(adata):
 	if 'var_se' in adata.uns['memento']['1d_ht']:
 		result_df['dv_se'] = adata.uns['memento']['1d_ht']['var_se']
 	result_df['dv_pval'] = adata.uns['memento']['1d_ht']['var_asl']
-	
+		
 	return result_df
 
 

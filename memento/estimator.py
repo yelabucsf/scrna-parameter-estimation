@@ -79,16 +79,21 @@ def _estimate_size_factor(data, estimator_type, mask=None, total=False, shrinkag
 
 def _fit_mv_regressor(mean, var):
 	"""
-		Perform linear regression of the variance against the mean.
-		
-		Uses the RANSAC algorithm to choose a set of genes to perform 1D linear regression.
+		Perform regression of the variance against the mean.
 	"""
 	
 	cond = (mean > 0) & (var > 0)
 	m, v = np.log(mean[cond]), np.log(var[cond])
-	spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)])
 	
-	return spline#list(pkl.dumps(spline))
+	poly = np.polyfit(m, v, 3)
+	return poly
+	f = np.poly1d(z)
+	
+# 	spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)], s=0.1)
+# 	return spline
+
+# 	slope, inter, _, _, _ = stats.linregress(m, v)
+# 	return slope, inter
 
 
 def _residual_variance(mean, var, mv_fit):
@@ -96,8 +101,15 @@ def _residual_variance(mean, var, mv_fit):
 	cond = (mean > 0)
 	rv = np.zeros(mean.shape)*np.nan
 	
-	spline = mv_fit#pkl.loads(bytes(mv_fit))
-	rv[cond] = np.exp(np.log(var[cond]) - spline(np.log(mean[cond])))
+	f = np.poly1d(mv_fit)
+	rv[cond] = np.exp(np.log(var[cond]) - f(np.log(mean[cond])))
+	
+# 	spline = mv_fit
+# 	rv[cond] = np.exp(np.log(var[cond]) - spline(np.log(mean[cond])))
+
+# 	slope, inter = mv_fit
+# 	pred = slope * np.log(mean[cond]) + inter
+# 	rv[cond] = np.exp(np.log(var[cond])-pred)
 	
 	return rv
 
