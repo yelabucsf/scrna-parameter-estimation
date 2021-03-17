@@ -506,7 +506,10 @@ def get_1d_moments(adata, groupby=None):
 	if groupby is None:
 		return moment_mean_df, moment_var_df, cell_counts
 	
-	unique_groupby = adata.obs[groupby].astype(str).drop_duplicates().values
+	if groupby != 'ALL':
+		unique_groupby = adata.obs[groupby].astype(str).drop_duplicates().values
+	else:
+		unique_groupby = ['sg']
 	groupby_mean = {k:0 for k in unique_groupby}
 	groupby_var = {k:0 for k in unique_groupby}
 	groupby_mean_count = {k:0 for k in unique_groupby}
@@ -563,7 +566,10 @@ def get_2d_moments(adata, groupby=None):
 	if groupby is None:
 		return moment_corr_df, cell_counts
 	
-	unique_groupby = adata.obs[groupby].astype(str).drop_duplicates().values
+	if groupby != 'ALL':
+		unique_groupby = adata.obs[groupby].astype(str).drop_duplicates().values
+	else:
+		unique_groupby = ['sg']
 	groupby_corr = {k:0 for k in unique_groupby}
 	groupby_corr_count = {k:0 for k in unique_groupby}
 	

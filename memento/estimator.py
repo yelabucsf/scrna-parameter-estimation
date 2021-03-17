@@ -89,7 +89,7 @@ def _fit_mv_regressor(mean, var):
 	return poly
 	f = np.poly1d(z)
 	
-# 	spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)], s=0.1)
+# 	spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)])
 # 	return spline
 
 # 	slope, inter, _, _, _ = stats.linregress(m, v)
