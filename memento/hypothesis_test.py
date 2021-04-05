@@ -225,6 +225,7 @@ def _ht_2d(
 	q,
 	_estimator_1d,
 	_estimator_cov):
+	
 		
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
@@ -269,10 +270,6 @@ def _ht_2d(
 	if good_idxs.sum() == 0:
 		return np.nan, np.nan, np.nan
 	
-	# Skip if each covariate group is not represented
-	if np.unique(design_matrix[good_idxs, cov_idx]).shape[0] == 1:
-		return np.nan, np.nan, np.nan
-	
 	vals = _regress_2d(
 			design_matrix=design_matrix[good_idxs, :],
 			boot_corr=boot_corr[good_idxs, :],
@@ -286,7 +283,7 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 	"""
 		Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
 	"""
-	
+		
 	num_boot = boot_corr.shape[1]
 	
 	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
