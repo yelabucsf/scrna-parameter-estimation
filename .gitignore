@@ -114,3 +114,6 @@ sftp-config.json
 *.xlsx
 *.h5ad
 *.txt
+*.pdf
+*.csv
+*.png

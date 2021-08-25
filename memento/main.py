@@ -158,7 +158,8 @@ def compute_1d_moments(
 	adata, 
 	inplace=True, 
 	min_perc_group=0.7, 
-	filter_genes=True):
+	filter_genes=True,
+	gene_list=None):
 	"""
 		Compute the mean, variance, and residual variance in each group
 	"""
@@ -191,9 +192,16 @@ def compute_1d_moments(
 	gene_masks = np.vstack([adata.uns['memento']['gene_filter'][group] for group in adata.uns['memento']['groups']])
 	gene_filter_rate = gene_masks.mean(axis=0)
 	overall_gene_mask = (gene_filter_rate > min_perc_group)
+
+	# If a gene list is given, use that list instead
+	if gene_list is not None:
+		assert type(gene_list) == list
+		overall_gene_mask = np.in1d(adata.var.index.values, gene_list)
+
+	# Do the filtering
 	adata.uns['memento']['overall_gene_filter'] = overall_gene_mask
 	adata.uns['memento']['gene_list'] = adata.var.index[overall_gene_mask].tolist()
-	
+		
 	# Filter the genes from the data matrices as well as the 1D moments
 	if filter_genes:
 		adata.uns['memento']['group_cells'] = \
