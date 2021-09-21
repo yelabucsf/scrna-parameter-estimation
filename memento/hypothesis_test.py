@@ -179,7 +179,7 @@ def _ht_1d(
 	return vals
 
 
-def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
+def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx, stratify=True):
 	"""
 		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
@@ -197,10 +197,38 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx):
 		
 		return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
 	
-	mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-		.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
-	var_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-		.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
+	if stratify:
+		
+		mean_coef = 0
+		var_coef = 0
+		
+		strata = np.delete(design_matrix, cov_idx, axis=1)
+		uniq_strata = np.unique(strata, axis=0)
+		
+		for k in range(uniq_strata.shape[0]):
+			
+			strata_idx = np.all(strata == uniq_strata[k], axis=1)
+			boot_mean_k = boot_mean[strata_idx]
+			boot_var_k = boot_var[strata_idx]
+			Nc_list_k = Nc_list[strata_idx]
+			
+			if cov_idx != 0:
+				design_matrix_k = design_matrix[strata_idx][:, [cov_idx, 0]]
+			else:
+				design_matrix_k = design_matrix[strata_idx][:, [cov_idx]]
+			
+			mean_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+				.fit(design_matrix_k, boot_mean_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+			var_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+				.fit(design_matrix_k, boot_var_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+		mean_coef /= Nc_list.sum()
+		var_coef /= Nc_list.sum()
+	
+	else:
+		mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
+			.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
+		var_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
+			.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
 	
 	if boot_var.shape[1] < num_boot*0.5:
 		return  mean_coef[0], np.nan, np.nan, var_coef[0], np.nan, np.nan
@@ -279,7 +307,7 @@ def _ht_2d(
 	return vals
 
 
-def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
+def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx, stratify=True):
 	"""
 		Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
 	"""
@@ -292,8 +320,32 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx):
 		
 		return np.nan, np.nan, np.nan
 	
-	corr_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-		.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
+	if stratify:
+		
+		corr_coef = 0
+		
+		strata = np.delete(design_matrix, cov_idx, axis=1)
+		uniq_strata = np.unique(strata, axis=0)
+		
+		for k in range(uniq_strata.shape[0]):
+			
+			strata_idx = np.all(strata == uniq_strata[k], axis=1)
+			boot_corr_k = boot_corr[strata_idx]
+			Nc_list_k = Nc_list[strata_idx]
+			
+			if cov_idx != 0:
+				design_matrix_k = design_matrix[strata_idx][:, [cov_idx, 0]]
+			else:
+				design_matrix_k = design_matrix[strata_idx][:, [cov_idx]]
+			
+			corr_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+				.fit(design_matrix_k, boot_corr_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+		corr_coef /= Nc_list.sum()
+	
+	else:
+	
+		corr_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
+			.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
 	
 	if boot_corr.shape[1] < num_boot*0.7:
 		return corr_coef[0], np.nan, np.nan
