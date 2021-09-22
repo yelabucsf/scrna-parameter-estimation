@@ -48,30 +48,29 @@ def _push(val, cond='neg'):
 	return val
 
 
-def _compute_asl(perm_diff, nonneg=False, approx=False):
+def _compute_asl(perm_diff, resampling, nonneg, approx=False):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
-	if approx and nonneg is False:
+	null = perm_diff[1:] - perm_diff[0] if resampling == 'bootstrap' else perm_diff[1:]
+	stat = perm_diff[0]
+	
+	if approx and not nonneg:
 		
-		null_params = stats.norm.fit(perm_diff[1:] - perm_diff[0])
+		null_params = stats.norm.fit(null)
 		
-		abs_stat = np.abs(perm_diff[0])
+		abs_stat = np.abs(stat)
 		
 		return stats.norm.sf(abs_stat, *null_params) + stats.norm.cdf(-abs_stat, *null_params)
 	
 	elif approx and nonnreg:
 		
-		null_params = stats.gamma.fit(perm_diff[1:]-perm_diff[1:].min())
+		null_params = stats.gamma.fit(null)
 		
-		return stats.gamma.sf(perm_diff[0], *null_params)
+		return stats.gamma.sf(stat, *null_params)
 	
 	elif nonneg:
-		
-		null = perm_diff[1:] - perm_diff[1:].min()
-		
-		stat = perm_diff[0]
 		
 		extreme_count = (null > stat).sum()
 		
@@ -108,17 +107,11 @@ def _compute_asl(perm_diff, nonneg=False, approx=False):
 				# Failed to fit genpareto, return the upper bound
 				return (extreme_count+1) / (null.shape[0]+1)
 	else:
-	
-		null = perm_diff[1:] - perm_diff[0]#np.mean(perm_diff[1:])
-
-		stat = perm_diff[0]#np.mean(perm_diff[1:])
 
 		if stat > 0:
 			extreme_count = (null > stat).sum() + (null < -stat).sum()
 		else:
 			extreme_count = (null > -stat).sum() + (null < stat).sum()
-
-	# 	return (extreme_count+1) / (null.shape[0]+1)
 
 		if extreme_count > 10: # We do not need to use the GDP approximation. 
 
@@ -186,8 +179,8 @@ def _ht_1d(
 	mv_fit, # list of tuples
 	q, # list of numbers
 	_estimator_1d,
-	resampling='bootstrap',
-	approx=False):
+	resampling,
+	**kwargs):
 	
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
@@ -207,7 +200,7 @@ def _ht_1d(
 			data_list = [cells[i] for i in strata_idx]
 			sf_list = [approx_sf[i] for i in strata_idx]
 		
-			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list), np.concatenate(sf_list))
+			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list, format='csc'), np.concatenate(sf_list))
 
 	for group_idx in range(len(true_mean)):
 
@@ -249,11 +242,13 @@ def _ht_1d(
 			boot_mean=boot_mean[good_idxs, :], 
 			boot_var=boot_var[good_idxs, :],
 			Nc_list=Nc_list[good_idxs],
-			treatment_idx=treatment_idx)
+			treatment_idx=treatment_idx,
+			resampling=resampling,
+			**kwargs)
 	return vals
 
 
-def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, treatment_idx, stratify=True):
+def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, treatment_idx, **kwargs):
 	"""
 		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
@@ -271,57 +266,49 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, treatment_idx, stra
 		print('skipped')
 		
 		return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
-	
-	if stratify:
 		
-		mean_coef = 0
-		var_coef = 0
-		
-		strata = np.delete(design_matrix, treatment_idx, axis=1)
-		uniq_strata = np.unique(strata, axis=0)
-		
-		for k in range(uniq_strata.shape[0]):
-			
-			strata_idx = np.all(strata == uniq_strata[k], axis=1)
-			boot_mean_k = boot_mean[strata_idx]
-			boot_var_k = boot_var[strata_idx]
-			Nc_list_k = Nc_list[strata_idx]
-			
-			if len(treatment_idx) == 1:
-				
-				if treatment_idx != [0]:
-					design_matrix_k = design_matrix[strata_idx][:, treatment_idx + [0]]
-				else:
-					design_matrix_k = design_matrix[strata_idx][:, treatment_idx]
+	mean_coef = 0
+	var_coef = 0
 
-				mean_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-					.fit(design_matrix_k, boot_mean_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-				var_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-					.fit(design_matrix_k, boot_var_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-			else: # Categorical treatment
-				
-				nonneg=True
-				
-				bm = boot_mean_k * Nc_list_k.reshape(-1,1)
-				bv = boot_var_k * Nc_list_k.reshape(-1,1)
-				
-				mean_coef += (bm.max(axis=0) - bm.min(axis=0))*Nc_list_k.sum()
-				var_coef += (bv.max(axis=0) - bv.min(axis=0))*Nc_list_k.sum()
-				
-		mean_coef /= Nc_list.sum()
-		var_coef /= Nc_list.sum()
-	
-	else:
-		mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix, boot_mean, Nc_list).coef_[:, treatment_idx]
-		var_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix, boot_var, Nc_list).coef_[:, treatment_idx]
+	strata = np.delete(design_matrix, treatment_idx, axis=1)
+	uniq_strata = np.unique(strata, axis=0)
+
+	for k in range(uniq_strata.shape[0]): # Go through each stratum and get effect size
+
+		strata_idx = np.all(strata == uniq_strata[k], axis=1)
+		boot_mean_k = boot_mean[strata_idx]
+		boot_var_k = boot_var[strata_idx]
+		Nc_list_k = Nc_list[strata_idx]
+
+		if len(treatment_idx) == 1:
+
+			if treatment_idx != [0]:
+				design_matrix_k = design_matrix[strata_idx][:, treatment_idx + [0]]
+			else:
+				design_matrix_k = design_matrix[strata_idx][:, treatment_idx]
+
+			mean_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+				.fit(design_matrix_k, boot_mean_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+			var_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+				.fit(design_matrix_k, boot_var_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+		else: # Categorical treatment
+
+			nonneg=True
+
+			bm = boot_mean_k * Nc_list_k.reshape(-1,1)
+			bv = boot_var_k * Nc_list_k.reshape(-1,1)
+
+			mean_coef += (bm.max(axis=0) - bm.min(axis=0))*Nc_list_k.sum()
+			var_coef += (bv.max(axis=0) - bv.min(axis=0))*Nc_list_k.sum()
+
+	mean_coef /= Nc_list.sum()
+	var_coef /= Nc_list.sum()
 	
 	if boot_var.shape[1] < num_boot*0.5:
 		return  mean_coef[0], np.nan, np.nan, var_coef[0], np.nan, np.nan
 
-	mean_asl = _compute_asl(mean_coef, nonneg=nonneg)
-	var_asl = _compute_asl(var_coef, nonneg=nonneg)
+	mean_asl = _compute_asl(mean_coef, nonneg=nonneg, **kwargs)
+	var_asl = _compute_asl(var_coef, nonneg=nonneg, **kwargs)
 	
 	mean_se = np.nanstd(mean_coef[1:])
 	var_se = np.nanstd(var_coef[1:])
@@ -340,8 +327,8 @@ def _ht_2d(
 	q,
 	_estimator_1d,
 	_estimator_cov,
-	resampling='bootstrap',
-	approx=False):
+	resampling,
+	**kwargs):
 	
 		
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
@@ -361,7 +348,7 @@ def _ht_2d(
 			data_list = [cells[i] for i in strata_idx]
 			sf_list = [approx_sf[i] for i in strata_idx]
 		
-			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list), np.concatenate(sf_list))
+			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list, format='csc'), np.concatenate(sf_list))
 
 	for group_idx in range(design_matrix.shape[0]):
 
@@ -380,7 +367,7 @@ def _ht_2d(
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
 			_estimator_cov=_estimator_cov,
-			precomputed= (None if resampling == 'bootstrap' else resampling_info[strata_indicator[group_idx]]))
+			precomputed=(None if resampling == 'bootstrap' else resampling_info[strata_indicator[group_idx]]))
 				
 		corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 			
@@ -403,12 +390,14 @@ def _ht_2d(
 			design_matrix=design_matrix[good_idxs, :],
 			boot_corr=boot_corr[good_idxs, :],
 			Nc_list=Nc_list[good_idxs],
-			treatment_idx=treatment_idx)
+			treatment_idx=treatment_idx,
+			resampling=resampling,
+			**kwargs)
 	
 	return vals
 
 
-def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, stratify=True):
+def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, **kwargs):
 	"""
 		Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
 	"""
@@ -421,49 +410,42 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, stratify=True)
 	if boot_corr.shape[1] == 0:
 		
 		return np.nan, np.nan, np.nan
-	
-	if stratify:
 		
-		corr_coef = 0
-		
-		strata = np.delete(design_matrix, treatment_idx, axis=1)
-		uniq_strata = np.unique(strata, axis=0)
-		
-		for k in range(uniq_strata.shape[0]):
-			
-			strata_idx = np.all(strata == uniq_strata[k], axis=1)
-			boot_corr_k = boot_corr[strata_idx]
-			Nc_list_k = Nc_list[strata_idx]
-			
-			if len(treatment_idx) == 1:
-				
-				if treatment_idx != 0:
-					design_matrix_k = design_matrix[strata_idx][:, [treatment_idx, 0]]
-				else:
-					design_matrix_k = design_matrix[strata_idx][:, [treatment_idx]]
+	corr_coef = 0
 
-				corr_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-					.fit(design_matrix_k, boot_corr_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-				
-			else: # Categorical treatment
-				
-				nonneg = True
-				
-				bc = boot_corr_k * Nc_list_k.reshape(-1,1)
-				
-				corr_coef += (bc.max(axis=0) - bc.min(axis=0))*Nc_list_k.sum()
-				
-		corr_coef /= Nc_list.sum()
-	
-	else:
-	
-		corr_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix, boot_corr, Nc_list).coef_[:, treatment_idx]
+	strata = np.delete(design_matrix, treatment_idx, axis=1)
+	uniq_strata = np.unique(strata, axis=0)
+
+	for k in range(uniq_strata.shape[0]): # Go through each stratum and get effect size
+
+		strata_idx = np.all(strata == uniq_strata[k], axis=1)
+		boot_corr_k = boot_corr[strata_idx]
+		Nc_list_k = Nc_list[strata_idx]
+
+		if len(treatment_idx) == 1:
+
+			if treatment_idx != [0]:
+				design_matrix_k = design_matrix[strata_idx][:, treatment_idx + [0]]
+			else:
+				design_matrix_k = design_matrix[strata_idx][:, treatment_idx]
+
+			corr_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+				.fit(design_matrix_k, boot_corr_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+
+		else: # Categorical treatment
+
+			nonneg = True
+
+			bc = boot_corr_k * Nc_list_k.reshape(-1,1)
+
+			corr_coef += (bc.max(axis=0) - bc.min(axis=0))*Nc_list_k.sum()
+
+	corr_coef /= Nc_list.sum()
 	
 	if boot_corr.shape[1] < num_boot*0.7:
 		return corr_coef[0], np.nan, np.nan
 
-	corr_asl = _compute_asl(corr_coef, nonneg=nonneg)
+	corr_asl = _compute_asl(corr_coef, nonneg=nonneg, **kwargs)
 	
 	corr_se = np.nanstd(corr_coef[1:])
 	

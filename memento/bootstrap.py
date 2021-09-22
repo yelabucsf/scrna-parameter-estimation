@@ -102,7 +102,7 @@ def _bootstrap_2d(
 	# Generate the bootstrap samples
 	gen = np.random.Generator(np.random.PCG64(5))
 # 	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
-	gene_rvs = gen.multinomial(data.shape[0], counts/data.shape[0], size=num_boot).T
+	gene_rvs = gen.multinomial(data.shape[0], counts/counts.sum(), size=num_boot).T
 	n_obs = Nc
 	
 	# Estimate the covariance and variance
