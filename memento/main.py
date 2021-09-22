@@ -36,7 +36,7 @@ def setup_memento(
 		Compute size factors and the overall mean-variance regressor.
 	"""
 	
-	print('Version 0.0.6-11')
+	print('Version 0.0.6')
 	
 	if not inplace:
 		adata = adata.copy()

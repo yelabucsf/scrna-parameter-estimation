@@ -53,7 +53,14 @@ def _compute_asl(perm_diff, resampling, nonneg, approx=False):
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
-	null = perm_diff[1:] - perm_diff[0] if resampling == 'bootstrap' else perm_diff[1:]
+	if resampling == 'bootstrap':
+		null = perm_diff[1:] - perm_diff[0]
+	else:
+		if nonneg:
+			null = perm_diff[1:]
+		else:
+			null = perm_diff[1:] - perm_diff[1:].mean()
+	
 	stat = perm_diff[0]
 	
 	if approx and not nonneg:
@@ -64,7 +71,7 @@ def _compute_asl(perm_diff, resampling, nonneg, approx=False):
 		
 		return stats.norm.sf(abs_stat, *null_params) + stats.norm.cdf(-abs_stat, *null_params)
 	
-	elif approx and nonnreg:
+	elif approx and nonneg:
 		
 		null_params = stats.gamma.fit(null)
 		
@@ -295,8 +302,8 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, treatment_idx, **kw
 
 			nonneg=True
 
-			bm = boot_mean_k * Nc_list_k.reshape(-1,1)
-			bv = boot_var_k * Nc_list_k.reshape(-1,1)
+			bm = boot_mean_k# * Nc_list_k.reshape(-1,1)
+			bv = boot_var_k #* Nc_list_k.reshape(-1,1)
 
 			mean_coef += (bm.max(axis=0) - bm.min(axis=0))*Nc_list_k.sum()
 			var_coef += (bv.max(axis=0) - bv.min(axis=0))*Nc_list_k.sum()
@@ -436,7 +443,7 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, **kwargs):
 
 			nonneg = True
 
-			bc = boot_corr_k * Nc_list_k.reshape(-1,1)
+			bc = boot_corr_k# * Nc_list_k.reshape(-1,1)
 
 			corr_coef += (bc.max(axis=0) - bc.min(axis=0))*Nc_list_k.sum()
 
