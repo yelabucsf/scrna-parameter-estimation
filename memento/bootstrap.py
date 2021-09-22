@@ -45,7 +45,8 @@ def _bootstrap_1d(
 	q,
 	_estimator_1d,
 	num_boot=1000,
-	return_times=False):
+	return_times=False,
+	precomputed=None):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
 		
@@ -56,7 +57,8 @@ def _bootstrap_1d(
 	start_time = time.time()
 	
 	# Pre-compute size factor
-	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
+	# Pass the pre-computed values for permutation test
+	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor) if precomputed is None else precomputed
 	count_time = time.time()
 		
 	# Skip this gene if it has no expression
@@ -64,8 +66,7 @@ def _bootstrap_1d(
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
 		
 	gen = np.random.Generator(np.random.PCG64(5))
-# 	gene_rvs = gen.poisson(counts, size=(num_boot, counts.shape[0])).T
-	gene_rvs = gen.multinomial(data.shape[0], counts/data.shape[0], size=num_boot).T
+	gene_rvs = gen.multinomial(data.shape[0], counts/counts.sum(), size=num_boot).T
 
 	n_obs = data.shape[0]
 		
@@ -89,13 +90,14 @@ def _bootstrap_2d(
 	q,
 	_estimator_1d,
 	_estimator_cov,
-	num_boot=1000):
+	num_boot=1000,
+	precomputed=None):
 	"""
 		Perform the bootstrap and CI calculation for covariance and correlation.
 	"""
 	Nc = data.shape[0]
 
-	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
+	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor) if precomputed is None else precomputed
 	
 	# Generate the bootstrap samples
 	gen = np.random.Generator(np.random.PCG64(5))

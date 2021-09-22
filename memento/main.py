@@ -36,6 +36,8 @@ def setup_memento(
 		Compute size factors and the overall mean-variance regressor.
 	"""
 	
+	print('Version 0.0.6-6')
+	
 	if not inplace:
 		adata = adata.copy()
 		
@@ -313,11 +315,12 @@ def compute_2d_moments(adata, gene_pairs, inplace=True):
 def ht_1d_moments(
 	adata, 
 	formula_like,
-	cov_column,
+	treatment_col,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=1,
-	num_cpus=1):
+	num_cpus=1,
+	**kwargs):
 	"""
 		Performs hypothesis testing for 1D moments.
 	"""
@@ -346,10 +349,11 @@ def ht_1d_moments(
 	Nc_list = np.array(Nc_list)
 	
 	# Find the covariate that actually matters
+	treatment_idx = []
 	for idx, col_name in enumerate(design_matrix_cols):
-		if cov_column in col_name:
-			cov_idx = idx
-			break
+		if treatment_col in col_name:
+			treatment_idx.append(idx)
+	assert len(treatment_idx) > 0, 'could not find treatment column'
 	
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(G)*np.nan for i in range(6)]
@@ -367,10 +371,11 @@ def ht_1d_moments(
 				design_matrix=design_matrix,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
-				cov_idx=cov_idx,
+				treatment_idx=treatment_idx,
 				mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
 				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
-				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])))
+				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
+				**kwargs))
 
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
 		
@@ -379,7 +384,7 @@ def ht_1d_moments(
 
 	# Save the hypothesis test result
 	adata.uns['memento']['1d_ht'] = {}
-	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'cov_column', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
+	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'treatment_col', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
 	for attr in attrs:
 		adata.uns['memento']['1d_ht'][attr] = eval(attr)
 
@@ -390,11 +395,12 @@ def ht_1d_moments(
 def ht_2d_moments(
 	adata, 
 	formula_like,
-	cov_column,
+	treatment_col,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=3,
-	num_cpus=1):
+	num_cpus=1,
+	**kwargs):
 	"""
 		Performs hypothesis testing for 1D moments.
 	"""
@@ -423,10 +429,11 @@ def ht_2d_moments(
 	Nc_list = np.array(Nc_list)
 	
 	# Find the covariate that actually matters
+	treatment_idx = []
 	for idx, col_name in enumerate(design_matrix_cols):
-		if cov_column in col_name:
-			cov_idx = idx
-			break
+		if treatment_col in col_name:
+			treatment_idx.append(idx)
+	assert len(treatment_idx) > 0, 'could not find treatment column'
 	
 	# Get gene idxs
 	gene_idx_1 = adata.uns['memento']['2d_moments']['gene_idx_1']
@@ -467,10 +474,11 @@ def ht_2d_moments(
 				design_matrix=design_matrix,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
-				cov_idx=cov_idx,
+				treatment_idx=treatment_idx,
 				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
 				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
-				_estimator_cov=estimator._get_estimator_cov(adata.uns['memento']['estimator_type'])))
+				_estimator_cov=estimator._get_estimator_cov(adata.uns['memento']['estimator_type']),
+				**kwargs))
 	
 	# Parallel processing
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
@@ -485,7 +493,7 @@ def ht_2d_moments(
 	
 	# Save the hypothesis test result
 	adata.uns['memento']['2d_ht'] = {}
-	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'cov_column', 'corr_coef', 'corr_se','corr_asl']
+	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'treatment_col', 'corr_coef', 'corr_se','corr_asl']
 	for attr in attrs:
 		adata.uns['memento']['2d_ht'][attr] = eval(attr)
 		

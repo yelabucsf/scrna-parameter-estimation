@@ -21,7 +21,7 @@ def compare_drugs(drug1, drug2, target):
     
 		print(drug1, '   vs.   ',drug2)
 
-		subset = adata[adata.obs.product_name.isin([drug1, drug2]) & (adata.obs.target==target)].copy().copy()
+		subset = adata[adata.obs.product_name.isin([drug1, drug2])].copy().copy()
 		subset.obs['is_drug1'] = (subset.obs.product_name==drug1).astype(int)
 		subset.obs['dose_level'] = 'dose_' + subset.obs['dose'].astype(str)
 
@@ -29,7 +29,7 @@ def compare_drugs(drug1, drug2, target):
 		memento.compute_1d_moments(subset, min_perc_group=.9)
 		memento.ht_1d_moments(
 			subset, 
-			formula_like='1 + is_drug1',
+			formula_like='1 + is_drug1 + dose_level',
 			cov_column='is_drug1', 
 			num_boot=10000, 
 			verbose=0,
@@ -76,4 +76,4 @@ if __name__ == '__main__':
 			print(target, drug1, drug2)
 			result = compare_drugs(drug1, drug2, target)
 			
-			result.write(data_path + '{}/{}_vs_{}_all_doses.h5ad'.format(target_to_dir[target], drug1, drug2))
+			result.write(data_path + '{}/{}_vs_{}_stratified.h5ad'.format(target_to_dir[target], drug1, drug2))

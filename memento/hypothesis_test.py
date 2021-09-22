@@ -6,6 +6,7 @@
 
 import numpy as np
 import scipy.stats as stats
+import scipy.sparse as sparse
 from sklearn.linear_model import LinearRegression
 
 import memento.bootstrap as bootstrap
@@ -47,74 +48,130 @@ def _push(val, cond='neg'):
 	return val
 
 
-def _compute_asl(perm_diff):
+def _compute_asl(perm_diff, nonneg=False, approx=False):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
-	null = perm_diff[1:] - perm_diff[0]#np.mean(perm_diff[1:])
-	
-	stat = perm_diff[0]#np.mean(perm_diff[1:])
-	
-	if stat > 0:
-		extreme_count = (null > stat).sum() + (null < -stat).sum()
-	else:
-		extreme_count = (null > -stat).sum() + (null < stat).sum()
+	if approx and nonneg is False:
 		
-# 	return (extreme_count+1) / (null.shape[0]+1)
+		null_params = stats.norm.fit(perm_diff[1:] - perm_diff[0])
+		
+		abs_stat = np.abs(perm_diff[0])
+		
+		return stats.norm.sf(abs_stat, *null_params) + stats.norm.cdf(-abs_stat, *null_params)
 	
-	if extreme_count > 10: # We do not need to use the GDP approximation. 
-
-		return (extreme_count+1) / (null.shape[0]+1)
-
-	else: # We use the GDP approximation
-
-		try:
+	elif approx and nonnreg:
+		
+		null_params = stats.gamma.fit(perm_diff[1:]-perm_diff[1:].min())
+		
+		return stats.gamma.sf(perm_diff[0], *null_params)
+	
+	elif nonneg:
+		
+		null = perm_diff[1:] - perm_diff[1:].min()
+		
+		stat = perm_diff[0]
+		
+		extreme_count = (null > stat).sum()
+		
+		if extreme_count > 10:
 			
-			perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
-			perm_dist = perm_dist[np.isfinite(perm_dist)]
+			return (extreme_count + 1) / (null.shape[0]+1)
+		
+		else:
 			
-			# Left tail
-			N_exec = 300
-			left_fit = False
-			while N_exec > 50:
+			try:
 
-				tail_data = perm_dist[:N_exec]
-				params = stats.genextreme.fit(tail_data)
-				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+				perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+				perm_dist = perm_dist[np.isfinite(perm_dist)]
 
-				if ks_pval > 0.05: # roughly a genpareto distribution
-					val = stats.genextreme.cdf(-np.abs(stat), *params)
-					left_asl = (N_exec/perm_dist.shape[0]) * val
-					left_fit = True
-					break
-				else: # Failed to fit genpareto
-					N_exec -= 30
-				
-			if not left_fit:
+				# Right tail
+				N_exec = 300
+				while N_exec > 50:
+
+					tail_data = perm_dist[-N_exec:]
+					params = stats.genextreme.fit(tail_data)
+					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+					if ks_pval > 0.05: # roughly a genpareto distribution
+						val = stats.genextreme.sf(np.abs(stat), *params)
+						right_asl = (N_exec/perm_dist.shape[0]) * val
+						return right_asl
+					else: # Failed to fit genpareto
+						N_exec -= 30					
+
 				return (extreme_count+1) / (null.shape[0]+1)
-			
-			# Right tail
-			N_exec = 300
-			while N_exec > 50:
 
-				tail_data = perm_dist[-N_exec:]
-				params = stats.genextreme.fit(tail_data)
-				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+			except: # catch any numerical errors
 
-				if ks_pval > 0.05: # roughly a genpareto distribution
-					val = stats.genextreme.sf(np.abs(stat), *params)
-					right_asl = (N_exec/perm_dist.shape[0]) * val
-					return right_asl + left_asl
-				else: # Failed to fit genpareto
-					N_exec -= 30					
-			
+				# Failed to fit genpareto, return the upper bound
+				return (extreme_count+1) / (null.shape[0]+1)
+	else:
+	
+		null = perm_diff[1:] - perm_diff[0]#np.mean(perm_diff[1:])
+
+		stat = perm_diff[0]#np.mean(perm_diff[1:])
+
+		if stat > 0:
+			extreme_count = (null > stat).sum() + (null < -stat).sum()
+		else:
+			extreme_count = (null > -stat).sum() + (null < stat).sum()
+
+	# 	return (extreme_count+1) / (null.shape[0]+1)
+
+		if extreme_count > 10: # We do not need to use the GDP approximation. 
+
 			return (extreme_count+1) / (null.shape[0]+1)
 
-		except: # catch any numerical errors
+		else: # We use the GDP approximation
 
-			# Failed to fit genpareto, return the upper bound
-			return (extreme_count+1) / (null.shape[0]+1)
+			try:
+
+				perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+				perm_dist = perm_dist[np.isfinite(perm_dist)]
+
+				# Left tail
+				N_exec = 300
+				left_fit = False
+				while N_exec > 50:
+
+					tail_data = perm_dist[:N_exec]
+					params = stats.genextreme.fit(tail_data)
+					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+					if ks_pval > 0.05: # roughly a genpareto distribution
+						val = stats.genextreme.cdf(-np.abs(stat), *params)
+						left_asl = (N_exec/perm_dist.shape[0]) * val
+						left_fit = True
+						break
+					else: # Failed to fit genpareto
+						N_exec -= 30
+
+				if not left_fit:
+					return (extreme_count+1) / (null.shape[0]+1)
+
+				# Right tail
+				N_exec = 300
+				while N_exec > 50:
+
+					tail_data = perm_dist[-N_exec:]
+					params = stats.genextreme.fit(tail_data)
+					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+					if ks_pval > 0.05: # roughly a genpareto distribution
+						val = stats.genextreme.sf(np.abs(stat), *params)
+						right_asl = (N_exec/perm_dist.shape[0]) * val
+						return right_asl + left_asl
+					else: # Failed to fit genpareto
+						N_exec -= 30					
+
+				return (extreme_count+1) / (null.shape[0]+1)
+
+			except: # catch any numerical errors
+
+				# Failed to fit genpareto, return the upper bound
+				return (extreme_count+1) / (null.shape[0]+1)
 		
 		
 def _ht_1d(
@@ -125,16 +182,32 @@ def _ht_1d(
 	design_matrix,
 	Nc_list,
 	num_boot,
-	cov_idx,
+	treatment_idx,
 	mv_fit, # list of tuples
 	q, # list of numbers
-	_estimator_1d):
+	_estimator_1d,
+	resampling='bootstrap',
+	approx=False):
 	
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
-	# the bootstrap arrays
+	# the resampled arrays
 	boot_mean = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 	boot_var = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
+	
+	# Get strata-specific pooled information
+	if resampling == 'permutation':
+		
+		uniq_strata, strata_indicator = np.unique(np.delete(design_matrix, treatment_idx, axis=1), axis=0, return_inverse=True)
+		resampling_info = {}
+		
+		for k in range(uniq_strata.shape[0]):
+			
+			strata_idx = np.where(strata_indicator==0)[0]
+			data_list = [cells[i] for i in strata_idx]
+			sf_list = [approx_sf[i] for i in strata_idx]
+		
+			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list), np.concatenate(sf_list))
 
 	for group_idx in range(len(true_mean)):
 
@@ -147,14 +220,15 @@ def _ht_1d(
 
 		# Fill in the true value
 		boot_mean[group_idx, 0], boot_var[group_idx, 0] = np.log(true_mean[group_idx]), np.log(true_res_var[group_idx])
-
+		
 		# Generate the bootstrap values
 		mean, var = bootstrap._bootstrap_1d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
 			num_boot=num_boot,
 			q=q[group_idx],
-			_estimator_1d=_estimator_1d)
+			_estimator_1d=_estimator_1d,
+			precomputed= (None if resampling == 'bootstrap' else resampling_info[strata_indicator[group_idx]]))
 		
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
@@ -175,11 +249,11 @@ def _ht_1d(
 			boot_mean=boot_mean[good_idxs, :], 
 			boot_var=boot_var[good_idxs, :],
 			Nc_list=Nc_list[good_idxs],
-			cov_idx=cov_idx)
+			treatment_idx=treatment_idx)
 	return vals
 
 
-def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx, stratify=True):
+def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, treatment_idx, stratify=True):
 	"""
 		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
@@ -187,6 +261,7 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx, stratify=T
 	"""
 	
 	num_boot = boot_mean.shape[1]
+	nonneg = False
 	
 	boot_mean = boot_mean[:, ~np.any(~np.isfinite(boot_mean), axis=0)]
 	boot_var = boot_var[:, ~np.any(~np.isfinite(boot_var), axis=0)]
@@ -202,7 +277,7 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx, stratify=T
 		mean_coef = 0
 		var_coef = 0
 		
-		strata = np.delete(design_matrix, cov_idx, axis=1)
+		strata = np.delete(design_matrix, treatment_idx, axis=1)
 		uniq_strata = np.unique(strata, axis=0)
 		
 		for k in range(uniq_strata.shape[0]):
@@ -212,29 +287,41 @@ def _regress_1d(design_matrix, boot_mean, boot_var, Nc_list, cov_idx, stratify=T
 			boot_var_k = boot_var[strata_idx]
 			Nc_list_k = Nc_list[strata_idx]
 			
-			if cov_idx != 0:
-				design_matrix_k = design_matrix[strata_idx][:, [cov_idx, 0]]
-			else:
-				design_matrix_k = design_matrix[strata_idx][:, [cov_idx]]
-			
-			mean_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-				.fit(design_matrix_k, boot_mean_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-			var_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-				.fit(design_matrix_k, boot_var_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+			if len(treatment_idx) == 1:
+				
+				if treatment_idx != [0]:
+					design_matrix_k = design_matrix[strata_idx][:, treatment_idx + [0]]
+				else:
+					design_matrix_k = design_matrix[strata_idx][:, treatment_idx]
+
+				mean_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+					.fit(design_matrix_k, boot_mean_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+				var_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+					.fit(design_matrix_k, boot_var_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+			else: # Categorical treatment
+				
+				nonneg=True
+				
+				bm = boot_mean_k * Nc_list_k.reshape(-1,1)
+				bv = boot_var_k * Nc_list_k.reshape(-1,1)
+				
+				mean_coef += (bm.max(axis=0) - bm.min(axis=0))*Nc_list_k.sum()
+				var_coef += (bv.max(axis=0) - bv.min(axis=0))*Nc_list_k.sum()
+				
 		mean_coef /= Nc_list.sum()
 		var_coef /= Nc_list.sum()
 	
 	else:
 		mean_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix, boot_mean, Nc_list).coef_[:, cov_idx]
+			.fit(design_matrix, boot_mean, Nc_list).coef_[:, treatment_idx]
 		var_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix, boot_var, Nc_list).coef_[:, cov_idx]
+			.fit(design_matrix, boot_var, Nc_list).coef_[:, treatment_idx]
 	
 	if boot_var.shape[1] < num_boot*0.5:
 		return  mean_coef[0], np.nan, np.nan, var_coef[0], np.nan, np.nan
 
-	mean_asl = _compute_asl(mean_coef)
-	var_asl = _compute_asl(var_coef)
+	mean_asl = _compute_asl(mean_coef, nonneg=nonneg)
+	var_asl = _compute_asl(var_coef, nonneg=nonneg)
 	
 	mean_se = np.nanstd(mean_coef[1:])
 	var_se = np.nanstd(var_coef[1:])
@@ -249,16 +336,32 @@ def _ht_2d(
 	design_matrix,
 	Nc_list,
 	num_boot,
-	cov_idx,
+	treatment_idx,
 	q,
 	_estimator_1d,
-	_estimator_cov):
+	_estimator_cov,
+	resampling='bootstrap',
+	approx=False):
 	
 		
 	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
 	
 	# the bootstrap arrays
 	boot_corr = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
+	
+	# Get strata-specific pooled information
+	if resampling == 'permutation':
+		
+		uniq_strata, strata_indicator = np.unique(np.delete(design_matrix, treatment_idx, axis=1), axis=0, return_inverse=True)
+		resampling_info = {}
+		
+		for k in range(uniq_strata.shape[0]):
+			
+			strata_idx = np.where(strata_indicator==0)[0]
+			data_list = [cells[i] for i in strata_idx]
+			sf_list = [approx_sf[i] for i in strata_idx]
+		
+			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list), np.concatenate(sf_list))
 
 	for group_idx in range(design_matrix.shape[0]):
 
@@ -276,10 +379,8 @@ def _ht_2d(
 			num_boot=int(num_boot),
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
-			_estimator_cov=_estimator_cov)
-		
-# 		var_1[var_1 < 0] = np.mean(var_1[var_1 > 0])
-# 		var_2[var_2 < 0] = np.mean(var_2[var_2 > 0])
+			_estimator_cov=_estimator_cov,
+			precomputed= (None if resampling == 'bootstrap' else resampling_info[strata_indicator[group_idx]]))
 				
 		corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 			
@@ -302,17 +403,18 @@ def _ht_2d(
 			design_matrix=design_matrix[good_idxs, :],
 			boot_corr=boot_corr[good_idxs, :],
 			Nc_list=Nc_list[good_idxs],
-			cov_idx=cov_idx)
+			treatment_idx=treatment_idx)
 	
 	return vals
 
 
-def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx, stratify=True):
+def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, stratify=True):
 	"""
 		Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
 	"""
 		
 	num_boot = boot_corr.shape[1]
+	nonneg = False
 	
 	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
 	
@@ -324,7 +426,7 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx, stratify=True):
 		
 		corr_coef = 0
 		
-		strata = np.delete(design_matrix, cov_idx, axis=1)
+		strata = np.delete(design_matrix, treatment_idx, axis=1)
 		uniq_strata = np.unique(strata, axis=0)
 		
 		for k in range(uniq_strata.shape[0]):
@@ -333,24 +435,35 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, cov_idx, stratify=True):
 			boot_corr_k = boot_corr[strata_idx]
 			Nc_list_k = Nc_list[strata_idx]
 			
-			if cov_idx != 0:
-				design_matrix_k = design_matrix[strata_idx][:, [cov_idx, 0]]
-			else:
-				design_matrix_k = design_matrix[strata_idx][:, [cov_idx]]
-			
-			corr_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-				.fit(design_matrix_k, boot_corr_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+			if len(treatment_idx) == 1:
+				
+				if treatment_idx != 0:
+					design_matrix_k = design_matrix[strata_idx][:, [treatment_idx, 0]]
+				else:
+					design_matrix_k = design_matrix[strata_idx][:, [treatment_idx]]
+
+				corr_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
+					.fit(design_matrix_k, boot_corr_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
+				
+			else: # Categorical treatment
+				
+				nonneg = True
+				
+				bc = boot_corr_k * Nc_list_k.reshape(-1,1)
+				
+				corr_coef += (bc.max(axis=0) - bc.min(axis=0))*Nc_list_k.sum()
+				
 		corr_coef /= Nc_list.sum()
 	
 	else:
 	
 		corr_coef = LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix, boot_corr, Nc_list).coef_[:, cov_idx]
+			.fit(design_matrix, boot_corr, Nc_list).coef_[:, treatment_idx]
 	
 	if boot_corr.shape[1] < num_boot*0.7:
 		return corr_coef[0], np.nan, np.nan
 
-	corr_asl = _compute_asl(corr_coef)
+	corr_asl = _compute_asl(corr_coef, nonneg=nonneg)
 	
 	corr_se = np.nanstd(corr_coef[1:])
 	
