@@ -15,7 +15,7 @@ import memento
 import warnings
 warnings.filterwarnings("ignore")
 
-def compare_drugs(drug1, drug2, target):
+def compare_drugs(drug1, drug2):
 	
 	for drug1, drug2 in itertools.combinations(drug_list,2):
     
@@ -30,12 +30,33 @@ def compare_drugs(drug1, drug2, target):
 		memento.ht_1d_moments(
 			subset, 
 			formula_like='1 + is_drug1 + dose_level',
-			cov_column='is_drug1', 
+			treatment_col='is_drug1', 
 			num_boot=10000, 
 			verbose=0,
-			num_cpus=94)
+			num_cpus=94,
+			resampling='permutation',
+			approx=False)
 		
 		return subset
+
+def compare_multiclass(target):
+	
+	subset = adata[adata.obs.target==target].copy().copy()
+	subset.obs['dose_level'] = 'dose_' + subset.obs['dose'].astype(str)
+
+	memento.create_groups(subset, label_columns=['product_name', 'dose_level'])
+	memento.compute_1d_moments(subset, min_perc_group=.9)
+	memento.ht_1d_moments(
+		subset, 
+		formula_like='1 + product_name + dose_level',
+		treatment_col='product_name', 
+		num_boot=100000, 
+		verbose=1,
+		num_cpus=94,
+		resampling='permutation',
+		approx=False)
+	
+	return subset
 	
 
 if __name__ == '__main__':
@@ -68,12 +89,20 @@ if __name__ == '__main__':
 	for target in target_list:
 		print('Starting {}.......'.format(target))
 		
+# 		# Perform multiclass comparison
+# 		result = compare_multiclass(target)
+# 		result.write(data_path + '{}/multiclass_stratified.h5ad'.format(target_to_dir[target]))
+		
+		# Perform pairwise comparisons
 		drug_counts = adata.obs.query('target == "{}"'.format(target)).product_name.value_counts()
 		drug_list = drug_counts[drug_counts > 0].index.tolist()
 		
 		for drug1, drug2 in itertools.combinations(drug_list,2):
     
 			print(target, drug1, drug2)
-			result = compare_drugs(drug1, drug2, target)
+			result = compare_drugs(drug1, drug2)
 			
-			result.write(data_path + '{}/{}_vs_{}_stratified.h5ad'.format(target_to_dir[target], drug1, drug2))
+			result.write(data_path + '{}/{}_vs_{}_stratified_perm.h5ad'.format(target_to_dir[target], drug1, drug2))
+			
+		
+		

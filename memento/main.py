@@ -342,6 +342,8 @@ def ht_1d_moments(
 		
 	# Create the design matrix from the patsy formula
 	design_df = pd.DataFrame(design_df_list, columns=adata.uns['memento']['label_columns'])
+	for col in design_df.columns:
+		design_df[col] = pd.to_numeric(design_df[col], errors='ignore')
 	dmat = dmatrix(formula_like, design_df)
 	design_matrix_cols = dmat.design_info.column_names.copy()
 	design_matrix = np.array(dmat)
@@ -422,6 +424,8 @@ def ht_2d_moments(
 		
 	# Create the design matrix from the patsy formula
 	design_df = pd.DataFrame(design_df_list, columns=adata.uns['memento']['label_columns'])
+	for col in design_df.columns:
+		design_df[col] = pd.to_numeric(design_df[col], errors='ignore')
 	dmat = dmatrix(formula_like, design_df)
 	design_matrix_cols = dmat.design_info.column_names.copy()
 	design_matrix = np.array(dmat)
