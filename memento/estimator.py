@@ -102,7 +102,8 @@ def _residual_variance(mean, var, mv_fit):
 	rv = np.zeros(mean.shape)*np.nan
 	
 	f = np.poly1d(mv_fit)
-	rv[cond] = np.exp(np.log(var[cond]) - f(np.log(mean[cond])))
+	with np.errstate(invalid='ignore'):
+		rv[cond] = np.exp(np.log(var[cond]) - f(np.log(mean[cond])))
 	
 # 	spline = mv_fit
 # 	rv[cond] = np.exp(np.log(var[cond]) - spline(np.log(mean[cond])))

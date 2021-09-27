@@ -22,7 +22,12 @@ def _robust_log(val):
 def _fill(val):
 	
 	condition = np.less_equal(val, 0., where=~np.isnan(val)) | np.isnan(val)
-	val[condition] = np.random.choice(val[~condition], condition.sum())
+	num_invalid = condition.sum()
+	
+	if num_invalid == val.shape[0]:
+		return None
+	
+	val[condition] = np.random.choice(val[~condition], num_invalid)
 	
 	return val
 
@@ -232,13 +237,20 @@ def _ht_1d(
 		
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
-			
-		# This replicate is good
-		good_idxs[group_idx] = True
 		
 		# Minimize invalid values
-		boot_mean[group_idx, 1:] = np.log(_fill(mean))#_push_nan(mean)#[:num_boot]
-		boot_var[group_idx, 1:] = np.log(_fill(res_var))#_push_nan(res_var)#[:num_boot]
+		filled_mean = _fill(mean)#_push_nan(mean)#[:num_boot]
+		filled_var = _fill(res_var)#_push_nan(res_var)#[:num_boot]
+		
+		# Make sure its a valid replicate
+		if filled_mean is None or filled_var is None:
+			continue
+		
+		boot_mean[group_idx, 1:] = np.log(filled_mean)
+		boot_var[group_idx, 1:] = np.log(filled_var)
+		
+		# This replicate is good
+		good_idxs[group_idx] = True
 		
 	# Skip this gene
 	if good_idxs.sum() == 0:
