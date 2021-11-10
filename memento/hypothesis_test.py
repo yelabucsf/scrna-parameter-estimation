@@ -67,116 +67,115 @@ def _compute_asl(perm_diff, resampling, nonneg, approx=False):
 			null = perm_diff[1:] - perm_diff[1:].mean()
 	
 	stat = perm_diff[0]
+		
 	
-	if approx and not nonneg:
+# 	if approx and not nonneg:
 		
-		null_params = stats.norm.fit(null)
+# 		null_params = stats.norm.fit(null)
 		
-		abs_stat = np.abs(stat)
+# 		abs_stat = np.abs(stat)
 		
-		return stats.norm.sf(abs_stat, *null_params) + stats.norm.cdf(-abs_stat, *null_params)
+# 		return stats.norm.sf(abs_stat, *null_params) + stats.norm.cdf(-abs_stat, *null_params)
 	
-	elif approx and nonneg:
+# 	elif approx and nonneg:
 		
-		null_params = stats.gamma.fit(null)
+# 		null_params = stats.gamma.fit(null)
 		
-		return stats.gamma.sf(stat, *null_params)
+# 		return stats.gamma.sf(stat, *null_params)
 	
-	elif nonneg:
+# 	elif nonneg:
 		
-		extreme_count = (null > stat).sum()
+# 		extreme_count = (null > stat).sum()
 		
-		if extreme_count > 10:
+# 		if extreme_count > 10:
 			
-			return (extreme_count + 1) / (null.shape[0]+1)
+# 			return (extreme_count + 1) / (null.shape[0]+1)
 		
-		else:
+# 		else:
 			
-			try:
+# 			try:
 
-				perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
-				perm_dist = perm_dist[np.isfinite(perm_dist)]
+# 				perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+# 				perm_dist = perm_dist[np.isfinite(perm_dist)]
 
-				# Right tail
-				N_exec = 300
-				while N_exec > 50:
+# 				# Right tail
+# 				N_exec = 300
+# 				while N_exec > 50:
 
-					tail_data = perm_dist[-N_exec:]
-					params = stats.genextreme.fit(tail_data)
-					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+# 					tail_data = perm_dist[-N_exec:]
+# 					params = stats.genextreme.fit(tail_data)
+# 					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
 
-					if ks_pval > 0.05: # roughly a genpareto distribution
-						val = stats.genextreme.sf(np.abs(stat), *params)
-						right_asl = (N_exec/perm_dist.shape[0]) * val
-						return right_asl
-					else: # Failed to fit genpareto
-						N_exec -= 30					
+# 					if ks_pval > 0.05: # roughly a genpareto distribution
+# 						val = stats.genextreme.sf(np.abs(stat), *params)
+# 						right_asl = (N_exec/perm_dist.shape[0]) * val
+# 						return right_asl
+# 					else: # Failed to fit genpareto
+# 						N_exec -= 30					
 
-				return (extreme_count+1) / (null.shape[0]+1)
+# 				return (extreme_count+1) / (null.shape[0]+1)
 
-			except: # catch any numerical errors
+# 			except: # catch any numerical errors
 
-				# Failed to fit genpareto, return the upper bound
-				return (extreme_count+1) / (null.shape[0]+1)
+# 				# Failed to fit genpareto, return the upper bound
+# 				return (extreme_count+1) / (null.shape[0]+1)
+	if stat > 0:
+		extreme_count = (null > stat).sum() + (null < -stat).sum()
 	else:
+		extreme_count = (null > -stat).sum() + (null < stat).sum()
 
-		if stat > 0:
-			extreme_count = (null > stat).sum() + (null < -stat).sum()
-		else:
-			extreme_count = (null > -stat).sum() + (null < stat).sum()
+	if not approx or extreme_count > 10: # We do not need to use the GDP approximation. 
 
-		if extreme_count > 10: # We do not need to use the GDP approximation. 
+		return (extreme_count+1) / (null.shape[0]+1)
+
+	else: # We use the GDP approximation
+
+		try:
+
+			perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+			perm_dist = perm_dist[np.isfinite(perm_dist)]
+
+			# Left tail
+			N_exec = 300
+			left_fit = False
+			while N_exec > 50:
+
+				tail_data = perm_dist[:N_exec]
+				params = stats.genextreme.fit(tail_data)
+				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+				if ks_pval > 0.05: # roughly a genpareto distribution
+					val = stats.genextreme.cdf(-np.abs(stat), *params)
+					left_asl = (N_exec/perm_dist.shape[0]) * val
+					left_fit = True
+					break
+				else: # Failed to fit genpareto
+					N_exec -= 30
+
+			if not left_fit:
+				return (extreme_count+1) / (null.shape[0]+1)
+
+			# Right tail
+			N_exec = 300
+			while N_exec > 50:
+
+				tail_data = perm_dist[-N_exec:]
+				params = stats.genextreme.fit(tail_data)
+				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+				if ks_pval > 0.05: # roughly a genpareto distribution
+					val = stats.genextreme.sf(np.abs(stat), *params)
+					right_asl = (N_exec/perm_dist.shape[0]) * val
+					return right_asl + left_asl
+				else: # Failed to fit genpareto
+					N_exec -= 30					
 
 			return (extreme_count+1) / (null.shape[0]+1)
 
-		else: # We use the GDP approximation
+		except: # catch any numerical errors
 
-			try:
-
-				perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
-				perm_dist = perm_dist[np.isfinite(perm_dist)]
-
-				# Left tail
-				N_exec = 300
-				left_fit = False
-				while N_exec > 50:
-
-					tail_data = perm_dist[:N_exec]
-					params = stats.genextreme.fit(tail_data)
-					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
-
-					if ks_pval > 0.05: # roughly a genpareto distribution
-						val = stats.genextreme.cdf(-np.abs(stat), *params)
-						left_asl = (N_exec/perm_dist.shape[0]) * val
-						left_fit = True
-						break
-					else: # Failed to fit genpareto
-						N_exec -= 30
-
-				if not left_fit:
-					return (extreme_count+1) / (null.shape[0]+1)
-
-				# Right tail
-				N_exec = 300
-				while N_exec > 50:
-
-					tail_data = perm_dist[-N_exec:]
-					params = stats.genextreme.fit(tail_data)
-					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
-
-					if ks_pval > 0.05: # roughly a genpareto distribution
-						val = stats.genextreme.sf(np.abs(stat), *params)
-						right_asl = (N_exec/perm_dist.shape[0]) * val
-						return right_asl + left_asl
-					else: # Failed to fit genpareto
-						N_exec -= 30					
-
-				return (extreme_count+1) / (null.shape[0]+1)
-
-			except: # catch any numerical errors
-
-				# Failed to fit genpareto, return the upper bound
-				return (extreme_count+1) / (null.shape[0]+1)
+			# Failed to fit genpareto, return the upper bound
+			return (extreme_count+1) / (null.shape[0]+1)
 		
 		
 def _ht_1d(
