@@ -232,8 +232,8 @@ def _hyper_corr_symmetric(data, n_obs, size_factor, q, var, idx1=None, idx2=None
 	overlap_idx1 = [i for i in idx1 if i in overlap]
 	overlap_idx2 = [i for i in idx2 if i in overlap]
 
-	overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap ]
-	overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap ]
+	overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap]
+	overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap]
 
 	row_weight = np.sqrt(1/(size_factor**2 + size_factor*(1-q))).reshape([1, -1])
 	X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
@@ -271,6 +271,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 		
 	corr[np.isfinite(var_prod)] = cov[np.isfinite(var_prod)] / var_prod[np.isfinite(var_prod)]
 	
-	corr[(corr > 1) | (corr < -1)] = np.nan
+	corr[corr > 1] = 1
+	corr[corr < -1] = -1
 	
 	return corr
