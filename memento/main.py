@@ -35,9 +35,7 @@ def setup_memento(
 	"""
 		Compute size factors and the overall mean-variance regressor.
 	"""
-	
-	print('Version 0.0.6')
-	
+		
 	if not inplace:
 		adata = adata.copy()
 		
@@ -195,11 +193,6 @@ def compute_1d_moments(
 	gene_filter_rate = gene_masks.mean(axis=0)
 	overall_gene_mask = (gene_filter_rate > min_perc_group)
 
-	# If a gene list is given, use that list instead
-	if gene_list is not None:
-		assert type(gene_list) == list
-		overall_gene_mask = np.in1d(adata.var.index.values, gene_list)
-
 	# Do the filtering
 	adata.uns['memento']['overall_gene_filter'] = overall_gene_mask
 	adata.uns['memento']['gene_list'] = adata.var.index[overall_gene_mask].tolist()
@@ -241,10 +234,27 @@ def compute_1d_moments(
 			adata.uns['memento']['mv_regressor'][group])
 		
 		adata.uns['memento']['1d_moments'][group].append(res_var)
+		
+	# If a gene list is given, use that to further filter the moments
+	if gene_list is not None:
+		assert type(gene_list) == list
+		given_gene_mask = np.in1d(adata.var.index.values, gene_list)
+
+		adata.uns['memento']['group_cells'] = \
+			{group:adata.uns['memento']['group_cells'][group][:, given_gene_mask] for group in adata.uns['memento']['groups']}
+		
+		adata.uns['memento']['1d_moments'] = \
+			{group:[
+				adata.uns['memento']['1d_moments'][group][0][given_gene_mask],
+				adata.uns['memento']['1d_moments'][group][1][given_gene_mask],
+				adata.uns['memento']['1d_moments'][group][2][given_gene_mask],
+				] for group in (adata.uns['memento']['groups'])}
+		adata._inplace_subset_var(given_gene_mask)
 			
 	if not inplace:
 		return adata
 	
+
 def get_corr_matrix(adata):
 	"""
 		Computes the all by all correlation matrix.
@@ -314,8 +324,9 @@ def compute_2d_moments(adata, gene_pairs, inplace=True):
 
 def ht_1d_moments(
 	adata, 
-	formula_like,
-	treatment_col,
+	covariate,
+	treatment,
+	treatment_for_gene=None,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=1,
@@ -331,34 +342,22 @@ def ht_1d_moments(
 	# Get number of genes
 	G = adata.shape[1]
 	
-	# Create design DF
-	design_df_list, Nc_list = [], []
-	
-	# Create the design df
+	# Get cell counts
+	Nc_list = []
 	for group in adata.uns['memento']['groups']:
-		
-		design_df_list.append(group.split(adata.uns['memento']['label_delimiter'])[1:])
 		Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
-		
-	# Create the design matrix from the patsy formula
-	design_df = pd.DataFrame(design_df_list, columns=adata.uns['memento']['label_columns'])
-	for col in design_df.columns:
-		design_df[col] = pd.to_numeric(design_df[col], errors='ignore')
-	dmat = dmatrix(formula_like, design_df)
-	design_matrix_cols = dmat.design_info.column_names.copy()
-	design_matrix = np.array(dmat)
-	del dmat
 	Nc_list = np.array(Nc_list)
 	
-	# Find the covariate that actually matters
-	treatment_idx = []
-	for idx, col_name in enumerate(design_matrix_cols):
-		if treatment_col in col_name:
-			treatment_idx.append(idx)
-	assert len(treatment_idx) > 0, 'could not find treatment column'
+	# Get the number of tests
+	if treatment_for_gene is None:
+		num_tests = treatment.shape[1]*G
+	else:
+		num_tests = 0
+		for k,v in treatment_for_gene.items():
+			num_tests += len(v)
 	
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
-	mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(G)*np.nan for i in range(6)]
+	mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(num_tests)*np.nan for i in range(6)]
 	
 	ht_funcs = []
 	for idx in range(G):
@@ -370,23 +369,29 @@ def ht_1d_moments(
 				true_res_var=[adata.uns['memento']['1d_moments'][group][2][idx] for group in adata.uns['memento']['groups']],
 				cells=[adata.uns['memento']['group_cells'][group][:, idx] for group in adata.uns['memento']['groups']],
 				approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-				design_matrix=design_matrix,
+				covariate=covariate.values,
+				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[adata.var.index[idx]]].values,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
-				treatment_idx=treatment_idx,
 				mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
 				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
 				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
 				**kwargs))
 
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
-		
-	for output_idx, output in enumerate(results):
-		mean_coef[output_idx], mean_se[output_idx], mean_asl[output_idx], var_coef[output_idx], var_se[output_idx], var_asl[output_idx] = output
+	
+	ci = 0
+	for output_idx, output in enumerate(results): #ouptut_idx refers to the index of the gene, output refers to the output from the parallel
+# 		return output #debug
+		nt = treatment.shape[1] if treatment_for_gene is None else len(treatment_for_gene[adata.var.index[output_idx]])
+		mean_coef[ci:(ci+nt)], mean_se[ci:(ci+nt)], mean_asl[ci:(ci+nt)], var_coef[ci:(ci+nt)], var_se[ci:(ci+nt)], var_asl[ci:(ci+nt)] = output
+		ci += nt
 
 	# Save the hypothesis test result
 	adata.uns['memento']['1d_ht'] = {}
-	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'treatment_col', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
+	if treatment_for_gene is not None:
+		adata.uns['memento']['1d_ht']['treatment_for_gene'] = treatment_for_gene
+	attrs = ['treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
 	for attr in attrs:
 		adata.uns['memento']['1d_ht'][attr] = eval(attr)
 
@@ -622,15 +627,19 @@ def get_1d_ht_result(adata):
 		Getter function for 1d HT result. 
 	"""
 	
-	result_df = pd.DataFrame()
-	result_df['gene'] = adata.var.index.tolist()
+	
+	if 'treatment_for_gene' in adata.uns['memento']['1d_ht']:
+		result_df = pd.concat([
+			pd.DataFrame(
+				itertools.product([g], adata.uns['memento']['1d_ht']['treatment_for_gene'][g]), 
+				columns=['gene', 'tx']) for g in adata.var.index])
+	else:
+		result_df = pd.DataFrame(itertools.product(adata.var.index, adata.uns['memento']['1d_ht']['treatment'].columns), columns=['gene', 'tx'])
 	result_df['de_coef'] = adata.uns['memento']['1d_ht']['mean_coef']
-	if 'mean_se' in adata.uns['memento']['1d_ht']:
-		result_df['de_se'] = adata.uns['memento']['1d_ht']['mean_se']
+	result_df['de_se'] = adata.uns['memento']['1d_ht']['mean_se']
 	result_df['de_pval'] = adata.uns['memento']['1d_ht']['mean_asl']
 	result_df['dv_coef'] = adata.uns['memento']['1d_ht']['var_coef']
-	if 'var_se' in adata.uns['memento']['1d_ht']:
-		result_df['dv_se'] = adata.uns['memento']['1d_ht']['var_se']
+	result_df['dv_se'] = adata.uns['memento']['1d_ht']['var_se']
 	result_df['dv_pval'] = adata.uns['memento']['1d_ht']['var_asl']
 		
 	return result_df
