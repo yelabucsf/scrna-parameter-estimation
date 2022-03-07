@@ -8,6 +8,7 @@ import numpy as np
 import scipy.stats as stats
 import scipy.sparse as sparse
 from sklearn.linear_model import LinearRegression
+import warnings
 
 import memento.bootstrap as bootstrap
 import memento.estimator as estimator
@@ -87,52 +88,53 @@ def _compute_asl(perm_diff, resampling, approx=False):
 		return (extreme_count+1) / (null.shape[0]+1)
 
 	else: # We use the GDP approximation
+		with warnings.catch_warnings():
+			warnings.simplefilter("ignore")
+			try:
 
-		try:
+				perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
 
-			perm_dist = np.sort(null)# if perm_mean < 0 else np.sort(-perm_diff) # For fitting the GDP later on
+				# Left tail
+				N_exec = 300
+				left_fit = False
+				while N_exec > 50:
 
-			# Left tail
-			N_exec = 300
-			left_fit = False
-			while N_exec > 50:
+					tail_data = perm_dist[:N_exec]
+					params = stats.genextreme.fit(tail_data)
+					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
 
-				tail_data = perm_dist[:N_exec]
-				params = stats.genextreme.fit(tail_data)
-				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+					if ks_pval > 0.05: # roughly a genpareto distribution
+						val = stats.genextreme.cdf(-np.abs(stat), *params)
+						left_asl = (N_exec/perm_dist.shape[0]) * val
+						left_fit = True
+						break
+					else: # Failed to fit genpareto
+						N_exec -= 30
 
-				if ks_pval > 0.05: # roughly a genpareto distribution
-					val = stats.genextreme.cdf(-np.abs(stat), *params)
-					left_asl = (N_exec/perm_dist.shape[0]) * val
-					left_fit = True
-					break
-				else: # Failed to fit genpareto
-					N_exec -= 30
+				if not left_fit:
+					return (extreme_count+1) / (null.shape[0]+1)
 
-			if not left_fit:
+				# Right tail
+				N_exec = 300
+				while N_exec > 50:
+
+					tail_data = perm_dist[-N_exec:]
+					params = stats.genextreme.fit(tail_data)
+					_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
+
+					if ks_pval > 0.05: # roughly a genpareto distribution
+						val = stats.genextreme.sf(np.abs(stat), *params)
+						right_asl = (N_exec/perm_dist.shape[0]) * val
+						return right_asl + left_asl
+					else: # Failed to fit genpareto
+						N_exec -= 30					
+
 				return (extreme_count+1) / (null.shape[0]+1)
 
-			# Right tail
-			N_exec = 300
-			while N_exec > 50:
+			except: # catch any numerical errors
 
-				tail_data = perm_dist[-N_exec:]
-				params = stats.genextreme.fit(tail_data)
-				_, ks_pval = stats.kstest(tail_data, 'genextreme', args=params)
-
-				if ks_pval > 0.05: # roughly a genpareto distribution
-					val = stats.genextreme.sf(np.abs(stat), *params)
-					right_asl = (N_exec/perm_dist.shape[0]) * val
-					return right_asl + left_asl
-				else: # Failed to fit genpareto
-					N_exec -= 30					
-
-			return (extreme_count+1) / (null.shape[0]+1)
-
-		except: # catch any numerical errors
-
-			# Failed to fit genpareto, return the upper bound
-			return (extreme_count+1) / (null.shape[0]+1)
+				# Failed to fit genpareto, return the upper bound
+				return (extreme_count+1) / (null.shape[0]+1)
 		
 		
 def _ht_1d(
@@ -156,18 +158,18 @@ def _ht_1d(
 	boot_var = np.zeros((treatment.shape[0], num_boot+1))*np.nan
 	
 	# Get strata-specific pooled information
-	if resampling == 'permutation':
+# 	if resampling == 'permutation':
 		
-		uniq_strata, strata_indicator = np.unique(np.delete(design_matrix, treatment_idx, axis=1), axis=0, return_inverse=True)
-		resampling_info = {}
+# 		uniq_strata, strata_indicator = np.unique(np.delete(design_matrix, treatment_idx, axis=1), axis=0, return_inverse=True)
+# 		resampling_info = {}
 		
-		for k in range(uniq_strata.shape[0]):
+# 		for k in range(uniq_strata.shape[0]):
 			
-			strata_idx = np.where(strata_indicator==0)[0]
-			data_list = [cells[i] for i in strata_idx]
-			sf_list = [approx_sf[i] for i in strata_idx]
+# 			strata_idx = np.where(strata_indicator==0)[0]
+# 			data_list = [cells[i] for i in strata_idx]
+# 			sf_list = [approx_sf[i] for i in strata_idx]
 		
-			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list, format='csc'), np.concatenate(sf_list))
+# 			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list, format='csc'), np.concatenate(sf_list))
 
 	for group_idx in range(len(true_mean)):
 
@@ -188,7 +190,7 @@ def _ht_1d(
 			num_boot=num_boot,
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
-			precomputed= (None if resampling == 'bootstrap' else resampling_info[strata_indicator[group_idx]]))
+			precomputed=None)
 		
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
@@ -236,7 +238,19 @@ def _cross_coef(A, B, sample_weight):
     return A_mA.T.dot(np.diag(sample_weight)).dot(B_mB)/sample_weight.sum() / ssA[:, None]
 
 
-def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, **kwargs):
+def _cross_coef_resampled(A, B, sample_weight):
+	
+    B_mB = B - np.average(B, axis=0, weights=sample_weight)
+    A_mA = A - (A*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
+
+    # Sum of squares across rows
+    ssA = (A_mA**2*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
+
+    # temp = np.einsum( 'ij,ijk->kj',  (boot_expr_resampled * weights_resampled), snps_resampled)
+    return np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / ssA.T
+
+
+def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep=False,**kwargs):
 	"""
 		Performs hypothesis testing for a single gene for many bootstrap iterations.
 		
@@ -244,30 +258,46 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, **kwargs):
 	"""
 	
 	num_boot = boot_mean.shape[1]
+	num_rep = boot_mean.shape[0]
 	
 	boot_mean = boot_mean[:, ~np.any(~np.isfinite(boot_mean), axis=0)]
 	boot_var = boot_var[:, ~np.any(~np.isfinite(boot_var), axis=0)]
-	
+
 	if boot_var.shape[1] == 0:
-		
+
 		print('skipped')
-		
+
 		return [np.zeros(treatment.shape[1])*np.nan]*5
-	
+
 	boot_mean_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate,boot_mean, Nc_list).predict(covariate)
 	boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
 	treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 	
-	mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
-	var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
+	if resample_rep:
+		
+		replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
+		b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))
+		
+		boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
+		boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
+		treatment_resampled = treatment_tilde[replicate_assignment]
+		weights_resampled = Nc_list[replicate_assignment]
+		
+		mean_coef = _cross_coef_resampled(treatment_resampled, boot_mean_resampled, weights_resampled)
+		var_coef = _cross_coef_resampled(treatment_resampled, boot_var_resampled, weights_resampled)	
+		
+	else:
+		
+		mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
+		var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
 
-	
+
 	mean_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, mean_coef)
 	var_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, var_coef)
-	
+
 	mean_se = np.nanstd(mean_coef[:, 1:], axis=1)
 	var_se = np.nanstd(var_coef[:, 1:], axis=1)
-	
+
 	return mean_coef[:, 0], mean_se, mean_asl, var_coef[:, 0], var_se, var_asl
 		
 # 	mean_coef = 0
