@@ -181,12 +181,16 @@ def compute_1d_moments(
 	
 	# Create gene masks for each group
 	adata.uns['memento']['gene_filter'] = {}
+	adata.uns['memento']['gene_rv_filter'] = {}
 	for group in adata.uns['memento']['groups']:
 		
-		obs_mean = adata.uns['memento']['group_cells'][group].mean(axis=0).A1 
+		obs_mean = adata.uns['memento']['group_cells'][group].mean(axis=0).A1
 		expr_filter = (obs_mean > adata.uns['memento']['filter_mean_thresh'])
 		expr_filter &= (adata.uns['memento']['1d_moments'][group][1] > 0)
 		adata.uns['memento']['gene_filter'][group] = expr_filter
+		
+		obs_max = adata.uns['memento']['group_cells'][group].max(axis=0).todense().A1
+		adata.uns['memento']['gene_rv_filter'][group] = (obs_max >= 2)
 		
 	# Create overall gene mask
 	gene_masks = np.vstack([adata.uns['memento']['gene_filter'][group] for group in adata.uns['memento']['groups']])
@@ -207,22 +211,23 @@ def compute_1d_moments(
 				adata.uns['memento']['1d_moments'][group][0][overall_gene_mask],
 				adata.uns['memento']['1d_moments'][group][1][overall_gene_mask]
 				] for group in (adata.uns['memento']['groups'])}
+		adata.uns['memento']['gene_rv_filter'] = {group:adata.uns['memento']['gene_rv_filter'][group][overall_gene_mask] for group in adata.uns['memento']['groups']}
 		adata._inplace_subset_var(overall_gene_mask)
 	
 	# Estimate the residual variance transformer for all cells
 	mean_list = []
 	var_list = []
 	for group in adata.uns['memento']['groups']:
-		mean_list.append(adata.uns['memento']['1d_moments'][group][0])
-		var_list.append(adata.uns['memento']['1d_moments'][group][1])
+		mean_list.append(adata.uns['memento']['1d_moments'][group][0][adata.uns['memento']['gene_rv_filter'][group]])
+		var_list.append(adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]])
 	mean_concat = np.concatenate(mean_list)
 	var_concat = np.concatenate(var_list)
 	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
 	
 	# Estimate the residual variance transformer for each group
 	for group in adata.uns['memento']['groups']:
-		m = adata.uns['memento']['1d_moments'][group][0]
-		v = adata.uns['memento']['1d_moments'][group][1]
+		m = adata.uns['memento']['1d_moments'][group][0][adata.uns['memento']['gene_rv_filter'][group]]
+		v = adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]]
 		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(mean_concat, var_concat)
 	
 	# Compute the residual variance

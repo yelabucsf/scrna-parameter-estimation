@@ -156,20 +156,6 @@ def _ht_1d(
 	# the resampled arrays
 	boot_mean = np.zeros((treatment.shape[0], num_boot+1))*np.nan
 	boot_var = np.zeros((treatment.shape[0], num_boot+1))*np.nan
-	
-	# Get strata-specific pooled information
-# 	if resampling == 'permutation':
-		
-# 		uniq_strata, strata_indicator = np.unique(np.delete(design_matrix, treatment_idx, axis=1), axis=0, return_inverse=True)
-# 		resampling_info = {}
-		
-# 		for k in range(uniq_strata.shape[0]):
-			
-# 			strata_idx = np.where(strata_indicator==0)[0]
-# 			data_list = [cells[i] for i in strata_idx]
-# 			sf_list = [approx_sf[i] for i in strata_idx]
-		
-# 			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list, format='csc'), np.concatenate(sf_list))
 
 	for group_idx in range(len(true_mean)):
 
@@ -183,7 +169,9 @@ def _ht_1d(
 		# Fill in the true value
 		boot_mean[group_idx, 0], boot_var[group_idx, 0] = np.log(true_mean[group_idx]), np.log(true_res_var[group_idx])
 		
-		# Generate the bootstrap values
+# 		unique_counts = bootstrap._unique_expr(cells[group_idx], approx_sf[group_idx])
+		
+		# Generate the bootstrap values (us)
 		mean, var = bootstrap._bootstrap_1d(
 			data=cells[group_idx],
 			size_factor=approx_sf[group_idx],
@@ -257,11 +245,12 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 		Here, :X_center:, :X_center_Sq:, :boot_var:, :boot_mean: should have the same number of rows
 	"""
 	
-	num_boot = boot_mean.shape[1]
-	num_rep = boot_mean.shape[0]
+	valid_boostrap_iters = ~np.any(~np.isfinite(boot_mean), axis=0) & ~np.any(~np.isfinite(boot_var), axis=0)
+	boot_mean = boot_mean[:, valid_boostrap_iters]
+	boot_var = boot_var[:, valid_boostrap_iters]
 	
-	boot_mean = boot_mean[:, ~np.any(~np.isfinite(boot_mean), axis=0)]
-	boot_var = boot_var[:, ~np.any(~np.isfinite(boot_var), axis=0)]
+	num_boot = boot_mean.shape[1]-1
+	num_rep = boot_mean.shape[0]
 
 	if boot_var.shape[1] == 0:
 
@@ -276,7 +265,9 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 	if resample_rep:
 		
 		replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
-		b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))
+		replicate_assignment[:, 0] = np.arange(num_rep)
+		b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))+1
+		b_iter_assignment[:, 0] = 0
 		
 		boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
 		boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]

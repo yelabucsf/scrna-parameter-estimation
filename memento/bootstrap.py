@@ -9,11 +9,32 @@ import numpy as np
 import pandas as pd
 import string
 import time
+import statsmodels.api as sm
+import warnings
 
 
 def numpy_fill(arr):
 	nan_idxs = np.isnan(arr)
 	arr[nan_idxs] = np.nanmedian(arr)
+	
+
+def _convert_params(mu, alpha):
+    """ 
+    Convert mean/dispersion parameterization of a negative binomial to the ones scipy supports
+
+    Parameters
+    ----------
+    mu : float 
+       Mean of NB distribution.
+    alpha : float
+       Overdispersion parameter used for variance calculation.
+
+    See https://en.wikipedia.org/wiki/Negative_binomial_distribution#Alternative_formulations
+    """
+    var = mu + alpha * mu ** 2
+    p = mu / var
+    r = mu ** 2 / (var - mu)
+    return r, p
 	
 
 def _unique_expr(expr, size_factor):
@@ -26,8 +47,19 @@ def _unique_expr(expr, size_factor):
 		FIXIT: we don't need to sorting functionality of np.unique. try to do this faster.
 	"""
 	
-	code = expr.dot(np.random.random(expr.shape[1]))
+	# Remove outliers
+# 	with warnings.catch_warnings():
+# 		warnings.simplefilter("ignore")
+# 		params = sm.NegativeBinomial(expr.todense().A1, np.ones((expr.shape[0], 1))).fit(disp=0).params
+# 	mu_hat = np.exp(params[0])
+# 	alpha_hat = params[1]
+# 	probs = stats.nbinom.pmf(expr.todense().A1, *_convert_params(mu_hat, alpha_hat))
+# 	inliers = probs > 0.1/expr.shape[0]
 	
+# 	expr = expr#[inliers]
+# 	size_factor = size_factor#[inliers]
+	
+	code = expr.dot(np.random.random(expr.shape[1]))
 	approx_sf = size_factor
 		
 	code += np.random.random()*approx_sf
@@ -64,11 +96,11 @@ def _bootstrap_1d(
 	# Skip this gene if it has no expression
 	if expr.shape[0] <= 1:
 		return np.full(num_boot, np.nan), np.full(num_boot, np.nan)
+	
+	n_obs = data.shape[0]
 		
 	gen = np.random.Generator(np.random.PCG64(5))
 	gene_rvs = gen.multinomial(data.shape[0], counts/counts.sum(), size=num_boot).T
-
-	n_obs = data.shape[0]
 		
 	# Estimate mean and variance
 	mean, var = _estimator_1d(
