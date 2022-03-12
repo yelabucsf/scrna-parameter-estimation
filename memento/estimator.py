@@ -104,14 +104,6 @@ def _residual_variance(mean, var, mv_fit):
 	f = np.poly1d(mv_fit)
 	with np.errstate(invalid='ignore'):
 		rv[cond] = np.exp(np.log(var[cond]) - f(np.log(mean[cond])))
-	
-# 	spline = mv_fit
-# 	rv[cond] = np.exp(np.log(var[cond]) - spline(np.log(mean[cond])))
-
-# 	slope, inter = mv_fit
-# 	pred = slope * np.log(mean[cond]) + inter
-# 	rv[cond] = np.exp(np.log(var[cond])-pred)
-	
 	return rv
 
 

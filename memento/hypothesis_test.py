@@ -234,7 +234,6 @@ def _cross_coef_resampled(A, B, sample_weight):
     # Sum of squares across rows
     ssA = (A_mA**2*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
 
-    # temp = np.einsum( 'ij,ijk->kj',  (boot_expr_resampled * weights_resampled), snps_resampled)
     return np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / ssA.T
 
 
