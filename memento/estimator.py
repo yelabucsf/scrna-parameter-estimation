@@ -178,7 +178,7 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	mm_mean = mm_M1
 	mm_var = (mm_M2 - mm_M1**2)
 
-	return [mm_mean+1, mm_var]
+	return [mm_mean+1, mm_var+1]
 
 
 def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
