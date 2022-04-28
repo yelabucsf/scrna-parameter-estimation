@@ -58,14 +58,14 @@ def run_onek_sampled(pop, inds):
 		pseudobulk = pseudobulk.loc[pos.columns, memento_result['gene'].drop_duplicates().tolist()]
 		pseudobulk.T.to_csv(data_path + 'mateqtl_input/sampled_pseudobulk/{}_{}_{}.csv'.format(pop, ct, inds), sep='\t')
 
-def run_full(pop, window='gracie', num_blocks=3):
+def run_full(pop, window='100kb', num_blocks=5):
 	
 	data_path  = '/data_volume/memento/lupus/'
 	
 	pos = pd.read_csv(data_path + 'mateqtl_input/{}_genos.tsv'.format(pop), sep='\t', index_col=0)
 	cov = pd.read_csv(data_path + 'mateqtl_input/{}_mateqtl_cov.txt'.format(pop), sep='\t', index_col=0).T
 	
-	gene_snp_pairs = pd.read_csv(data_path + 'gracie_eqtls/gene_snp_pairs.csv').query('rsid in @pos.index')
+	gene_snp_pairs = pd.read_csv(data_path + 'mateqtl_input/{}/gene_snp_pairs_hg19_100kb.csv'.format(pop)).query('rsid in @pos.index')
 	gene_snp_pairs = gene_snp_pairs.sample(frac=1)
 	
 	cts = ['T4', 'cM', 'ncM', 'T8', 'B', 'NK']
@@ -81,7 +81,7 @@ def run_full(pop, window='gracie', num_blocks=3):
 		adata = adata[adata.obs.ind_cov.isin(pos.columns)].copy()
 
 		adata.obs['capture_rate'] = 0.1
-		memento.setup_memento(adata, q_column='capture_rate', trim_percent=0.1, filter_mean_thresh=0.0001)
+		memento.setup_memento(adata, q_column='capture_rate', trim_percent=0.1, filter_mean_thresh=0.01)
 # 		adata.obs['memento_size_factor'] = 1.0
 		memento.create_groups(adata, label_columns=['ind_cov'])
 
@@ -101,7 +101,7 @@ def run_full(pop, window='gracie', num_blocks=3):
 				covariate=cov_df,
 				treatment=donor_df,
 				treatment_for_gene=gene_to_snp,
-				num_boot=5000, 
+				num_boot=3000, 
 				verbose=1,
 				num_cpus=80,
 				resampling='bootstrap',
