@@ -168,9 +168,7 @@ def _ht_1d(
 
 		# Fill in the true value
 		boot_mean[group_idx, 0], boot_var[group_idx, 0] = np.log(true_mean[group_idx]), np.log(true_res_var[group_idx])
-		
-# 		unique_counts = bootstrap._unique_expr(cells[group_idx], approx_sf[group_idx])
-		
+				
 		# Generate the bootstrap values (us)
 		mean, var = bootstrap._bootstrap_1d(
 			data=cells[group_idx],
@@ -256,30 +254,37 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 		print('skipped')
 
 		return [np.zeros(treatment.shape[1])*np.nan]*5
-
-	boot_mean_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate,boot_mean, Nc_list).predict(covariate)
-	boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
-	treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 	
-	if resample_rep:
+	if treatment == 'one_sample':
 		
-		replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
-		replicate_assignment[:, 0] = np.arange(num_rep)
-		b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))+1
-		b_iter_assignment[:, 0] = 0
-		
-		boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
-		boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
-		treatment_resampled = treatment_tilde[replicate_assignment]
-		weights_resampled = Nc_list[replicate_assignment]
-		
-		mean_coef = _cross_coef_resampled(treatment_resampled, boot_mean_resampled, weights_resampled)
-		var_coef = _cross_coef_resampled(treatment_resampled, boot_var_resampled, weights_resampled)	
+		mean_coef = np.average(boot_mean, axis=0, weights=Nc_list)
+		var_coef = np.average(boot_var, axis=0, weights=Nc_list)
 		
 	else:
-		
-		mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
-		var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
+
+		boot_mean_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate,boot_mean, Nc_list).predict(covariate)
+		boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
+		treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
+
+		if resample_rep:
+
+			replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
+			replicate_assignment[:, 0] = np.arange(num_rep)
+			b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))+1
+			b_iter_assignment[:, 0] = 0
+
+			boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
+			boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
+			treatment_resampled = treatment_tilde[replicate_assignment]
+			weights_resampled = Nc_list[replicate_assignment]
+
+			mean_coef = _cross_coef_resampled(treatment_resampled, boot_mean_resampled, weights_resampled)
+			var_coef = _cross_coef_resampled(treatment_resampled, boot_var_resampled, weights_resampled)	
+
+		else:
+
+			mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
+			var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
 
 
 	mean_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, mean_coef)
@@ -289,44 +294,6 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 	var_se = np.nanstd(var_coef[:, 1:], axis=1)
 
 	return mean_coef[:, 0], mean_se, mean_asl, var_coef[:, 0], var_se, var_asl
-		
-# 	mean_coef = 0
-# 	var_coef = 0
-
-# 	strata = np.delete(design_matrix, treatment_idx, axis=1)
-# 	uniq_strata = np.unique(strata, axis=0)
-
-# 	for k in range(uniq_strata.shape[0]): # Go through each stratum and get effect size
-
-# 		strata_idx = np.all(strata == uniq_strata[k], axis=1)
-# 		boot_mean_k = boot_mean[strata_idx]
-# 		boot_var_k = boot_var[strata_idx]
-# 		Nc_list_k = Nc_list[strata_idx]
-
-
-# 		if treatment_idx != [0]:
-# 			design_matrix_k = design_matrix[strata_idx][:, treatment_idx + [0]]
-# 		else:
-# 			design_matrix_k = design_matrix[strata_idx][:, treatment_idx]
-
-# 		mean_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-# 			.fit(design_matrix_k, boot_mean_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-# 		var_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-# 			.fit(design_matrix_k, boot_var_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-
-# 	mean_coef /= Nc_list.sum()
-# 	var_coef /= Nc_list.sum()
-	
-# 	if boot_var.shape[1] < num_boot*0.5:
-# 		return  mean_coef[0], np.nan, np.nan, var_coef[0], np.nan, np.nan
-
-# 	mean_asl = _compute_asl(mean_coef, **kwargs)
-# 	var_asl = _compute_asl(var_coef, **kwargs)
-	
-# 	mean_se = np.nanstd(mean_coef[1:])
-# 	var_se = np.nanstd(var_coef[1:])
-		
-# 	return mean_coef[0], mean_se, mean_asl, var_coef[0], var_se, var_asl
 
 
 def _ht_2d(
@@ -348,20 +315,6 @@ def _ht_2d(
 	# the bootstrap arrays
 	boot_corr = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
 	
-	# Get strata-specific pooled information
-	if resampling == 'permutation':
-		
-		uniq_strata, strata_indicator = np.unique(np.delete(design_matrix, treatment_idx, axis=1), axis=0, return_inverse=True)
-		resampling_info = {}
-		
-		for k in range(uniq_strata.shape[0]):
-			
-			strata_idx = np.where(strata_indicator==0)[0]
-			data_list = [cells[i] for i in strata_idx]
-			sf_list = [approx_sf[i] for i in strata_idx]
-		
-			resampling_info[k] = bootstrap._unique_expr(sparse.vstack(data_list, format='csc'), np.concatenate(sf_list))
-
 	for group_idx in range(design_matrix.shape[0]):
 
 		# Skip if any of the 2d moments are NaNs
@@ -379,20 +332,19 @@ def _ht_2d(
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
 			_estimator_cov=_estimator_cov,
-			precomputed=(None if resampling == 'bootstrap' else resampling_info[strata_indicator[group_idx]]))
+			precomputed=None)
 				
 		corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 			
 		# This replicate is good
-		boot_corr[group_idx, 1:] = corr#[:num_boot]
-		vals = _fill_corr(boot_corr[group_idx, :])
+		vals = _fill_corr(corr)
 		
 		# Skip if all NaNs
 		if np.all(np.isnan(vals)):
 			continue
 		
 		good_idxs[group_idx] = True
-		boot_corr[group_idx, :] = vals
+		boot_corr[group_idx, 1:] = vals
 
 	# Skip this gene
 	if good_idxs.sum() == 0:
@@ -403,13 +355,12 @@ def _ht_2d(
 			boot_corr=boot_corr[good_idxs, :],
 			Nc_list=Nc_list[good_idxs],
 			treatment_idx=treatment_idx,
-			resampling=resampling,
 			**kwargs)
 	
 	return vals
 
 
-def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, **kwargs):
+def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **kwargs):
 	"""
 		Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
 	"""
@@ -422,33 +373,34 @@ def _regress_2d(design_matrix, boot_corr, Nc_list, treatment_idx, **kwargs):
 	if boot_corr.shape[1] == 0:
 		
 		return np.nan, np.nan, np.nan
+	
+	if treatment == 'one_sample':
 		
-	corr_coef = 0
+		corr_coef = np.average(boot_corr, axis=0, weights=Nc_list)
+		
+	else:
+		
+		boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+		treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
-	strata = np.delete(design_matrix, treatment_idx, axis=1)
-	uniq_strata = np.unique(strata, axis=0)
+		if resample_rep:
 
-	for k in range(uniq_strata.shape[0]): # Go through each stratum and get effect size
+			replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
+			replicate_assignment[:, 0] = np.arange(num_rep)
+			b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))+1
+			b_iter_assignment[:, 0] = 0
 
-		strata_idx = np.all(strata == uniq_strata[k], axis=1)
-		boot_corr_k = boot_corr[strata_idx]
-		Nc_list_k = Nc_list[strata_idx]
+			boot_corr_resampled = boot_corr_tilde[(replicate_assignment, b_iter_assignment)]
+			treatment_resampled = treatment_tilde[replicate_assignment]
+			weights_resampled = Nc_list[replicate_assignment]
 
-		if treatment_idx != [0]:
-			design_matrix_k = design_matrix[strata_idx][:, treatment_idx + [0]]
+			corr_coef = _cross_coef_resampled(treatment_resampled, boot_corr_resampled, weights_resampled)
+			
 		else:
-			design_matrix_k = design_matrix[strata_idx][:, treatment_idx]
-
-		corr_coef += LinearRegression(fit_intercept=False, n_jobs=1)\
-			.fit(design_matrix_k, boot_corr_k, Nc_list_k).coef_[:, 0]*Nc_list_k.sum()
-
-	corr_coef /= Nc_list.sum()
+			
+			corr_coef = _cross_coef(treatment_tilde, boot_mean_tilder, Nc_list)
 	
-	if boot_corr.shape[1] < num_boot*0.7:
-		return corr_coef[0], np.nan, np.nan
-
-	corr_asl = _compute_asl(corr_coef, **kwargs)
+	corr_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, corr_coef)
+	corr_se = np.nanstd(corr_coef[:, 1:], axis=1)
 	
-	corr_se = np.nanstd(corr_coef[1:])
-	
-	return corr_coef[0], corr_se, corr_asl
+	return corr_coef[:, 0], corr_se, corr_asl

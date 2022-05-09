@@ -26,6 +26,8 @@ def _get_estimator_1d(estimator_type):
 		return _poi_1d_absolute
 	elif estimator_type == 'poi_relative':
 		return _poi_1d_relative
+	elif estimator_type == 'eQTL':
+		return (lambda x: _hyper_1d_relative(x))
 	else: # Custom 1D estimator
 		return estimator_type[0]
 
@@ -44,7 +46,7 @@ def _get_estimator_cov(estimator_type):
 		return estimator_type[1]
 	
 
-def _estimate_size_factor(data, estimator_type, mask=None, total=False, shrinkage=0.01):
+def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=False):
 	"""Calculate the size factor
 	
 	Args: 
@@ -160,7 +162,7 @@ def _poisson_cov_relative(data, n_obs, size_factor, idx1, idx2):
 
 def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	"""
-		Estimate the variance using the Poisson noise process.
+		Estimate the variance using the hypergeometric noise process.
 		
 		If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
 	"""
@@ -178,7 +180,26 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
 	mm_mean = mm_M1
 	mm_var = (mm_M2 - mm_M1**2)
 
-	return [mm_mean+1, mm_var+1]
+	return [mm_mean, mm_var]
+
+
+def _mean_only_1p(data, n_obs, q, size_factor=None):
+	"""
+		Estimate the variance using the Poisson noise process.
+		
+		If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
+	"""
+	if type(data) == tuple:
+		size_factor = size_factor if size_factor is not None else (1, 1)
+		mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
+	else:
+		
+		row_weight = (1/size_factor).reshape([1, -1])
+		mm_M1 = sparse.csc_matrix.dot(row_weight, data).ravel()/n_obs
+	
+	mm_mean = mm_M1
+
+	return [mm_mean+1, np.ones(mm_mean.shape)]
 
 
 def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
