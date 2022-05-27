@@ -26,8 +26,8 @@ def _get_estimator_1d(estimator_type):
 		return _poi_1d_absolute
 	elif estimator_type == 'poi_relative':
 		return _poi_1d_relative
-	elif estimator_type == 'eQTL':
-		return (lambda x: _hyper_1d_relative(x))
+	elif estimator_type == 'mean_only':
+		return _mean_only_1p
 	else: # Custom 1D estimator
 		return estimator_type[0]
 
@@ -199,7 +199,7 @@ def _mean_only_1p(data, n_obs, q, size_factor=None):
 	
 	mm_mean = mm_M1
 
-	return [mm_mean+1, np.ones(mm_mean.shape)]
+	return [mm_mean+1, np.ones(mm_mean.shape)*10]
 
 
 def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):

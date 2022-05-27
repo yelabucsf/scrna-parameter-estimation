@@ -59,7 +59,7 @@ def setup_memento(
 		shrinkage=0.0)
 	
 	# Compute residual variance over all cells with naive size factor
-	all_m, all_v = estimator._get_estimator_1d(adata.uns['memento']['estimator_type'])(
+	all_m, all_v = estimator._get_estimator_1d('hyper_relative')(
 		data=adata.X,
 		n_obs=adata.shape[0],
 		q=adata.uns['memento']['all_q'],
@@ -146,14 +146,18 @@ def _bin_size_factor(adata):
 	max_sf = size_factor.max()
 	approx_sf[size_factor == max_sf] = max_sf
 
-	adata.uns['memento']['all_total_size_factor'] = estimator._estimate_size_factor(adata.X, 'relative', total=True)
 	adata.uns['memento']['all_approx_size_factor'] = approx_sf
 	adata.uns['memento']['approx_size_factor'] = \
 		{group:approx_sf[(adata.obs['memento_group'] == group).values] for group in adata.uns['memento']['groups']}
 	adata.uns['memento']['size_factor'] = \
 		{group:size_factor[(adata.obs['memento_group'] == group).values] for group in adata.uns['memento']['groups']}
 	
+
+def get_groups(adata):
 	
+	return [x[3:] for x in adata.uns['memento']['groups']]
+
+
 def compute_1d_moments(
 	adata, 
 	inplace=True, 
@@ -183,20 +187,20 @@ def compute_1d_moments(
 	adata.uns['memento']['gene_filter'] = {}
 	adata.uns['memento']['gene_rv_filter'] = {}
 	for group in adata.uns['memento']['groups']:
-		
+
 		obs_mean = adata.uns['memento']['group_cells'][group].mean(axis=0).A1
 		expr_filter = (obs_mean > adata.uns['memento']['filter_mean_thresh'])
 		expr_filter &= (adata.uns['memento']['1d_moments'][group][1] > 0)
 		adata.uns['memento']['gene_filter'][group] = expr_filter
-		
+
 		obs_max = adata.uns['memento']['group_cells'][group].max(axis=0).todense().A1
 		adata.uns['memento']['gene_rv_filter'][group] = (obs_max >= 2)
-		
+
 	# Create overall gene mask
 	gene_masks = np.vstack([adata.uns['memento']['gene_filter'][group] for group in adata.uns['memento']['groups']])
 	gene_filter_rate = gene_masks.mean(axis=0)
 	overall_gene_mask = (gene_filter_rate > min_perc_group)
-
+		
 	# Do the filtering
 	adata.uns['memento']['overall_gene_filter'] = overall_gene_mask
 	adata.uns['memento']['gene_list'] = adata.var.index[overall_gene_mask].tolist()
@@ -406,8 +410,8 @@ def ht_1d_moments(
 	
 def ht_2d_moments(
 	adata, 
-	formula_like,
-	treatment_col,
+	covariate,
+	treatment,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=3,
@@ -426,28 +430,19 @@ def ht_2d_moments(
 	# Create design DF
 	design_df_list, Nc_list = [], []
 	
-	# Create the design df
+	# Get cell counts
+	Nc_list = []
 	for group in adata.uns['memento']['groups']:
-		
-		design_df_list.append(group.split(adata.uns['memento']['label_delimiter'])[1:])
 		Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
-		
-	# Create the design matrix from the patsy formula
-	design_df = pd.DataFrame(design_df_list, columns=adata.uns['memento']['label_columns'])
-	for col in design_df.columns:
-		design_df[col] = pd.to_numeric(design_df[col], errors='ignore')
-	dmat = dmatrix(formula_like, design_df)
-	design_matrix_cols = dmat.design_info.column_names.copy()
-	design_matrix = np.array(dmat)
-	del dmat
 	Nc_list = np.array(Nc_list)
-	
-	# Find the covariate that actually matters
-	treatment_idx = []
-	for idx, col_name in enumerate(design_matrix_cols):
-		if treatment_col in col_name:
-			treatment_idx.append(idx)
-	assert len(treatment_idx) > 0, 'could not find treatment column'
+		
+	# Get the number of tests
+	if treatment_for_gene is None:
+		num_tests = treatment.shape[1]*G
+	else:
+		num_tests = 0
+		for k,v in treatment_for_gene.items():
+			num_tests += len(v)
 	
 	# Get gene idxs
 	gene_idx_1 = adata.uns['memento']['2d_moments']['gene_idx_1']
@@ -485,10 +480,10 @@ def ht_2d_moments(
 				true_corr=[adata.uns['memento']['2d_moments'][group]['corr'][conv_idx] for group in adata.uns['memento']['groups']],
 				cells=[adata.uns['memento']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['memento']['groups']],
 				approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-				design_matrix=design_matrix,
+				covariate=covariate.values,
+				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[adata.var.index[idx]]].values,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
-				treatment_idx=treatment_idx,
 				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
 				_estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
 				_estimator_cov=estimator._get_estimator_cov(adata.uns['memento']['estimator_type']),

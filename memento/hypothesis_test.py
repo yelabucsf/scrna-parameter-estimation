@@ -255,7 +255,7 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 
 		return [np.zeros(treatment.shape[1])*np.nan]*5
 	
-	if treatment == 'one_sample':
+	if type(treatment) == str:
 		
 		mean_coef = np.average(boot_mean, axis=0, weights=Nc_list)
 		var_coef = np.average(boot_var, axis=0, weights=Nc_list)
@@ -300,22 +300,22 @@ def _ht_2d(
 	true_corr, # list of correlations for each group
 	cells, # list of Nx2 sparse matrices
 	approx_sf,
-	design_matrix,
+	covariate,
+	treatment,
 	Nc_list,
 	num_boot,
-	treatment_idx,
 	q,
 	_estimator_1d,
 	_estimator_cov,
 	**kwargs):
 	
 		
-	good_idxs = np.zeros(design_matrix.shape[0], dtype=bool)
+	good_idxs = np.zeros(treatment.shape[0], dtype=bool)
 	
 	# the bootstrap arrays
-	boot_corr = np.zeros((design_matrix.shape[0], num_boot+1))*np.nan
+	boot_corr = np.zeros((treatment.shape[0], num_boot+1))*np.nan
 	
-	for group_idx in range(design_matrix.shape[0]):
+	for group_idx in range(treatment.shape[0]):
 
 		# Skip if any of the 2d moments are NaNs
 		if np.isnan(true_corr[group_idx]) or (np.abs(true_corr[group_idx]) == 1):
@@ -351,10 +351,10 @@ def _ht_2d(
 		return np.nan, np.nan, np.nan
 	
 	vals = _regress_2d(
-			design_matrix=design_matrix[good_idxs, :],
+			covariate=covariate[good_idxs, :],
+			treatment=treatment[good_idxs, :],
 			boot_corr=boot_corr[good_idxs, :],
 			Nc_list=Nc_list[good_idxs],
-			treatment_idx=treatment_idx,
 			**kwargs)
 	
 	return vals
@@ -363,24 +363,27 @@ def _ht_2d(
 def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **kwargs):
 	"""
 		Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
-	"""
-		
-	num_boot = boot_corr.shape[1]
-	nonneg = False
+	"""	
 	
-	boot_corr = boot_corr[:, ~np.any(~np.isfinite(boot_corr), axis=0)]
+	valid_boostrap_iters = ~np.any(~np.isfinite(boot_corr), axis=0)
+	boot_corr = boot_corr[:, valid_boostrap_iters]
 	
+	num_boot = boot_corr.shape[1]-1
+	num_rep = boot_corr.shape[0]
+
 	if boot_corr.shape[1] == 0:
-		
-		return np.nan, np.nan, np.nan
+
+		print('skipped')
+
+		return [np.zeros(treatment.shape[1])*np.nan]*5
 	
 	if treatment == 'one_sample':
 		
 		corr_coef = np.average(boot_corr, axis=0, weights=Nc_list)
 		
 	else:
-		
-		boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+
+		boot_corr_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
 		treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
 		if resample_rep:
@@ -395,12 +398,14 @@ def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **
 			weights_resampled = Nc_list[replicate_assignment]
 
 			corr_coef = _cross_coef_resampled(treatment_resampled, boot_corr_resampled, weights_resampled)
-			
+
 		else:
-			
-			corr_coef = _cross_coef(treatment_tilde, boot_mean_tilder, Nc_list)
-	
+
+			corr_coef = _cross_coef(treatment_tilde, boot_corr_tilde, Nc_list)
+
+
 	corr_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, corr_coef)
+
 	corr_se = np.nanstd(corr_coef[:, 1:], axis=1)
-	
+
 	return corr_coef[:, 0], corr_se, corr_asl
