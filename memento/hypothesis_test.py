@@ -59,6 +59,10 @@ def _compute_asl(perm_diff, resampling, approx=False):
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
 	
+	if np.all(perm_diff == perm_diff.mean()):
+		
+		return np.nan
+	
 	if resampling == 'bootstrap':
 	
 		null = perm_diff[1:] - perm_diff[0]
@@ -377,13 +381,13 @@ def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **
 
 		return [np.zeros(treatment.shape[1])*np.nan]*5
 	
-	if treatment == 'one_sample':
+	if type(treatment) == str:
 		
 		corr_coef = np.average(boot_corr, axis=0, weights=Nc_list)
 		
 	else:
 
-		boot_corr_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+		boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
 		treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
 		if resample_rep:

@@ -155,7 +155,17 @@ def _bin_size_factor(adata):
 
 def get_groups(adata):
 	
-	return [x[3:] for x in adata.uns['memento']['groups']]
+	df_list = []
+	
+	for group in adata.uns['memento']['groups']:
+		
+		elements = group.split(adata.uns['memento']['label_delimiter'])[1:]
+		df_list.append(elements)
+	df = pd.DataFrame(df_list, index=adata.uns['memento']['groups'], columns=adata.uns['memento']['label_columns'])
+	
+	for col in df.columns:
+		df[col] = pd.to_numeric(df[col], errors='ignore')
+	return df
 
 
 def compute_1d_moments(
@@ -412,6 +422,7 @@ def ht_2d_moments(
 	adata, 
 	covariate,
 	treatment,
+	treatment_for_gene=None,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=3,
@@ -481,7 +492,7 @@ def ht_2d_moments(
 				cells=[adata.uns['memento']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['memento']['groups']],
 				approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
 				covariate=covariate.values,
-				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[adata.var.index[idx]]].values,
+				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[frozenset({adata.var.index[idx_1],adata.var.index[idx_1]})]].values,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
 				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
@@ -499,13 +510,15 @@ def ht_2d_moments(
 		# Fill in the value for every element that should have the same value
 		for conv_idx in idx_mapping[frozenset({idx_1, idx_2})]:
 			corr_coef[conv_idx], corr_se[conv_idx], corr_asl[conv_idx] = results[output_idx]
-	
+			
 	# Save the hypothesis test result
 	adata.uns['memento']['2d_ht'] = {}
-	attrs = ['design_df', 'design_matrix', 'design_matrix_cols', 'treatment_col', 'corr_coef', 'corr_se','corr_asl']
+	if treatment_for_gene is not None:
+		adata.uns['memento']['2d_ht']['treatment_for_gene'] = treatment_for_gene
+	attrs = ['treatment', 'covariate', 'corr_coef', 'corr_se','corr_asl']
 	for attr in attrs:
 		adata.uns['memento']['2d_ht'][attr] = eval(attr)
-		
+
 	if not inplace:
 		return adata
 

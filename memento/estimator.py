@@ -87,7 +87,7 @@ def _fit_mv_regressor(mean, var):
 	cond = (mean > 0) & (var > 0)
 	m, v = np.log(mean[cond]), np.log(var[cond])
 	
-	poly = np.polyfit(m, v, 3)
+	poly = np.polyfit(m, v, 2)
 	return poly
 	f = np.poly1d(z)
 	
@@ -100,7 +100,7 @@ def _fit_mv_regressor(mean, var):
 
 def _residual_variance(mean, var, mv_fit):
 	
-	cond = (mean > 0)
+	cond = (mean > 0) & (var > 0)
 	rv = np.zeros(mean.shape)*np.nan
 	
 	f = np.poly1d(mv_fit)
