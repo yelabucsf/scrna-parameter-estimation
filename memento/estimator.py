@@ -64,6 +64,8 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
 	if total:
 		Nrc = np.array(X.sum(axis=1)).reshape(-1)
 		Nr = Nrc.mean()
+		n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
+
 		size_factor = Nrc
 		
 	if mask is not None:
@@ -248,7 +250,7 @@ def _hyper_corr_symmetric(data, n_obs, size_factor, q, var, idx1=None, idx2=None
 	overlap_idx1 = [new_i for new_i,i in enumerate(idx1) if i in overlap]
 	overlap_idx2 = [new_i for new_i,i in enumerate(idx2) if i in overlap]
 
-	row_weight = np.sqrt(1/(size_factor**2 + size_factor*(1-q))).reshape([1, -1])
+	row_weight = np.sqrt(1/(size_factor**2)).reshape([1, -1])
 	X, Y = data[:, idx1].T.multiply(row_weight).T.tocsr(), data[:, idx2].T.multiply(row_weight).T.tocsr()
 	prod = (X.T*Y).toarray()/X.shape[0]
 	prod[overlap_idx1, overlap_idx2] = prod[overlap_idx1, overlap_idx2] - (1-q)*data[:, overlap_idx1].T.multiply(row_weight**2).T.tocsr().sum(axis=0).A1/n_obs

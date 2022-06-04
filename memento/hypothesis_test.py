@@ -259,10 +259,10 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 
 		return [np.zeros(treatment.shape[1])*np.nan]*5
 	
-	if type(treatment) == str:
+	if (treatment == 1).mean()==1:
 		
-		mean_coef = np.average(boot_mean, axis=0, weights=Nc_list)
-		var_coef = np.average(boot_var, axis=0, weights=Nc_list)
+		mean_coef = np.average(boot_mean, axis=0, weights=Nc_list).reshape(1, -1)
+		var_coef = np.average(boot_var, axis=0, weights=Nc_list).reshape(1, -1)
 		
 	else:
 
@@ -381,9 +381,9 @@ def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **
 
 		return [np.zeros(treatment.shape[1])*np.nan]*5
 	
-	if type(treatment) == str:
+	if (treatment == 1).mean()==1:
 		
-		corr_coef = np.average(boot_corr, axis=0, weights=Nc_list)
+		corr_coef = np.average(boot_corr, axis=0, weights=Nc_list).reshape(1,-1)
 		
 	else:
 

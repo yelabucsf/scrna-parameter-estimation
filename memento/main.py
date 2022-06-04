@@ -274,24 +274,21 @@ def compute_1d_moments(
 		return adata
 	
 
-def get_corr_matrix(adata):
+def get_corr_matrix(adata, group):
 	"""
-		Computes the all by all correlation matrix.
+		Computes the all by all correlation matrix for a specific group defined in memento.
 	"""
 	
-	corr_matrices = {}
-	
-	for group in adata.uns['memento']['groups']:
-		corr_matrices[group] = estimator._hyper_corr_symmetric(
-			data=adata.uns['memento']['group_cells'][group], 
-			n_obs=adata.uns['memento']['group_cells'][group].shape[0], 
-			size_factor=adata.uns['memento']['size_factor'][group], 
-			q=adata.uns['memento']['group_q'][group], 
-			var=adata.uns['memento']['1d_moments'][group][1], 
-			idx1=None, 
-			idx2=None)
+	corr_matrix = estimator._hyper_corr_symmetric(
+		data=adata.uns['memento']['group_cells'][group], 
+		n_obs=adata.uns['memento']['group_cells'][group].shape[0], 
+		size_factor=adata.uns['memento']['size_factor'][group], 
+		q=adata.uns['memento']['group_q'][group], 
+		var=adata.uns['memento']['1d_moments'][group][1], 
+		idx1=None, 
+		idx2=None)
 		
-	return corr_matrices
+	return corr_matrix
 	
 def compute_2d_moments(adata, gene_pairs, inplace=True):
 	"""
