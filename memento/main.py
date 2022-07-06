@@ -173,7 +173,8 @@ def compute_1d_moments(
 	inplace=True, 
 	min_perc_group=0.7, 
 	filter_genes=True,
-	gene_list=None):
+	gene_list=None,
+	separate_rv=False):
 	"""
 		Compute the mean, variance, and residual variance in each group
 	"""
@@ -226,6 +227,7 @@ def compute_1d_moments(
 				adata.uns['memento']['1d_moments'][group][1][overall_gene_mask]
 				] for group in (adata.uns['memento']['groups'])}
 		adata.uns['memento']['gene_rv_filter'] = {group:adata.uns['memento']['gene_rv_filter'][group][overall_gene_mask] for group in adata.uns['memento']['groups']}
+		adata.uns['memento']['all_1d_moments'] = [adata.uns['memento']['all_1d_moments'][0][overall_gene_mask], adata.uns['memento']['all_1d_moments'][1][overall_gene_mask]]
 		adata._inplace_subset_var(overall_gene_mask)
 	
 	# Estimate the residual variance transformer for all cells
@@ -236,13 +238,14 @@ def compute_1d_moments(
 		var_list.append(adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]])
 	mean_concat = np.concatenate(mean_list)
 	var_concat = np.concatenate(var_list)
+
 	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
 	
 	# Estimate the residual variance transformer for each group
 	for group in adata.uns['memento']['groups']:
 		m = adata.uns['memento']['1d_moments'][group][0][adata.uns['memento']['gene_rv_filter'][group]]
 		v = adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]]
-		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(mean_concat, var_concat)
+		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(m, v)
 	
 	# Compute the residual variance
 	for group in adata.uns['memento']['groups']:
@@ -371,6 +374,12 @@ def ht_1d_moments(
 		num_tests = 0
 		for k,v in treatment_for_gene.items():
 			num_tests += len(v)
+			
+	# If number of bootstrap iteration is 0, the bootstrapping
+# 	if num_boot == 0:
+		
+# 		means = np.vstack([adata.uns['memento']['1d_moments'][group][0] for group in adata.uns['memento']['groups']])
+# 		res_vars = np.vstack([adata.uns['memento']['1d_moments'][group][2] for group in adata.uns['memento']['groups']])
 	
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(num_tests)*np.nan for i in range(6)]
@@ -432,8 +441,8 @@ def ht_2d_moments(
 	if not inplace:
 		adata = adata.copy()
 	
-	# Get number of genes
-	G = adata.shape[1]
+	# Get number of pairs of genes
+	G = adata.uns['memento']['2d_moments']['gene_idx_1'].shape[0]
 	
 	# Create design DF
 	design_df_list, Nc_list = [], []
@@ -449,20 +458,19 @@ def ht_2d_moments(
 		num_tests = treatment.shape[1]*G
 	else:
 		num_tests = 0
-		for k,v in treatment_for_gene.items():
-			num_tests += len(v)
+		for pair in adata.uns['memento']['2d_moments']['gene_pairs']:
+			num_tests += len(treatment_for_gene[pair])
 	
 	# Get gene idxs
 	gene_idx_1 = adata.uns['memento']['2d_moments']['gene_idx_1']
 	gene_idx_2 = adata.uns['memento']['2d_moments']['gene_idx_2']
 		
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
-	corr_coef, corr_se, corr_asl = [np.zeros(gene_idx_1.shape[0])*np.nan for i in range(3)]
+	corr_coef, corr_se, corr_asl = [np.zeros(num_tests)*np.nan for i in range(3)]
 		
 	# Create partial functions
 	ht_funcs = []
 	idx_list = []
-	idx_mapping = {}
 	
 	for conv_idx in range(gene_idx_1.shape[0]):
 		
@@ -473,13 +481,8 @@ def ht_2d_moments(
 		if idx_1 == idx_2: # Skip if its the same gene
 			continue
 			
-		if idx_set in idx_mapping: # Skip if this pair of gene was already calculated
-			idx_mapping[idx_set].append(conv_idx)
-			continue
-			
 		# Save the indices
 		idx_list.append((idx_1, idx_2))
-		idx_mapping[idx_set] = [conv_idx]
 		
 		# Create the partial function
 		ht_funcs.append(
@@ -489,7 +492,7 @@ def ht_2d_moments(
 				cells=[adata.uns['memento']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['memento']['groups']],
 				approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
 				covariate=covariate.values,
-				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[frozenset({adata.var.index[idx_1],adata.var.index[idx_1]})]].values,
+				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[(adata.var.index[idx_1],adata.var.index[idx_2]) ] ].values,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
 				q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
@@ -500,14 +503,16 @@ def ht_2d_moments(
 	# Parallel processing
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
 	
-	for output_idx in range(len(results)):
+	ci = 0
+	for output_idx, output in enumerate(results):
 		
 		idx_1, idx_2 = idx_list[output_idx]
 		
 		# Fill in the value for every element that should have the same value
-		for conv_idx in idx_mapping[frozenset({idx_1, idx_2})]:
-			corr_coef[conv_idx], corr_se[conv_idx], corr_asl[conv_idx] = results[output_idx]
-			
+		nt = treatment.shape[1] if treatment_for_gene is None else len(treatment_for_gene[(adata.var.index[idx_1],adata.var.index[idx_2])])
+		corr_coef[ci:(ci+nt)], corr_se[ci:(ci+nt)], corr_asl[ci:(ci+nt)] = output
+		ci += nt
+																   
 	# Save the hypothesis test result
 	adata.uns['memento']['2d_ht'] = {}
 	if treatment_for_gene is not None:
@@ -659,10 +664,15 @@ def get_2d_ht_result(adata):
 	"""
 		Getter function for 2d HT result
 	"""
-	
-	result_df = pd.DataFrame(
-		adata.uns['memento']['2d_moments']['gene_pairs'],
-		columns=['gene_1', 'gene_2'])
+	if 'treatment_for_gene' in adata.uns['memento']['2d_ht']:
+		result_df = pd.concat([
+			pd.DataFrame(itertools.product([pair], adata.uns['memento']['2d_ht']['treatment_for_gene'][pair]), 
+				columns=['pair', 'tx']) for pair in adata.uns['memento']['2d_moments']['gene_pairs']])
+		result_df = pd.concat([  pd.DataFrame(result_df['pair'].tolist(), columns=['gene_1', 'gene_2']), result_df[['tx']].reset_index(drop=True)  ], axis=1)
+	else:
+		result_df = pd.DataFrame(itertools.product(adata.uns['memento']['2d_moments']['gene_pairs'], adata.uns['memento']['2d_ht']['treatment'].columns), 
+				columns=['pair', 'tx'])
+		result_df = pd.concat([pd.DataFrame(result_df['pair'].tolist(), columns=['gene_1', 'gene_2']), result_df[['tx']].reset_index(drop=True)], axis=1)
 	result_df['corr_coef'] = adata.uns['memento']['2d_ht']['corr_coef']
 	result_df['corr_se'] = adata.uns['memento']['2d_ht']['corr_se']
 	result_df['corr_pval'] = adata.uns['memento']['2d_ht']['corr_asl']

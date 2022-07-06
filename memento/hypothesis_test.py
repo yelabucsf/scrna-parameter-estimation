@@ -34,7 +34,7 @@ def _fill(val):
 
 def _fill_corr(val):
 	
-	condition = np.isnan(val)
+	condition = np.less_equal(val, -1.0, where=~np.isnan(val)) | np.greater_equal(val, 1.0, where=~np.isnan(val)) | np.isnan(val)
 	val[condition] = np.random.choice(val[~condition], condition.sum())
 	
 	return val
@@ -172,7 +172,7 @@ def _ht_1d(
 
 		# Fill in the true value
 		boot_mean[group_idx, 0], boot_var[group_idx, 0] = np.log(true_mean[group_idx]), np.log(true_res_var[group_idx])
-				
+						
 		# Generate the bootstrap values (us)
 		mean, var = bootstrap._bootstrap_1d(
 			data=cells[group_idx],
@@ -181,18 +181,18 @@ def _ht_1d(
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
 			precomputed=None)
-		
+
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
-		
+
 		# Minimize invalid values
 		filled_mean = _fill(mean)#_push_nan(mean)#[:num_boot]
 		filled_var = _fill(res_var)#_push_nan(res_var)#[:num_boot]
-		
+
 		# Make sure its a valid replicate
 		if filled_mean is None or filled_var is None:
 			continue
-		
+
 		boot_mean[group_idx, 1:] = np.log(filled_mean)
 		boot_var[group_idx, 1:] = np.log(filled_var)
 		
@@ -290,7 +290,6 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 			mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
 			var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
 
-
 	mean_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, mean_coef)
 	var_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, var_coef)
 
@@ -327,7 +326,7 @@ def _ht_2d(
 
 		# Fill in the true value
 		boot_corr[group_idx, 0] = true_corr[group_idx]
-		
+				
 		# Generate the bootstrap values
 		cov, var_1, var_2 = bootstrap._bootstrap_2d(
 			data=cells[group_idx],
@@ -337,18 +336,20 @@ def _ht_2d(
 			_estimator_1d=_estimator_1d,
 			_estimator_cov=_estimator_cov,
 			precomputed=None)
-				
+
 		corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
-			
+
 		# This replicate is good
 		vals = _fill_corr(corr)
-		
+
 		# Skip if all NaNs
 		if np.all(np.isnan(vals)):
 			continue
+
+		boot_corr[group_idx, 1:] = vals
 		
 		good_idxs[group_idx] = True
-		boot_corr[group_idx, 1:] = vals
+
 
 	# Skip this gene
 	if good_idxs.sum() == 0:
@@ -406,7 +407,6 @@ def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **
 		else:
 
 			corr_coef = _cross_coef(treatment_tilde, boot_corr_tilde, Nc_list)
-
 
 	corr_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, corr_coef)
 
