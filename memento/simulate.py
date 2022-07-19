@@ -88,7 +88,7 @@ def simulate_transcriptomes(
 	return np.round(transcriptome).astype(int)
 
 
-def capture_sampling(transcriptomes, q, q_sq=None, process='hyper'):
+def capture_sampling(transcriptomes, q, q_sq=None, process='hyper', gen=None):
 	
 	if q_sq is None:
 		qs = np.ones(transcriptomes.shape[0])*q
@@ -98,7 +98,8 @@ def capture_sampling(transcriptomes, q, q_sq=None, process='hyper'):
 		alpha = m*(m*(1-m)/v - 1)
 		beta = (1-m)*(m*(1-m)/v - 1)
 		qs = stats.beta.rvs(alpha, beta, size=transcriptomes.shape[0])
-	gen = np.random.Generator(np.random.PCG64(42343))
+	if gen is None:
+		gen = np.random.Generator(np.random.PCG64(42343))
 	
 	if process == 'hyper':
 		

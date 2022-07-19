@@ -78,8 +78,7 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
 		n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
 		size_factor
 
-	return size_factor
-
+	return size_factor*n_umi
 
 def _fit_mv_regressor(mean, var):
 	"""
