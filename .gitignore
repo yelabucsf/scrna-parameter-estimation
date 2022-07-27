@@ -118,3 +118,4 @@ sftp-config.json
 *.csv
 *.png
 *.out
+*.sif
