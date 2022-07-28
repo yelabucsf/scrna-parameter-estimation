@@ -73,14 +73,15 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
 	if mask is not None:
 	
 		Nrc = X.multiply(mask).sum(axis=1).A1
-		Nrc += np.quantile(Nrc, shrinkage) # Shrinkage
+		if shrinkage > 0:
+			Nrc += np.quantile(Nrc, shrinkage) # Shrinkage
 		Nr = Nrc.mean()
 		size_factor = Nrc/Nr
 		
 		n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
 		size_factor
 
-		return size_factor*n_umi
+		return size_factor
 
 def _fit_mv_regressor(mean, var):
 	"""

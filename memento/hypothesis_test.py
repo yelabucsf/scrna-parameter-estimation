@@ -160,6 +160,8 @@ def _ht_1d(
 	# the resampled arrays
 	boot_mean = np.zeros((treatment.shape[0], num_boot+1))*np.nan
 	boot_var = np.zeros((treatment.shape[0], num_boot+1))*np.nan
+	
+	boot_means = []
 
 	for group_idx in range(len(true_mean)):
 
@@ -181,6 +183,8 @@ def _ht_1d(
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
 			precomputed=None)
+		
+		boot_means.append(mean)
 
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])

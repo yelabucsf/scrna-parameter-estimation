@@ -31,6 +31,7 @@ def setup_memento(
 	trim_percent=0.1,
 	shrinkage=0.5,
 	num_bins=30,
+	filter_mean_for_cell_size=False,
 	estimator_type='hyper_relative'):
 	"""
 		Compute size factors and the overall mean-variance regressor.
@@ -70,7 +71,7 @@ def setup_memento(
 	# Select genes for normalization
 	rv_ulim = np.quantile(all_res_var[np.isfinite(all_res_var)], trim_percent)
 	all_res_var[~np.isfinite(all_res_var)] = np.inf
-	rv_mask = all_res_var < rv_ulim
+	rv_mask = (all_res_var <= rv_ulim)
 	mask = rv_mask
 	adata.uns['memento']['least_variable_genes'] = adata.var.index[mask].tolist()
 	
