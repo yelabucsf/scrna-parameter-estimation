@@ -281,7 +281,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
 		return cov/np.sqrt(var_1*var_2)
 		
 	corr = np.full(cov.shape, 5.0)
-	
+		
 	var_1[var_1 <= 0] = np.nan
 	var_2[var_2 <= 0] = np.nan
 	var_prod = np.sqrt(var_1*var_2)

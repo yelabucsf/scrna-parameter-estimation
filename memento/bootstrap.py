@@ -153,6 +153,6 @@ def _bootstrap_2d(
 		n_obs=n_obs,
 		q=q,
 		size_factor=(inv_sf, inv_sf_sq))
-			
+				
 	return cov, var_1, var_2
 		

@@ -35,6 +35,10 @@ def _fill(val):
 def _fill_corr(val):
 	
 	condition = np.less_equal(val, -1.0, where=~np.isnan(val)) | np.greater_equal(val, 1.0, where=~np.isnan(val)) | np.isnan(val)
+		
+	if val[~condition].shape[0] == 0:
+		return None
+	
 	val[condition] = np.random.choice(val[~condition], condition.sum())
 	
 	return val
@@ -347,7 +351,7 @@ def _ht_2d(
 		vals = _fill_corr(corr)
 
 		# Skip if all NaNs
-		if np.all(np.isnan(vals)):
+		if vals is None:
 			continue
 
 		boot_corr[group_idx, 1:] = vals

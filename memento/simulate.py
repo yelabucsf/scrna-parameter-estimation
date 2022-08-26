@@ -65,18 +65,14 @@ def simulate_transcriptomes(
 	
 	if type(norm_cov) == str:
 		return stats.nbinom.rvs(*convert_params_nb(means, thetas), size=(n_cells, n_genes))
-	
-	# Generate the parameters for the copula
-	norm_mean = np.random.random(n_genes)
-	norm_cov = make_spd_matrix(n_genes) if norm_cov is None else norm_cov
-	norm_var = np.diag(norm_cov)
-# 	corr = norm_cov / np.outer(np.sqrt(norm_var), np.sqrt(norm_var))
-	
+		
 	# Generate the copula
-	gaussian_variables = stats.multivariate_normal.rvs(mean=norm_mean, cov=norm_cov, size=n_cells)
-	del norm_cov
-	uniform_variables = stats.norm.cdf(gaussian_variables, loc=norm_mean, scale=np.sqrt(norm_var))
-	nbinom_variables = stats.nbinom.ppf(uniform_variables, *convert_params_nb(means, thetas))
+	n_corr_genes = norm_cov.shape[0]
+	gaussian_variables = stats.multivariate_normal.rvs(mean=np.zeros(n_corr_genes), cov=norm_cov, size=n_cells)
+	uniform_variables = stats.norm.cdf(gaussian_variables)
+	corr_nbinom_variables = stats.nbinom.ppf(uniform_variables, *convert_params_nb(means[:n_corr_genes], thetas[:n_corr_genes]))
+	indep_nbinom_variables = stats.nbinom.rvs(*convert_params_nb(means[n_corr_genes:], thetas[n_corr_genes:]), size=(n_cells, n_genes-n_corr_genes))
+	nbinom_variables = np.hstack([corr_nbinom_variables, indep_nbinom_variables])
 	
 	# Generate the cell sizes
 	cell_sizes = np.random.choice(Nc, size=n_cells).reshape(-1, 1)
