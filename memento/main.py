@@ -228,7 +228,6 @@ def compute_1d_moments(
 				adata.uns['memento']['1d_moments'][group][1][overall_gene_mask]
 				] for group in (adata.uns['memento']['groups'])}
 		adata.uns['memento']['gene_rv_filter'] = {group:adata.uns['memento']['gene_rv_filter'][group][overall_gene_mask] for group in adata.uns['memento']['groups']}
-		adata.uns['memento']['all_1d_moments'] = [adata.uns['memento']['all_1d_moments'][0][overall_gene_mask], adata.uns['memento']['all_1d_moments'][1][overall_gene_mask]]
 		adata._inplace_subset_var(overall_gene_mask)
 	
 	# Estimate the residual variance transformer for all cells
