@@ -343,9 +343,10 @@ def compute_2d_moments(adata, gene_pairs, inplace=True):
 
 def ht_1d_moments(
 	adata, 
-	covariate,
 	treatment,
+	covariate=None,
 	treatment_for_gene=None,
+	covaraite_for_gene=None,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=1,
@@ -374,7 +375,9 @@ def ht_1d_moments(
 		num_tests = 0
 		for k,v in treatment_for_gene.items():
 			num_tests += len(v)
-			
+	if covariate is None:
+		
+		covariate = pd.DataFrame(np.ones(treatment.shape[0], 1))
 	# If number of bootstrap iteration is 0, the bootstrapping
 # 	if num_boot == 0:
 		
@@ -394,7 +397,7 @@ def ht_1d_moments(
 				true_res_var=[adata.uns['memento']['1d_moments'][group][2][idx] for group in adata.uns['memento']['groups']],
 				cells=[adata.uns['memento']['group_cells'][group][:, idx] for group in adata.uns['memento']['groups']],
 				approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-				covariate=covariate.values,
+				covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[adata.var.index[idx]]].values,
 				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[adata.var.index[idx]]].values,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
