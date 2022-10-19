@@ -10,6 +10,7 @@ import pandas as pd
 from patsy import dmatrix
 import scipy.stats as stats
 from scipy.sparse.csr import csr_matrix
+from scipy.sparse import diags
 import sys
 from joblib import Parallel, delayed
 from functools import partial
@@ -21,6 +22,18 @@ import memento.estimator as estimator
 import memento.hypothesis_test as hypothesis_test
 import memento.util as util
 import memento.simulate as simulate
+
+
+def reverse_engineer_counts(adata, n_counts_column='n_counts'):
+	
+	n_counts = adata.obs[n_counts_column].values
+	
+	counts = diags(n_counts)*adata.raw.X.expm1()
+	
+	return sc.AnnData(
+		X=counts,
+		obs=adata.obs,
+		var=adata.raw.var)
 
 
 def setup_memento(
@@ -346,7 +359,7 @@ def ht_1d_moments(
 	treatment,
 	covariate=None,
 	treatment_for_gene=None,
-	covaraite_for_gene=None,
+	covariate_for_gene=None,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=1,
@@ -377,7 +390,7 @@ def ht_1d_moments(
 			num_tests += len(v)
 	if covariate is None:
 		
-		covariate = pd.DataFrame(np.ones(treatment.shape[0], 1))
+		covariate = pd.DataFrame(np.ones((treatment.shape[0], 1)))
 	# If number of bootstrap iteration is 0, the bootstrapping
 # 	if num_boot == 0:
 		
