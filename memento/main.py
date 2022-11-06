@@ -381,27 +381,23 @@ def ht_1d_moments(
 		Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
 	Nc_list = np.array(Nc_list)
 	
-	# Get the number of tests
+	# Get the number of tests and number of genes for those tests
 	if treatment_for_gene is None:
 		num_tests = treatment.shape[1]*G
+		test_genes = adata.var.index.tolist()
 	else:
 		num_tests = 0
 		for k,v in treatment_for_gene.items():
 			num_tests += len(v)
+		test_genes = list(treatment_for_gene.keys())
 	if covariate is None:
-		
 		covariate = pd.DataFrame(np.ones((treatment.shape[0], 1)))
-	# If number of bootstrap iteration is 0, the bootstrapping
-# 	if num_boot == 0:
-		
-# 		means = np.vstack([adata.uns['memento']['1d_moments'][group][0] for group in adata.uns['memento']['groups']])
-# 		res_vars = np.vstack([adata.uns['memento']['1d_moments'][group][2] for group in adata.uns['memento']['groups']])
 	
 	# Initialize empty arrays to hold fitted coefficients and achieved significance level
 	mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(num_tests)*np.nan for i in range(6)]
 	
 	ht_funcs = []
-	for idx in range(G):
+	for idx in range(len(test_genes)):
 		
 		ht_funcs.append(
 			partial(
@@ -410,8 +406,8 @@ def ht_1d_moments(
 				true_res_var=[adata.uns['memento']['1d_moments'][group][2][idx] for group in adata.uns['memento']['groups']],
 				cells=[adata.uns['memento']['group_cells'][group][:, idx] for group in adata.uns['memento']['groups']],
 				approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-				covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[adata.var.index[idx]]].values,
-				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[adata.var.index[idx]]].values,
+				covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_genes[idx]]].values,
+				treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_genes[idx]]].values,
 				Nc_list=Nc_list,
 				num_boot=num_boot,
 				mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
@@ -424,7 +420,7 @@ def ht_1d_moments(
 	ci = 0
 	for output_idx, output in enumerate(results): #ouptut_idx refers to the index of the gene, output refers to the output from the parallel
 # 		return output #debug
-		nt = treatment.shape[1] if treatment_for_gene is None else len(treatment_for_gene[adata.var.index[output_idx]])
+		nt = treatment.shape[1] if treatment_for_gene is None else len(treatment_for_gene[test_genes[output_idx]])
 		mean_coef[ci:(ci+nt)], mean_se[ci:(ci+nt)], mean_asl[ci:(ci+nt)], var_coef[ci:(ci+nt)], var_se[ci:(ci+nt)], var_asl[ci:(ci+nt)] = output
 		ci += nt
 
@@ -432,7 +428,7 @@ def ht_1d_moments(
 	adata.uns['memento']['1d_ht'] = {}
 	if treatment_for_gene is not None:
 		adata.uns['memento']['1d_ht']['treatment_for_gene'] = treatment_for_gene
-	attrs = ['treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
+	attrs = ['test_genes','treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
 	for attr in attrs:
 		adata.uns['memento']['1d_ht'][attr] = eval(attr)
 
@@ -663,9 +659,9 @@ def get_1d_ht_result(adata):
 		result_df = pd.concat([
 			pd.DataFrame(
 				itertools.product([g], adata.uns['memento']['1d_ht']['treatment_for_gene'][g]), 
-				columns=['gene', 'tx']) for g in adata.var.index])
+				columns=['gene', 'tx']) for g in adata.uns['memento']['1d_ht']['test_genes']])
 	else:
-		result_df = pd.DataFrame(itertools.product(adata.var.index, adata.uns['memento']['1d_ht']['treatment'].columns), columns=['gene', 'tx'])
+		result_df = pd.DataFrame(itertools.product(adata.uns['memento']['1d_ht']['test_genes'], adata.uns['memento']['1d_ht']['treatment'].columns), columns=['gene', 'tx'])
 	result_df['de_coef'] = adata.uns['memento']['1d_ht']['mean_coef']
 	result_df['de_se'] = adata.uns['memento']['1d_ht']['mean_se']
 	result_df['de_pval'] = adata.uns['memento']['1d_ht']['mean_asl']
