@@ -390,6 +390,8 @@ def ht_1d_moments(
 		for k,v in treatment_for_gene.items():
 			num_tests += len(v)
 		test_genes = list(treatment_for_gene.keys())
+		
+	# Create dummy covariate DataFrame if one is not given
 	if covariate is None:
 		covariate = pd.DataFrame(np.ones((treatment.shape[0], 1)))
 	
@@ -438,9 +440,10 @@ def ht_1d_moments(
 	
 def ht_2d_moments(
 	adata, 
-	covariate,
 	treatment,
+	covariate=None,
 	treatment_for_gene=None,
+	covariate_for_gene=None,
 	inplace=True, 
 	num_boot=10000, 
 	verbose=3,
@@ -472,6 +475,10 @@ def ht_2d_moments(
 		num_tests = 0
 		for pair in adata.uns['memento']['2d_moments']['gene_pairs']:
 			num_tests += len(treatment_for_gene[pair])
+			
+	# Create dummy covariate DataFrame if one is not given
+	if covariate is None:
+		covariate = pd.DataFrame(np.ones((treatment.shape[0], 1)))
 	
 	# Get gene idxs
 	gene_idx_1 = adata.uns['memento']['2d_moments']['gene_idx_1']
