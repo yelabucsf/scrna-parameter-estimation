@@ -58,21 +58,23 @@ def _push(val, cond='neg'):
 	return val
 
 
-def _compute_asl(perm_diff, resampling, approx=False):
+def _compute_asl(perm_diff, approx=False):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
+	
+# 	#### TEST IN CASE OF SKEWED P-VALUE DISTRIBUTIONS ####
+	
+# 	extreme_count = min( (perm_diff < 0).sum(), (perm_diff > 0).sum())
+# 	return (extreme_count+1) / (perm_diff.shape[0]+1)*2
+	
+# 	#### END TEST #####
 	
 	if np.all(perm_diff == perm_diff.mean()):
 		
 		return np.nan
 	
-	if resampling == 'bootstrap':
-	
-		null = perm_diff[1:] - perm_diff[0]
-	
-	else:
-		null = perm_diff[1:]
+	null = perm_diff[1:] - perm_diff[0]
 	
 	null = null[np.isfinite(null)]
 	
@@ -237,14 +239,21 @@ def _cross_coef(A, B, sample_weight):
 
 
 def _cross_coef_resampled(A, B, sample_weight):
-	
-    B_mB = B - np.average(B, axis=0, weights=sample_weight)
-    A_mA = A - (A*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
 
-    # Sum of squares across rows
-    ssA = (A_mA**2*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
+	B_mB = B - np.average(B, axis=0, weights=sample_weight)
+	A_mA = A - (A*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
 
-    return np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / ssA.T
+	# Sum of squares across rows
+	ssA = (A_mA**2*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
+# 	ssB = ((B_mB**2*sample_weight).sum(axis=0)/sample_weight.sum(axis=0))[:, np.newaxis]
+
+	beta = np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / ssA.T
+# 	r = beta * np.sqrt(ssA).T/np.sqrt(ssB).T
+# 	num_cells_per_boot = sample_weight.sum(axis=0)
+# 	t = np.sqrt(num_cells_per_boot-2)*r/np.sqrt(1-r**2)
+# 	se = beta/t
+# 	num_cell_correction = np.sqrt(num_cells_per_boot/num_cells_per_boot[0])
+	return beta
 
 
 def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep=False,**kwargs):
@@ -278,7 +287,7 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 		boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
 		treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
-		if resample_rep:
+		if resample_rep:			
 
 			replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
 			replicate_assignment[:, 0] = np.arange(num_rep)
