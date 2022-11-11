@@ -252,13 +252,14 @@ def compute_1d_moments(
 	mean_concat = np.concatenate(mean_list)
 	var_concat = np.concatenate(var_list)
 
-	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
+# 	adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
+	adata.uns['memento']['mv_regressor'] = {}
 	
 	# Estimate the residual variance transformer for each group
 	for group in adata.uns['memento']['groups']:
 		m = adata.uns['memento']['1d_moments'][group][0][adata.uns['memento']['gene_rv_filter'][group]]
 		v = adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]]
-		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(m, v)
+		adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(m, v) if adata.uns['memento']['estimator_type'] != 'mean_only' else np.array([0,0,0])
 	
 	# Compute the residual variance
 	for group in adata.uns['memento']['groups']:
@@ -697,16 +698,3 @@ def get_2d_ht_result(adata):
 	result_df['corr_pval'] = adata.uns['memento']['2d_ht']['corr_asl']
 	
 	return result_df
-
-
-def prepare_to_save(adata, keep=False):
-	"""
-		pickle all objects that aren't compatible with scanpy write
-	"""
-	
-	for group in adata.uns['memento']['groups'] + ['all']:
-		
-		if not keep:
-			del adata.uns['memento']['mv_regressor'][group]
-		else:
-			adata.uns['memento']['mv_regressor'][group] = str(pkl.dumps(adata.uns['memento']['mv_regressor'][group]))
