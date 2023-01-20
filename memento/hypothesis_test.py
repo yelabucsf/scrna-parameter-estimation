@@ -572,8 +572,19 @@ def _cross_coef(A, B, sample_weight):
     ssA = np.average(A_mA**2, axis=0, weights=sample_weight)
 
     # Finally get corr coeff
+    # Finally get corr coeff
     weighted_B = sample_weight[:, np.newaxis] * B_mB
-    return A_mA.T.dot(weighted_B) / sample_weight.sum() / ssA[:, None]
+    numerator = A_mA.T.dot(weighted_B) / sample_weight.sum()
+
+    # Guard against division by zero when a column of A has zero variance
+    # (e.g. a constant treatment/covariate column). Checked per-column, since
+    # A may have some constant columns and some non-constant ones; rows of
+    # the result corresponding to a constant column of A are set to 0 rather
+    # than propagating inf/nan. See PR #16 (nkschaefer).
+    safe_ssA = np.where(ssA > 0, ssA, 1.0)
+    result = numerator / safe_ssA[:, None]
+    result[ssA == 0, :] = 0.0
+    return result
 
 
 def _cross_coef_resampled(A, B, sample_weight):
