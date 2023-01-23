@@ -75,7 +75,7 @@ def simulate_transcriptomes(
 	nbinom_variables = np.hstack([corr_nbinom_variables, indep_nbinom_variables])
 	
 	# Generate the cell sizes
-	cell_sizes = np.random.choice(Nc, size=n_cells).reshape(-1, 1)
+	cell_sizes = nbinom_variables.sum(axis=1).reshape(-1,1)#np.random.choice(Nc, size=n_cells).reshape(-1, 1)
 
 	# Construct the transcriptomes
 	relative_transcriptome = nbinom_variables/nbinom_variables.sum(axis=1).reshape(-1,1)
