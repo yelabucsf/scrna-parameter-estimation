@@ -206,6 +206,10 @@ def _ht_1d(
 		boot_mean[group_idx, 1:] = np.log(filled_mean)
 		boot_var[group_idx, 1:] = np.log(filled_var)
 		
+# 	Debugging/development
+# 	return boot_mean
+# 	return (np.log(true_mean), np.var(boot_mean, axis=1, ddof=1))
+		
 		# This replicate is good
 		good_idxs[group_idx] = True
 		
