@@ -208,10 +208,10 @@ def _ht_1d(
 		
 # 	Debugging/development
 # 	return boot_mean
-# 	return (np.log(true_mean), np.var(boot_mean, axis=1, ddof=1))
+	return (np.log(true_mean), np.var(boot_mean, axis=1, ddof=1))
 		
-		# This replicate is good
-		good_idxs[group_idx] = True
+# 		# This replicate is good
+# 		good_idxs[group_idx] = True
 		
 	# Skip this gene
 	if good_idxs.sum() == 0:
