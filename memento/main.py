@@ -419,7 +419,6 @@ def ht_1d_moments(
 				**kwargs))
 
 	results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
-	return results
 	
 	ci = 0
 	for output_idx, output in enumerate(results): #ouptut_idx refers to the index of the gene, output refers to the output from the parallel
