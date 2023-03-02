@@ -208,7 +208,7 @@ def _ht_1d(
 		boot_var[group_idx, 1:] = np.log(filled_var)
 		
 # 		# This replicate is good
-# 		good_idxs[group_idx] = True
+		good_idxs[group_idx] = True
 		
 	# Skip this gene
 	if good_idxs.sum() == 0:
