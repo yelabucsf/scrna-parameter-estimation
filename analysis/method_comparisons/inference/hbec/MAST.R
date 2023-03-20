@@ -8,7 +8,7 @@ suppressPackageStartupMessages({
     library(MAST)
 })
 
-options(mc.cores = 3)
+options(mc.cores = 2)
 
 
 data_path <-'/data_volume/memento/method_comparison/hbec/'
@@ -59,7 +59,7 @@ data_path <-'/data_volume/memento/method_comparison/hbec/'
 # 	}
 								   
 	
-for (tp in c('3', '6', '9', '24', '48')) {
+for (tp in c('9', '24', '48')) {
 
 	for (condition in c('alpha', 'beta')) {
 		print(paste('working on',tp, condition))
