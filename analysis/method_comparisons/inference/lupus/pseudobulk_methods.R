@@ -5,7 +5,7 @@ library(DESeq2)
 
 data_path <- '/data_volume/memento/method_comparison/lupus/'
 
-for (numcells in c(100, 150, 200)) {
+for (numcells in c(10000)) {
 	
 	for (trial in seq(0,49)) {
 		print(paste('working on', numcells, trial))

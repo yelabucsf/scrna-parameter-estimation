@@ -40,7 +40,7 @@ def generate_datasets():
 
 	# For now, we'll stick to comparing CD14 vs CD4 cells
 	numinds=4
-	for numcells in [50, 100, 150, 200]:
+	for numcells in [10000, 50, 100, 150, 200]:
 
 		for trial in range(50):
 
@@ -58,7 +58,14 @@ def generate_datasets():
 			for ind in sampled_inds:
 				for ct in ['T4', 'cM']:
 					ind_ct_adata = sampled_adata[(sampled_adata.obs['ind']==ind) & (sampled_adata.obs['cg_cov']==ct)].copy()
-					sc.pp.subsample(ind_ct_adata, n_obs=numcells)
+					sc.pp.subsample(ind_ct_adata, n_obs=min(numcells, ind_ct_adata.shape[0]))
+					
+					if ind_ct_adata.shape[0] < numcells: #Upsample, data augmentation
+						factor = int(numcells/ind_ct_adata.shape[0])
+						ind_ct_adata = sc.AnnData.concatenate(*[ind_ct_adata for i in range(factor)])
+					else:
+						sc.pp.subsample(ind_ct_adata, n_obs=numcells)
+						
 					adata_list.append(ind_ct_adata.copy())
 					pseudobulks.append( ind_ct_adata.X.sum(axis=0).A1)
 					names.append(('CD14' if ct == 'cM' else 'CD4') + '_' + ind )
@@ -79,11 +86,12 @@ def generate_datasets():
 					name = ('CD14' if ct == 'cM' else 'CD4') + '_' + ind
 					names.append(name)
 			bulk.loc[genes, names].to_csv(data_path + 'T4_vs_cM.bulk.{}.{}.csv'.format(numcells,trial))
+		break
 
 
 def separate_datasets():
 	
-	for numcells in [50, 100, 150, 200]:
+	for numcells in [10000, 50, 100, 150, 200]:
 
 		for trial in range(50):
 			
@@ -94,10 +102,11 @@ def separate_datasets():
 			expr_df.to_csv(data_path + 'T4_vs_cM.single_cell.{}.{}.expr.csv'.format(numcells, trial))
 			adata.obs.to_csv(data_path + 'T4_vs_cM.single_cell.{}.{}.obs.csv'.format(numcells, trial))
 			adata.var.to_csv(data_path + 'T4_vs_cM.single_cell.{}.{}.var.csv'.format(numcells, trial))
+		break
 
 			
 if __name__ == '__main__':
 
-	# generate_datasets()
+	generate_datasets()
 	
-	separate_datasets()
+	# separate_datasets()
