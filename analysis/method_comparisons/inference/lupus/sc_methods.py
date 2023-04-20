@@ -39,7 +39,7 @@ def scaled_mean_se2(data):
     
     return m*data.sum(), (v/data.shape[0])*data.sum()**2
 
-for numcells in [150, 200]:
+for numcells in [10000,50, 100, 150, 200]:
 
 	for trial in range(50):
 		
@@ -57,27 +57,9 @@ for numcells in [150, 200]:
 			_, fdr[np.isfinite(x)] = fdrcorrection(x[np.isfinite(x)])
 			return fdr
 
-		ttest_adata = adata.copy()
-		sc.pp.normalize_total(ttest_adata)
-		sc.pp.log1p(ttest_adata)
-
-		data1 = ttest_adata[ttest_adata.obs['cg_cov'] =='T4'].X.todense()
-		data2 = ttest_adata[ttest_adata.obs['cg_cov'] =='cM'].X.todense()
-
-		statistic, pvalue = stats.ttest_ind(data1, data2, axis=0)
-
-		logfc = data1.mean(axis=0) - data2.mean(axis=0)
-
-		ttest_result = pd.DataFrame(
-			zip(logfc.A1, pvalue, safe_fdr(pvalue)), 
-			index=ttest_adata.var.index,
-			columns=columns)
-		ttest_result.to_csv(data_path + 'T4_vs_cM.sc.ttest.{}.{}.csv'.format(numcells, trial))
-
-
 		# GLM approach
 		glm_adata = adata.copy()
-		dispersions = pd.read_csv(data_path + 'T4_vs_cM.dispersions.{}.{}.csv'.format(numcells, trial), index_col=0)
+		dispersions = pd.read_csv(data_path + 'T4_vs_cM.dispersions.{}.{}.csv'.format(200, trial), index_col=0)
 		gene_list = dispersions['gene'].tolist()
 		dispersions = dispersions['dispersion'].tolist()
 
@@ -98,18 +80,16 @@ for numcells in [150, 200]:
 				meta.append((ind, int(ct=='T4')))
 		scaled_means = pd.DataFrame(np.vstack(scaled_means), columns=glm_adata.var.index)
 		weights = pd.DataFrame(np.vstack(weights), columns=glm_adata.var.index)
-		totals = np.array(totals)
+		totals = scaled_means.sum(axis=1).values
 		meta = pd.DataFrame(meta, columns=['ind', 'ct'])
 
 		# Filter and re-order by gene_list
 		scaled_means = scaled_means[gene_list]
 		weights = weights[gene_list]
 
-		# weights = weights / weights.mean(axis=0)
-
+		weights = weights / weights.values.mean()
 		design = dmatrix('ct+ind', meta)
 
-		totals = scaled_means.sum(axis=1).values
 
 		weighted_mean_glm_results = []
 		for idx in range(len(gene_list)):
@@ -118,12 +98,12 @@ for numcells in [150, 200]:
 				design , 
 				exposure=totals,
 				var_weights=weights.iloc[:, idx],
-				family=sm.families.NegativeBinomial(alpha=dispersions[idx]))
+				family=sm.families.NegativeBinomial(alpha=np.mean(dispersions)))
 			res_model = sm.GLM(
 				scaled_means.iloc[:, [idx]], design[:, :-1] , 
 				exposure=totals,
 				var_weights=weights.iloc[:, idx],
-				family=sm.families.NegativeBinomial(alpha=dispersions[idx]))
+				family=sm.families.NegativeBinomial(alpha=np.mean(dispersions)))
 			fit = model.fit()
 			res_fit = res_model.fit()
 			pv = stats.chi2.sf(-2*(res_fit.llf - fit.llf), df=res_fit.df_resid-fit.df_resid)
@@ -133,21 +113,4 @@ for numcells in [150, 200]:
 
 		weighted_mean_glm_results.to_csv(data_path + 'T4_vs_cM.sc.weighted_mean_glm.{}.{}.csv'.format(numcells, trial))
 		
-		weighted_mean_wls_results = []
-		for idx in range(len(gene_list)):
-			model = sm.WLS(
-				np.log(scaled_means.iloc[:, [idx]]/totals.reshape(-1,1)), 
-				design , 
-				weights=weights.iloc[:, idx]*totals)
-			res_model = sm.WLS(
-				np.log(scaled_means.iloc[:, [idx]]/totals.reshape(-1,1)),
-				design[:, :-1] , 
-				weights=weights.iloc[:, idx]*totals)
-			fit = model.fit()
-			res_fit = res_model.fit()
-			pv = stats.chi2.sf(-2*(res_fit.llf - fit.llf), df=res_fit.df_resid-fit.df_resid)
-			weighted_mean_wls_results.append((fit.params[-1], pv))
-		weighted_mean_wls_results = pd.DataFrame(weighted_mean_wls_results, columns=['logFC', 'PValue'], index=gene_list)
-		_, weighted_mean_wls_results['FDR'] = fdrcorrection(weighted_mean_wls_results['PValue'])
-
-		weighted_mean_wls_results.to_csv(data_path + 'T4_vs_cM.sc.weighted_mean_wls.csv')
+	break

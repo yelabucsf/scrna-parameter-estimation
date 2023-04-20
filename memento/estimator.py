@@ -79,7 +79,7 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
 		size_factor = Nrc/Nr
 		
 		n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
-		size_factor
+		size_factor = size_factor*n_umi
 
 		return size_factor
 
