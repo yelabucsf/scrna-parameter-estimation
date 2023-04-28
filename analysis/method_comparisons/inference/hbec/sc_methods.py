@@ -10,9 +10,7 @@ from patsy import dmatrix, dmatrices
 import statsmodels.api as sm
 
 import sys
-sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/dist/memento-0.1.0-py3.8.egg')
-sys.path.append('/home/ssm-user/Github/misc-seq/miscseq/')
-import encode
+sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/dist/memento-0.1.0-py3.10.egg')
 import memento
 
 data_path = '/data_volume/memento/method_comparison/hbec/'
@@ -133,7 +131,7 @@ def run_sc_methods():
 				# Filter and re-order by gene_list
 				scaled_means = scaled_means[gene_list]
 				weights = weights[gene_list]
-				weights = weights / weights.values.mean(axis=0)
+				weights = weights / weights.values.mean()
 
 				design = dmatrix('stim+ind', meta)
 
@@ -162,7 +160,7 @@ def run_sc_methods():
 
 def run_combined_sc_methods():
 
-	for tp in ['48']:
+	for tp in ['3', '6', '9', '24',]:
 
 		for stim in ['alpha', 'beta']:
 
@@ -240,7 +238,7 @@ def run_combined_sc_methods():
 			# Filter and re-order by gene_list
 			scaled_means = scaled_means[gene_list]
 			weights = weights[gene_list]
-			weights = weights / weights.values.mean(axis=0)
+			weights = weights / weights.values.mean()
 
 			design = dmatrix('stim+ind+ct', meta)
 
