@@ -41,6 +41,7 @@ edger_get_qlft <- function (y, design) {
 
 
 for (fname in files) {
+    
 	
     print(paste('working on', fname))
 
@@ -50,15 +51,7 @@ for (fname in files) {
     bulk = bulk_obj$assay
     bulk_metadata = bulk_obj$meta
     
-    pseudobulk = read.table(paste(data_path, 'sc_rnaseq/pseudobulks/', fname,'.csv', sep=''), sep=',', header=1, row.names=1)
-    # memento_pseudobulk = read.table(paste(data_path, 'sc_rnaseq/pseudobulks/memento_', fname,'.csv', sep=''), sep=',', header=1, row.names=1)
-    
-    pseudobulk_metadata = data.frame(
-        name=colnames(pseudobulk), 
-        label=sapply(strsplit(colnames(pseudobulk), '_'), head, 1), 
-        replicate=sapply(strsplit(colnames(pseudobulk), '_'), tail, 1))
-    
-    num_inds <- dim(pseudobulk)[2]/2
+    num_inds <- dim(bulk)[2]/2
 
     ### Run edgeR for bulk
 
@@ -74,64 +67,70 @@ for (fname in files) {
     write.csv(bulk_result_qlft, paste(data_path, 'bulk_rnaseq/results/', fname, '_edger_qlft.csv', sep=''))
     dispersion_df = data.frame(gene=rownames(bulk_y), dispersion=bulk_y$tagwise.dispersion)
     write.csv(dispersion_df, paste(data_path, 'bulk_rnaseq/results/', fname, '_bulk_dispersions.csv', sep=''))
-
     
-    ### Run edgeR for pseudobulk
-    
-    rep <- factor(pseudobulk_metadata$replicate)
-    treatment <- factor(pseudobulk_metadata$label)
-    design <- model.matrix(~rep+treatment)
-    pseudobulk_y <- edger_preprocess(pseudobulk, design)
-    pseudobulk_lrt <- edger_get_lrt(pseudobulk_y, design)
-    pseudobulk_qlft <- edger_get_qlft(pseudobulk_y, design)
-    
-    write.csv(pseudobulk_lrt, paste(data_path, 'sc_rnaseq/results/', fname, '_edger_lrt.csv', sep=''))
-    write.csv(pseudobulk_qlft, paste(data_path, 'sc_rnaseq/results/', fname, '_edger_qlft.csv', sep=''))
+    for (trial in seq(1)) {
+        
+		trial <- 'all'
+        print(paste('trial', trial))
+        pseudobulk = read.table(paste(data_path, 'sc_rnaseq/pseudobulks/', fname,'_', trial,'.csv', sep=''), sep=',', header=1, row.names=1)
 
-    dispersion_df = data.frame(gene=rownames(pseudobulk_y), dispersion=pseudobulk_y$tagwise.dispersion)
-    write.csv(dispersion_df, paste(data_path, 'sc_rnaseq/results/', fname, '_dispersions.csv', sep=''))
-    
-    ### Run edgeR for memento pseudobulk
-#     memento_pseudobulk_y <- edger_preprocess(memento_pseudobulk, design)
-#     memento_pseudobulk_lrt <- edger_get_lrt(memento_pseudobulk_y, design)
-#     memento_pseudobulk_qlft <- edger_get_qlft(memento_pseudobulk_y, design)
-    
-#     write.csv(memento_pseudobulk_lrt, paste(data_path, 'sc_rnaseq/results/', fname, '_mem_edger_lrt.csv', sep=''))
-#     write.csv(memento_pseudobulk_qlft, paste(data_path, 'sc_rnaseq/results/', fname, '_mem_edger_qlft.csv', sep=''))
+        pseudobulk_metadata = data.frame(
+            name=colnames(pseudobulk), 
+            label=sapply(strsplit(colnames(pseudobulk), '_'), head, 1), 
+            replicate=sapply(strsplit(colnames(pseudobulk), '_'), tail, 1))
 
-    ### Run DESeq2
+        ### Run edgeR for pseudobulk
 
-    run_deseq2_wald <- function(data, info) {
-        print(info)
-        dds <- DESeqDataSetFromMatrix(countData = round(data),
-                                      colData = info,
-                                      design= ~ replicate + label)
-        levels(dds$replicate) <- sub("\\.", "", levels(dds$replicate))
-        dds <- DESeq(dds)
-        resultsNames(dds) # lists the coefficients
-        print(paste('label',levels(dds$label)[2],'vs',levels(dds$label)[1], sep='_'))
-        res <- results(dds, name=paste('label',levels(dds$label)[2],'vs',levels(dds$label)[1], sep='_'))
+        rep <- factor(pseudobulk_metadata$replicate)
+        treatment <- factor(pseudobulk_metadata$label)
+        design <- model.matrix(~rep+treatment)
+        pseudobulk_y <- edger_preprocess(pseudobulk, design)
+        pseudobulk_lrt <- edger_get_lrt(pseudobulk_y, design)
+        pseudobulk_qlft <- edger_get_qlft(pseudobulk_y, design)
 
-        return(res)
+        write.csv(pseudobulk_lrt, paste(data_path, 'sc_rnaseq/results/', fname, '_', trial,'_edger_lrt.csv', sep=''))
+        write.csv(pseudobulk_qlft, paste(data_path, 'sc_rnaseq/results/', fname, '_', trial,'_edger_qlft.csv', sep=''))
+
+        dispersion_df = data.frame(gene=rownames(pseudobulk_y), dispersion=pseudobulk_y$tagwise.dispersion)
+        write.csv(dispersion_df, paste(data_path, 'sc_rnaseq/results/', fname, '_', trial,'_dispersions.csv', sep=''))
+
+        ### Run DESeq2
+
+        run_deseq2_wald <- function(data, info) {
+            print(info)
+            dds <- DESeqDataSetFromMatrix(countData = round(data),
+                                          colData = info,
+                                          design= ~ replicate + label)
+            levels(dds$replicate) <- sub("\\.", "", levels(dds$replicate))
+            dds <- DESeq(dds)
+            resultsNames(dds) # lists the coefficients
+            print(paste('label',levels(dds$label)[2],'vs',levels(dds$label)[1], sep='_'))
+            res <- results(dds, name=paste('label',levels(dds$label)[2],'vs',levels(dds$label)[1], sep='_'))
+
+            return(res)
+        }
+
+        run_deseq2_lrt <- function(data, info) {
+            dds <- DESeqDataSetFromMatrix(countData = round(data),
+                                          colData = info,
+                                          design= ~ replicate + label)
+            levels(dds$replicate) <- sub("\\.", "", levels(dds$replicate))
+            dds <- DESeq(dds, test="LRT", reduced=~replicate)
+            res <- results(dds, name=paste('label',levels(dds$label)[2],'vs',levels(dds$label)[1], sep='_'))
+
+            return(res)
+        }
+
+        bulk_deseq2_wald <- run_deseq2_wald(bulk, bulk_metadata)
+        bulk_deseq2_lrt <- run_deseq2_lrt(bulk, bulk_metadata)
+        write.csv(bulk_deseq2_lrt, paste(data_path, 'bulk_rnaseq/results/', fname, '_', trial,'_deseq2_lrt.csv', sep=''))
+        write.csv(bulk_deseq2_wald, paste(data_path, 'bulk_rnaseq/results/', fname, '_', trial,'_deseq2_wald.csv', sep=''))
+
+        pseudobulk_deseq2_wald <- run_deseq2_wald(pseudobulk, pseudobulk_metadata)
+		pseudobulk_deseq2_lrt <- run_deseq2_lrt(pseudobulk, pseudobulk_metadata)
+        write.csv(pseudobulk_deseq2_wald, paste(data_path, 'sc_rnaseq/results/', fname,'_',  trial,'_deseq2_wald.csv', sep=''))
+		write.csv(pseudobulk_deseq2_lrt, paste(data_path, 'sc_rnaseq/results/', fname,'_',  trial,'_deseq2_lrt.csv', sep=''))
+        
     }
-
-    run_deseq2_lrt <- function(data, info) {
-        dds <- DESeqDataSetFromMatrix(countData = round(data),
-                                      colData = info,
-                                      design= ~ replicate + label)
-        levels(dds$replicate) <- sub("\\.", "", levels(dds$replicate))
-        dds <- DESeq(dds, test="LRT", reduced=~replicate)
-        res <- results(dds, name=paste('label',levels(dds$label)[2],'vs',levels(dds$label)[1], sep='_'))
-
-        return(res)
-    }
-
-    bulk_deseq2_wald <- run_deseq2_wald(bulk, bulk_metadata)
-    bulk_deseq2_lrt <- run_deseq2_lrt(bulk, bulk_metadata)
-    write.csv(bulk_deseq2_lrt, paste(data_path, 'bulk_rnaseq/results/', fname, '_deseq2_lrt.csv', sep=''))
-    write.csv(bulk_deseq2_wald, paste(data_path, 'bulk_rnaseq/results/', fname, '_deseq2_wald.csv', sep=''))
-
-    pseudobulk_deseq2_wald <- run_deseq2_wald(pseudobulk, pseudobulk_metadata)
-    write.csv(pseudobulk_deseq2_wald, paste(data_path, 'sc_rnaseq/results/', fname, '_deseq2_wald.csv', sep=''))
 	
 }
