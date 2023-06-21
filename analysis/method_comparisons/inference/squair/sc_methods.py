@@ -28,7 +28,7 @@ def scaled_mean_se2(data):
     
     naive_v = X.var(axis=0)
     naive_m = X.mean(axis=0)
-    v = naive_v-(1-q)*(X/(sf**2-sf*(1-q)).reshape(-1,1)).mean(axis=0)
+    v = naive_v#-(1-q)*(X/(sf**2-sf*(1-q)).reshape(-1,1)).mean(axis=0)
     variance_contributions = ((1-q)/sf).reshape(-1,1)*naive_m.reshape(1,-1) + v.reshape(1,-1)
     m = np.average( X, weights=1/variance_contributions, axis=0)
     m[~np.isfinite(m)] = naive_m[~np.isfinite(m)]
