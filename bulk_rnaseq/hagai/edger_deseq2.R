@@ -68,7 +68,7 @@ for (fname in files) {
     dispersion_df = data.frame(gene=rownames(bulk_y), dispersion=bulk_y$tagwise.dispersion)
     write.csv(dispersion_df, paste(data_path, 'bulk_rnaseq/results/', fname, '_bulk_dispersions.csv', sep=''))
     
-    for (trial in c('', '_shuffled')) {
+    for (trial in c('', '_100')) {
         
         pseudobulk = read.table(paste(data_path, 'sc_rnaseq/pseudobulks/', fname,trial,'.csv', sep=''), sep=',', header=1, row.names=1)
 

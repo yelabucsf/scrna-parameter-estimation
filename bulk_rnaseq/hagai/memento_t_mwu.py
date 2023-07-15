@@ -9,6 +9,7 @@ import scipy.stats as stats
 from statsmodels.stats.multitest import fdrcorrection
 from patsy import dmatrix, dmatrices 
 import statsmodels.api as sm
+import os
 
 import sys
 sys.path.append('/home/ssm-user/Github/memento')
@@ -41,18 +42,15 @@ def safe_fdr(x):
     _, fdr[np.isfinite(x)] = fdrcorrection(x[np.isfinite(x)])
     return fdr
 
-def run_t_mwu(shuffled=False):
+def run_t_mwu(num_cells=None):
     
-    out_suffix = '_shuffled' if shuffled else ''
+    out_suffix = '_100' if num_cells is not None else ''
 
     for file in files:
 
         print('working on', file)
 
-        adata = sc.read_h5ad(data_path +'h5Seurat/' + file + '.h5ad')
-
-        if shuffled:
-            adata.obs['label'] = adata.obs['label'].sample(frac=1).values
+        adata = sc.read_h5ad(data_path +'h5Seurat/' + file + out_suffix + '.h5ad')
 
         labels = adata.obs['label'].drop_duplicates().tolist()
 
@@ -77,17 +75,20 @@ def run_t_mwu(shuffled=False):
         mwu_result.to_csv(data_path + f'results/{file}{out_suffix}_MWU.csv')
 
         
-def run_memento(shuffled=False):
+def run_memento(num_cells=None):
     
-    out_suffix = '_shuffled' if shuffled else ''
+    out_suffix = '_100' if num_cells is not None else ''
+    print('num cells', num_cells)
     
     for file in files:
         
-        adata = sc.read_h5ad(data_path +'h5Seurat/' + file + '.h5ad')
+        condition = file.split('-')[-1] + '4'
+        
+        dispersion = pd.read_csv(data_path + f'results/{file}_dispersions.csv', index_col=0)
+        dispersion = dispersion.set_index('gene')
+        
+        adata = sc.read_h5ad(data_path +'h5Seurat/' + file + out_suffix + '.h5ad')
         adata.obs['q'] = 0.07
-
-        if shuffled:
-            adata.obs['label'] = adata.obs['label'].sample(frac=1).values
 
         rna.MementoRNA.setup_anndata(
             adata=adata,
@@ -100,49 +101,46 @@ def run_memento(shuffled=False):
         
         model = rna.MementoRNA(adata=adata)
 
-        model.compute_estimate(
-            estimand='mean',
-            get_se=True,
-            n_jobs=30,
-        )
+        model_save_name = f'{file}_estimates'
+
+        if model_save_name in os.listdir():
+            model.load_estimates(model_save_name)
+        else:
+            model.compute_estimate(
+                estimand='mean',
+                get_se=True,
+                n_jobs=30,
+            )
+            model.save_estimates(model_save_name)
         
         df = pd.DataFrame(index=adata.uns['memento']['groups'])
         df['mouse'] = df.index.str.split('^').str[1]
         df['stim'] = df.index.str.split('^').str[2]
-
         cov_df = pd.get_dummies(df[['mouse']], drop_first=True).astype(float)
-        stim_df = (df[['stim']]=='lps4').astype(float)
-        interactions = cov_df * stim_df[['stim']].values
-        interactions.columns = ['stim*'+col for col in interactions.columns]
-        cov_df = pd.concat([cov_df, interactions], axis=1)
+        stim_df = (df[['stim']]==condition).astype(float)
         cov_df = sm.add_constant(cov_df)
         
         result = model.differential_mean(
             covariates=cov_df, 
             treatments=stim_df,
-            estimator='log_mean',
-            family='WLS',
+            family='quasiGLM',
+            dispersions=dispersion.iloc[:, 0],
             verbose=2,
-            n_jobs=5)
-
-        result['z'] = result['coef']/result['se']
-        result['z_abs'] = result['z'].abs()
-        result['pval'] = 2*stats.norm.sf(result['z'].abs())
+            n_jobs=10)
+        
         _, result['fdr'] = fdrcorrection(result['pval'])
-        
-        result.to_csv(data_path + f'results/{file}{out_suffix}_memento.csv')
-        
+        result.to_csv(data_path + f'results/{file}{out_suffix}_quasiGLM.csv')                
         
 if __name__ == '__main__':
     
     logging.info('t, mwu')
-    run_t_mwu(shuffled=False)
+    run_t_mwu()
     
-    logging.info('t, mwu, shuffled')
-    run_t_mwu(shuffled=True)
+    logging.info('t, mwu, sampled')
+    run_t_mwu(num_cells=100)
     
     logging.info('memento')
-    run_memento(shuffled=False)
+    run_memento()
     
-    logging.info('memento, shuffled')
-    run_memento(shuffled=True)
+    logging.info('memento, sampled')
+    run_memento(num_cells=100)

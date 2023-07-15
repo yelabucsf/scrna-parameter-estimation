@@ -18,16 +18,13 @@ files = [
 ]
 
 
-def generate_pseudobulks(shuffled=False):
+def generate_pseudobulks():
     
     for fname in files:
 
         print('working on', fname)
         
         adata = sc.read(data_path + f'sc_rnaseq/h5Seurat/{fname}.h5ad')
-        
-        if shuffled:
-            adata.obs['label'] = adata.obs['label'].sample(frac=1).values
                         
         inds = adata.obs['replicate'].drop_duplicates().tolist()
         stims = adata.obs['label'].drop_duplicates().tolist()
@@ -43,11 +40,43 @@ def generate_pseudobulks(shuffled=False):
         pseudobulks = np.vstack(pseudobulks)
         pseudobulks = pd.DataFrame(pseudobulks.T, columns=names, index=adata.var.index.tolist())
         
-        out_name = fname + '_shuffled' if shuffled else fname
+        out_name = fname
         pseudobulks.to_csv(data_path + 'sc_rnaseq/pseudobulks/' + out_name + '.csv')
+        
+def generate_sampled_data(num_cells):
+    
+    for fname in files:
+
+        print('working on', fname)
+        
+        adata = sc.read(data_path + f'sc_rnaseq/h5Seurat/{fname}.h5ad')
+                        
+        inds = adata.obs['replicate'].drop_duplicates().tolist()
+        stims = adata.obs['label'].drop_duplicates().tolist()
+
+        pseudobulks = []
+        names = []
+        adata_list = []
+        for ind in inds:
+            for stim in stims:
+                ind_stim_adata = adata[(adata.obs['replicate']==ind) & (adata.obs['label']==stim)].copy()
+                
+                sc.pp.subsample(ind_stim_adata, n_obs=num_cells)
+                pseudobulks.append( ind_stim_adata.X.sum(axis=0).A1)
+                names.append(stim + '_' + ind )
+                adata_list.append(ind_stim_adata)
+        
+        sc_data = sc.AnnData.concatenate(*adata_list)
+        sc_data.write(data_path + f'sc_rnaseq/h5Seurat/{fname}_{num_cells}.h5ad')
+
+        pseudobulks = np.vstack(pseudobulks)
+        pseudobulks = pd.DataFrame(pseudobulks.T, columns=names, index=adata.var.index.tolist())
+        
+        pseudobulks.to_csv(data_path + f'sc_rnaseq/pseudobulks/{fname}_{num_cells}.csv')
 
         
 if __name__ == '__main__':
 
-    generate_pseudobulks(shuffled=False)
-    generate_pseudobulks(shuffled=True)
+    # generate_pseudobulks()
+    
+    generate_sampled_data(num_cells=100)
