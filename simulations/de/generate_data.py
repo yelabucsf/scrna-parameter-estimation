@@ -135,8 +135,8 @@ if __name__ == '__main__':
     
     mean_beta = np.vstack([
         np.log(z_param_1[0]),
-        np.vstack([stats.norm.rvs(scale=0.1, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0.1, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        np.vstack([stats.norm.rvs(scale=.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=0.2, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
         treatment_effect])
     
     means = np.exp(design.values@mean_beta)
@@ -155,7 +155,7 @@ if __name__ == '__main__':
     # dispersions = np.zeros((num_replicates*2, num_genes))
     dispersions = stats.uniform.rvs(0.1, 1, size=(num_replicates*2, num_genes))
     
-    num_cells_per_group = 200
+    num_cells_per_group = 500
     design = df
     design = pd.concat([design for i in range(num_cells_per_group)])
     
