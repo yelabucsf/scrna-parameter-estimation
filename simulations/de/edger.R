@@ -1,12 +1,12 @@
 suppressMessages(library(edgeR))
 
-num_groups_per_condition <- 2
+num_groups_per_condition <- 5
 
 data = read.table('/data_volume/memento/simulation/de/pseudobulks.csv', sep=',', header=1, row.names=1)
 # groups <- c( rep('ctrl', num_groups_per_condition), rep('stim', num_groups_per_condition))
-groups <- c('ctrl', 'stim', 'ctrl', 'stim')
+groups <- rep(c('ctrl', 'stim'), num_groups_per_condition)
 names <- 
-replicates <- c('A', 'A', 'B', 'B')
+replicates <- c('A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E')
 
 y <- DGEList(counts=data,group=groups)
 keep <- filterByExpr(y,min.count=1)
@@ -22,3 +22,5 @@ qlft <- glmQLFTest(qfit,coef=2)
 
 write.csv(topTags(lrt, n=Inf), '/data_volume/memento/simulation/de/edger_lrt.csv',)
 write.csv(topTags(qlft, n=Inf), '/data_volume/memento/simulation/de/edger_qlft.csv',)
+
+print('edgeR successful')

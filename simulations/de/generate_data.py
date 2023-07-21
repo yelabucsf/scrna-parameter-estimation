@@ -12,9 +12,9 @@ import statsmodels.api as sm
 import pickle as pkl
 import time
 import string
+import random
 from sklearn.datasets import make_spd_matrix
 from statsmodels.stats.moment_helpers import cov2corr
-import string
 
 import sys
 sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/dist/memento-0.1.0-py3.10.egg')
@@ -22,6 +22,15 @@ import memento
 import memento.simulate as simulate
 
 data_path = '/data_volume/memento/simulation/'
+num_replicates = 5
+
+
+def get_random_string(length):
+    # choose from all lowercase letter
+    letters = string.ascii_lowercase
+    result_str = ''.join(random.choice(letters) for i in range(length))
+    return result_str
+
 
 def convert_params_nb(mu, theta):
     """
@@ -101,43 +110,57 @@ if __name__ == '__main__':
     estimated_TE[np.absolute(estimated_TE) < 0.25] = 0
     available_de_idxs = np.where(estimated_TE > 0)[0]
     
-    base_mean = np.log(z_param_1[0])
-    num_genes = base_mean.shape[0]
+    num_genes = z_param_1[0].shape[0]
     treatment_effect = np.ones(num_genes)
     num_de = 2000
     de_idxs = np.random.choice(available_de_idxs, num_de)
     treatment_effect[de_idxs] = estimated_TE[de_idxs]
+    
+    conditions = ['ctrl', 'stim']
+    groups = [get_random_string(5) for i in range(num_replicates)]
+    df = pd.DataFrame(
+        itertools.product(groups, conditions),
+        columns=['group', 'condition'])
 
-    means = np.zeros((4, num_genes))
-    base_random = stats.norm.rvs(scale=1, size=num_genes)
-    treatment_random = stats.norm.rvs(scale=1, size=num_genes)
-    de_mask = np.zeros(treatment_random.shape).astype(bool)
-    de_mask[de_idxs] = True
-    treatment_random[~de_mask] = 0
-    multiplier = 0.5
+    cov_df = pd.get_dummies(df[['group']], drop_first=True).astype(float)
+    cov_df -= cov_df.mean()
+    stim_df = (df[['condition']]=='stim').astype(float)
+    interaction_df = cov_df*stim_df[['condition']].values
+    interaction_df.columns=[f'interaction_{col}' for col in cov_df.columns]
+    cov_df = pd.concat([cov_df, interaction_df], axis=1)
+    cov_df = sm.add_constant(cov_df)
+    design = pd.concat([cov_df, stim_df], axis=1)
+        
+    base_mean = np.log(z_param_1[0])
     
-    means[0] = np.exp(base_mean - multiplier*base_random)
-    means[1] = np.exp(base_mean - multiplier*base_random + treatment_effect - multiplier*treatment_random)
-    means[2] = np.exp(base_mean + multiplier*base_random)
-    means[3] = np.exp(base_mean + multiplier*base_random + treatment_effect + multiplier*treatment_random)
+    mean_beta = np.vstack([
+        np.log(z_param_1[0]),
+        np.vstack([stats.norm.rvs(scale=0.1, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=0.1, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        treatment_effect])
     
-    dispersions = np.zeros((4, num_genes))
-    dispersions[0] = 0.1
-    dispersions[1] = 0.1
-    dispersions[2] = 0.1
-    dispersions[3] = 0.1
+    means = np.exp(design.values@mean_beta)
+#     base_random = stats.norm.rvs(scale=1, size=num_genes)
+#     treatment_random = stats.norm.rvs(scale=1, size=num_genes)
+#     de_mask = np.zeros(treatment_random.shape).astype(bool)
+#     de_mask[de_idxs] = True
+#     treatment_random[~de_mask] = 0
+#     multiplier = 0.5
     
-    num_cells_per_group = 150
-    design = pd.DataFrame(
-        [
-            ('ctrl', 'A'),
-            ('stim', 'A'),
-            ('ctrl', 'B'),
-            ('stim', 'B')], columns=['condition', 'group'])
+#     means[0] = np.exp(base_mean - multiplier*base_random)
+#     means[1] = np.exp(base_mean - multiplier*base_random + treatment_effect - multiplier*treatment_random)
+#     means[2] = np.exp(base_mean + multiplier*base_random)
+#     means[3] = np.exp(base_mean + multiplier*base_random + treatment_effect + multiplier*treatment_random)
+    
+    # dispersions = np.zeros((num_replicates*2, num_genes))
+    dispersions = stats.uniform.rvs(0.1, 1, size=(num_replicates*2, num_genes))
+    
+    num_cells_per_group = 200
+    design = df
     design = pd.concat([design for i in range(num_cells_per_group)])
     
     counts = simulate_counts(means, dispersions, num_cells_per_group).astype(int)
-    
+        
     cell_names = [f'cell_{i}' for i in range(counts.shape[0])]
     gene_names = [f'gene_{i}' for i in range(counts.shape[1])]
     design.index=cell_names

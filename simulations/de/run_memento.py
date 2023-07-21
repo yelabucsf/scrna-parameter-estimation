@@ -20,7 +20,7 @@ import memento.util as util
 import logging
 logging.basicConfig(
     format="%(asctime)s %(process)-7s %(levelname)-8s %(message)s",
-    level=logging.INFO, 
+    level=logging.WARN, 
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logging.captureWarnings(True)
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     cov_df -= cov_df.mean()
     stim_df = (df[['condition']]=='stim').astype(float)
     interaction_df = cov_df*stim_df[['condition']].values
-    interaction_df.columns=['interaction']
+    interaction_df.columns=[f'interaction_{col}' for col in cov_df.columns]
     cov_df = pd.concat([cov_df, interaction_df], axis=1)
     cov_df = sm.add_constant(cov_df)
 
@@ -69,8 +69,10 @@ if __name__ == '__main__':
         covariates=cov_df, 
         treatments=stim_df,
         family='quasiGLM',
-        verbose=2,
+        verbose=0,
         n_jobs=5)
 
     _, glm_result['fdr'] = fdrcorrection(glm_result['pval'])
     glm_result.to_csv(data_path + 'de/memento.csv')
+    
+    print('memento successful')

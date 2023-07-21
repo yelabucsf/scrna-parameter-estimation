@@ -1,11 +1,11 @@
 # Simulate data
 python generate_data.py
 
-# Run edgeR
-Rscript edger.R
+# # Run edgeR
+# Rscript edger.R
 
-# Run memento
-python run_memento.py
+# # Run memento
+# python run_memento.py
 
 # Run t test
 python run_t_mwu.py

@@ -21,8 +21,10 @@ if __name__ == '__main__':
     
     result = pd.DataFrame(index=adata.var.index)
     result['coef'] =A_data.mean(axis=0) - B_data.mean(axis=0)
-    _, result['pval'] = stats.ttest_ind(A_data, B_data, equal_var=False)
+    _, result['pval'] = stats.ttest_ind(A_data, B_data, equal_var=True)
     result = result.fillna(1.0)
     _, result['fdr'] = fdrcorrection(result['pval'])
     
     result.to_csv(data_path + 'de/t.csv')
+    
+    print('t test successful')
