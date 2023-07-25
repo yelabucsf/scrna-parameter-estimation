@@ -1,5 +1,5 @@
 # Simulate data
-python generate_data.py
+python generate_de_data.py
 
 # # Run edgeR
 Rscript edger.R

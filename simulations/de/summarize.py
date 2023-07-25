@@ -21,6 +21,8 @@ if __name__ == '__main__':
 
     # Read memento
     results['memento'] = pd.read_csv(data_path + 'de/memento.csv', index_col=0)[['coef', 'pval', 'fdr']]
+    results['memento_wls'] = pd.read_csv(data_path + 'de/memento_wls.csv', index_col=0)[['coef', 'pval', 'fdr']]
+
 
     # Read t test
     results['t'] = pd.read_csv(data_path + 'de/t.csv', index_col=0)[['coef', 'pval', 'fdr']]
@@ -50,18 +52,6 @@ if __name__ == '__main__':
         tpr = (result.query('is_de')['pval'] < check_thresh).mean()
         fpr = (result.query('~is_de')['pval'] < check_thresh).mean()
         print(f'{method} - fpr: {fpr} - tpr : {tpr} - thresh : {check_thresh}')
-
-        fdr = []
-        tpr = []
-        sorted_result = result.sort_values('fdr')
-        for thresh in thresholds[method]:
-
-            hits = result.query(f'fdr < {thresh}')
-            fdr.append(1-hits['is_de'].mean())
-            tpr.append(hits['is_de'].sum()/result['is_de'].sum())
-        plt.plot(fdr, tpr, '-o', label=method)
-    plt.legend()
-    plt.savefig('temp.png')
                 
     
     # Make some figures

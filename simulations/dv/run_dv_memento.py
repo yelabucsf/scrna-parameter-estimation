@@ -31,7 +31,7 @@ data_path = '/data_volume/memento/simulation/'
 
 if __name__ == '__main__':
     
-    adata = sc.read(data_path + 'de/anndata.h5ad')
+    adata = sc.read(data_path + 'dv/anndata.h5ad')
 
     adata.obs['q'] = q
     adata.X = adata.X.astype(float)
@@ -44,11 +44,14 @@ if __name__ == '__main__':
             trim_percent=0.03,
             shrinkage=0.0)
 
-    adata = adata[:, adata.X.mean(axis=0).A1 > 0.01]
+    means = adata.X.mean(axis=0).A1
+    adata = adata[:, means > np.quantile(means, 0.95)]
+    sc.AnnData(X=adata.X, obs=adata.obs, var=adata.var).write(data_path + 'dv/high_expr_anndata.h5ad')
+    sc.AnnData(X=adata.X.toarray()).write(data_path + 'dv/high_expr_anndata_clean.h5ad')
     model = rna.MementoRNA(adata=adata)
 
     model.compute_estimate(
-        estimand='mean',
+        estimand='var',
         get_se=True,
         n_jobs=30,
     )
@@ -65,24 +68,13 @@ if __name__ == '__main__':
     cov_df = pd.concat([cov_df, interaction_df], axis=1)
     cov_df = sm.add_constant(cov_df)
 
-    glm_result = model.differential_mean(
+    dv_result = model.differential_var(
         covariates=cov_df, 
         treatments=stim_df,
-        family='quasiGLM',
         verbose=0,
-        n_jobs=5)
+        n_jobs=5).fillna(1.0)
 
-    _, glm_result['fdr'] = fdrcorrection(glm_result['pval'])
-    glm_result.to_csv(data_path + 'de/memento.csv')
+    _, dv_result['fdr'] = fdrcorrection(dv_result['pval'])
+    dv_result.to_csv(data_path + 'dv/memento.csv')
     
-    wls_result = model.differential_mean(
-        covariates=cov_df, 
-        treatments=stim_df,
-        family='WLS',
-        verbose=0,
-        n_jobs=5)
-
-    _, wls_result['fdr'] = fdrcorrection(wls_result['pval'])
-    wls_result.to_csv(data_path + 'de/memento_wls.csv')
-    
-    print('memento successful')
+    print('memento dv successful')
