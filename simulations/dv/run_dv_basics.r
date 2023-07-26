@@ -43,11 +43,10 @@ Test <- BASiCS_TestDE(
   Chain1 = ctrl_chain, Chain2 = stim_chain,
   GroupLabel1 = "ctrl", GroupLabel2 = "stim",
   EpsilonM = 0, EpsilonD =0,
-  EpsilonR = 0,
+  EpsilonR = 0.0,
   EFDR_M = 1, EFDR_D = 1,EFDR_R=NULL, k=1,ProbThresholdR=0,
   Offset = TRUE, PlotOffset = TRUE, Plot = TRUE
 )
 
-dv <- as.data.frame(Test, Parameter = "ResDisp")
-
+dv <- (Test@Results$ResDisp)@Table
 write_csv(dv, file = 'dv_basics.csv')

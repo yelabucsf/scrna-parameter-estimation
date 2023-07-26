@@ -89,12 +89,17 @@ if __name__ == '__main__':
     pos_var_condition = (z_param_1[1] > 0) & (z_param_2[1] > 0)
     z_param_1 = (z_param_1[0][pos_var_condition], z_param_1[1][pos_var_condition])
     z_param_2 = (z_param_2[0][pos_var_condition], z_param_2[1][pos_var_condition])
+    d1 = (z_param_1[1] - z_param_1[0])/z_param_1[0]**2
+    d2 = (z_param_2[1] - z_param_2[0])/z_param_2[0]**2
+    d1[d1 < 0] = 1e-3
+    d2[d2 < 0] = 1e-3
+
     
     estimated_TE = np.log(z_param_2[0]) - np.log(z_param_1[0])
     estimated_TE[np.absolute(estimated_TE) < 0.25] = 0
     available_de_idxs = np.where(estimated_TE > 0)[0]
     
-    estimated_VTE = np.log(z_param_2[1])-np.log(z_param_1[1])
+    estimated_VTE = np.log(d2)-np.log(d1)
     estimated_VTE[np.absolute(estimated_VTE) < 0.25] = 0
     available_dv_idxs = np.where(estimated_VTE > 0)[0]
     
@@ -126,8 +131,8 @@ if __name__ == '__main__':
     # Define mean effect sizes
     mean_beta = np.vstack([
         np.log( z_param_1[0]) ,
-        np.vstack([stats.norm.rvs(scale=0, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=0.2, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
         treatment_effect])
     
     means = np.exp(design.values@mean_beta)
@@ -137,19 +142,19 @@ if __name__ == '__main__':
     d[d < 0] = 1e-3
     dispersion_beta = np.vstack([
         np.log(d),
-        np.vstack([stats.norm.rvs(scale=.1, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0.1, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=0.2, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
         v_treatment_effect])
     dispersions = np.exp(design.values@dispersion_beta)
     
-    num_cells_per_group = 20
+    num_cells_per_group = 50
     design = df
     design = pd.concat([design for i in range(num_cells_per_group)])
     
     counts = simulate_counts(means, dispersions, num_cells_per_group).astype(int)
         
     cell_names = [f'cell{i}' for i in range(counts.shape[0])]
-    gene_names = [f'gened{i}' for i in range(counts.shape[1])]
+    gene_names = [f'gene{i}' for i in range(counts.shape[1])]
     design.index=cell_names
     
     _, hyper_captured = simulate.capture_sampling(counts, q=q, process='hyper')
@@ -168,6 +173,7 @@ if __name__ == '__main__':
     anndata.var['de_effect_size'] = treatment_effect
     anndata.var['dv_effect_size'] = v_treatment_effect
     anndata.write(data_path + 'dv/anndata.h5ad')
+    sc.AnnData(hyper_captured).write(data_path + 'dv/anndata_clean.h5ad')
     anndata.obs.to_csv(data_path + 'dv/obs.csv')
 
     print('data generation done')
