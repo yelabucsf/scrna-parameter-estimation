@@ -45,7 +45,9 @@ if __name__ == '__main__':
             shrinkage=0.0)
 
     means = adata.X.mean(axis=0).A1
-    adata = adata[:, means > np.quantile(means, 0.9)]
+    # adata = adata[:, means > np.quantile(means, 0.9)]
+    adata = adata[:, means > 0.07]
+
     sc.AnnData(X=adata.X, obs=adata.obs, var=adata.var).write(data_path + 'dv/high_expr_anndata.h5ad')
     sc.AnnData(X=adata.X.toarray()).write(data_path + 'dv/high_expr_anndata_clean.h5ad')
     model = rna.MementoRNA(adata=adata)
@@ -55,7 +57,7 @@ if __name__ == '__main__':
         get_se=True,
         n_jobs=30,
     )
-    model.save_estimates('variability')
+    # model.save_estimates('variability')
     
     df = pd.DataFrame(index=adata.uns['memento']['groups'])
     df['group'] = df.index.str.split('^').str[1]
@@ -77,5 +79,8 @@ if __name__ == '__main__':
 
     _, dv_result['fdr'] = fdrcorrection(dv_result['pval'])
     dv_result.to_csv(data_path + 'dv/memento.csv')
+    
+    joined=dv_result.join(adata.var)
+    print((joined.query('~is_dv')['pval'] < 0.05).mean())
     
     print('memento dv successful')

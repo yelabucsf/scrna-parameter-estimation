@@ -94,7 +94,6 @@ if __name__ == '__main__':
     d1[d1 < 0] = 1e-3
     d2[d2 < 0] = 1e-3
 
-    
     estimated_TE = np.log(z_param_2[0]) - np.log(z_param_1[0])
     estimated_TE[np.absolute(estimated_TE) < 0.25] = 0
     available_de_idxs = np.where(estimated_TE > 0)[0]
@@ -104,8 +103,8 @@ if __name__ == '__main__':
     available_dv_idxs = np.where(estimated_VTE > 0)[0]
     
     num_genes = z_param_1[0].shape[0]
-    treatment_effect = np.ones(num_genes)
-    v_treatment_effect = np.ones(num_genes)
+    treatment_effect = np.zeros(num_genes)
+    v_treatment_effect = np.zeros(num_genes)
     num_de = 2000
     num_dv = 2000
     de_idxs = np.random.choice(available_de_idxs, num_de)
@@ -140,10 +139,11 @@ if __name__ == '__main__':
     # Define variance effect sizes
     d = (z_param_1[1] - z_param_1[0])/z_param_1[0]**2
     d[d < 0] = 1e-3
+    print(v_treatment_effect)
     dispersion_beta = np.vstack([
         np.log(d),
         np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0.2, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        np.vstack([stats.norm.rvs(scale=0., size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
         v_treatment_effect])
     dispersions = np.exp(design.values@dispersion_beta)
     

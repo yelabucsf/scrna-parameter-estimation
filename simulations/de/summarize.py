@@ -30,7 +30,7 @@ if __name__ == '__main__':
     # Get overlapping genes
     genes = set(adata.var.index)
     for method, result in results.items():
-        results[method] = result.join(adata.var,how='inner')
+        results[method] = result.join(adata.var[['is_de']],how='inner')
         genes &= set(result.index)
     genes = list(genes)
     for method, result in results.items():

@@ -19,7 +19,7 @@ get_chain <- function(seurat, cond) {
 
     Chain <- BASiCS_MCMC(
       dat.sce,
-      N = 10000, Thin = 100, Burn = 1000, WithSpikes = FALSE, SubsetBy = 'cell',
+      N = 10000, Thin = 5, Burn = 1000, WithSpikes = FALSE, SubsetBy = 'cell',
       PrintProgress = FALSE, Regression = TRUE,Threads = getOption("Ncpus", 10),)
     return(Chain)
    }

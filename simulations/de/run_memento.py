@@ -20,7 +20,7 @@ import memento.util as util
 import logging
 logging.basicConfig(
     format="%(asctime)s %(process)-7s %(levelname)-8s %(message)s",
-    level=logging.WARN, 
+    level=logging.INFO, 
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logging.captureWarnings(True)
@@ -41,7 +41,7 @@ if __name__ == '__main__':
             q_column='q',
             label_columns=['group', 'condition'],
             num_bins=30,
-            trim_percent=0.03,
+            trim_percent=0.1,
             shrinkage=0.0)
 
     adata = adata[:, adata.X.mean(axis=0).A1 > 0.01]
@@ -64,6 +64,7 @@ if __name__ == '__main__':
     interaction_df.columns=[f'interaction_{col}' for col in cov_df.columns]
     cov_df = pd.concat([cov_df, interaction_df], axis=1)
     cov_df = sm.add_constant(cov_df)
+    cov_df = cov_df.iloc[:, [0]]
 
     glm_result = model.differential_mean(
         covariates=cov_df, 

@@ -56,31 +56,17 @@ def convert_params_binom(mu, v):
     return np.ceil(n).astype(int), p
 
 
-def simulate_counts(means, dispersions, num_cell_per_group):
+def simulate_counts(means, dispersions, num_cells):
     
     num_groups, num_genes = means.shape
     
-    # counts = np.zeros((num_cells_per_group, num_groups, num_genes))
+    counts = []
+    for group_idx in range(num_groups):
+        counts.append(
+            stats.nbinom.rvs(*convert_params_nb(means[group_idx], 1/dispersions[group_idx]), size=(num_cells[group_idx], num_genes))
+        )
     
-    # binom_idxs = np.where(means >= variances)
-    # nb_idxs = np.where(means < variances)
-        
-    # binom_variances = variances
-    # binom_variances[binom_variances > means] = means[binom_variances > means]-1e-3
-    # nb_dispersions = (variances-means)/means**2
-    # nb_dispersions[nb_dispersions < 0] = 1e-3
-    
-    # binom_counts = stats.binom.rvs(
-    #     *convert_params_binom(means, binom_variances), 
-    #     size=(num_cells_per_group, num_groups, num_genes))
-    counts = stats.nbinom.rvs(
-        *convert_params_nb(means, 1/dispersions), 
-        size=(num_cells_per_group, num_groups, num_genes))
-
-    # counts[:, binom_idxs[0], binom_idxs[1]] = binom_counts[:, binom_idxs[0], binom_idxs[1]]
-    # counts[:, nb_idxs[0], nb_idxs[1]] = nb_counts[:, nb_idxs[0], nb_idxs[1]]
-    
-    counts = counts.reshape(-1, num_genes)
+    counts = np.vstack(counts)
 
     return counts
 
@@ -88,34 +74,34 @@ def simulate_counts(means, dispersions, num_cell_per_group):
 if __name__ == '__main__':
     ifn_adata = sc.read('/data_volume/memento/hbec/' + 'HBEC_type_I_filtered_counts_deep.h5ad')
     q=0.07
-    
+
     adata_1 = ifn_adata[(ifn_adata.obs['cell_type'] == 'ciliated') & (ifn_adata.obs['stim'] == 'control')]
     adata_2 = ifn_adata[(ifn_adata.obs['cell_type'] == 'ciliated') & (ifn_adata.obs['stim'] == 'beta')]
 
     x_param_1, z_param_1, Nc_1, good_idx_1 = simulate.extract_parameters(adata_1.X, q=q)
     x_param_2, z_param_2, Nc_2, good_idx_2 = simulate.extract_parameters(adata_2.X, q=q)
     common_set = np.array(list(set(good_idx_1) & set(good_idx_2)))
-    z_param_1 = (
-        np.array([x for x,i in zip(z_param_1[0], good_idx_1) if i in common_set]),
-        np.array([x for x,i in zip(z_param_1[1], good_idx_1) if i in common_set]))
-    z_param_2 = (
-        np.array([x for x,i in zip(z_param_2[0], good_idx_2) if i in common_set]),
-        np.array([x for x,i in zip(z_param_2[1], good_idx_2) if i in common_set]))
-    
-    pos_var_condition = (z_param_1[1] > 0) & (z_param_2[1] > 0)
-    z_param_1 = (z_param_1[0][pos_var_condition], z_param_1[1][pos_var_condition])
-    z_param_2 = (z_param_2[0][pos_var_condition], z_param_2[1][pos_var_condition])
-    
-    estimated_TE = np.log(z_param_2[0]) - np.log(z_param_1[0])
+    x_param_1 = (
+        np.array([x for x,i in zip(x_param_1[0], good_idx_1) if i in common_set]),
+        np.array([x for x,i in zip(x_param_1[1], good_idx_1) if i in common_set]))
+    x_param_2 = (
+        np.array([x for x,i in zip(x_param_2[0], good_idx_2) if i in common_set]),
+        np.array([x for x,i in zip(x_param_2[1], good_idx_2) if i in common_set]))
+
+    pos_var_condition = (x_param_1[1] > 0) & (x_param_2[1] > 0)
+    x_param_1 = (x_param_1[0][pos_var_condition], x_param_1[1][pos_var_condition])
+    x_param_2 = (x_param_2[0][pos_var_condition], x_param_2[1][pos_var_condition])
+
+    estimated_TE = np.log(x_param_2[0]) - np.log(x_param_1[0])
     estimated_TE[np.absolute(estimated_TE) < 0.25] = 0
-    available_de_idxs = np.where(estimated_TE > 0)[0]
-    
-    num_genes = z_param_1[0].shape[0]
-    treatment_effect = np.ones(num_genes)
+    available_de_idxs = np.where(np.absolute(estimated_TE) > 0)[0]
+
+    num_genes = x_param_1[0].shape[0]
+    treatment_effect = np.zeros(num_genes)
     num_de = 2000
     de_idxs = np.random.choice(available_de_idxs, num_de)
     treatment_effect[de_idxs] = estimated_TE[de_idxs]
-    
+
     conditions = ['ctrl', 'stim']
     groups = [get_random_string(5) for i in range(num_replicates)]
     df = pd.DataFrame(
@@ -130,37 +116,28 @@ if __name__ == '__main__':
     cov_df = pd.concat([cov_df, interaction_df], axis=1)
     cov_df = sm.add_constant(cov_df)
     design = pd.concat([cov_df, stim_df], axis=1)
-        
+
     base_mean = np.log(z_param_1[0])
-    
+
     mean_beta = np.vstack([
-        np.log(z_param_1[0]),
-        np.vstack([stats.norm.rvs(scale=.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0.2, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        np.log(x_param_1[0]),
+        np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=0.0, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
         treatment_effect])
-    
+
     means = np.exp(design.values@mean_beta)
-#     base_random = stats.norm.rvs(scale=1, size=num_genes)
-#     treatment_random = stats.norm.rvs(scale=1, size=num_genes)
-#     de_mask = np.zeros(treatment_random.shape).astype(bool)
-#     de_mask[de_idxs] = True
-#     treatment_random[~de_mask] = 0
-#     multiplier = 0.5
-    
-#     means[0] = np.exp(base_mean - multiplier*base_random)
-#     means[1] = np.exp(base_mean - multiplier*base_random + treatment_effect - multiplier*treatment_random)
-#     means[2] = np.exp(base_mean + multiplier*base_random)
-#     means[3] = np.exp(base_mean + multiplier*base_random + treatment_effect + multiplier*treatment_random)
-    
-    # dispersions = np.zeros((num_replicates*2, num_genes))
+
     dispersions = stats.uniform.rvs(0.1, 1, size=(num_replicates*2, num_genes))
-    
-    num_cells_per_group = 500
+
+    cell_sizes = np.random.choice(Nc_1, num_replicates*2).reshape(-1,1)
+
+    num_cells = np.array([100, 50, 100, 50, 100, 50, 100, 50, 100, 50])
     design = df
-    design = pd.concat([design for i in range(num_cells_per_group)])
+    # design = pd.concat([design for i in range(num_cells_per_group)])
+    design = design.loc[design.index.repeat(num_cells)]
     
-    counts = simulate_counts(means, dispersions, num_cells_per_group).astype(int)
-        
+    counts = simulate_counts(means*cell_sizes, dispersions, num_cells).astype(int)
+    
     cell_names = [f'cell_{i}' for i in range(counts.shape[0])]
     gene_names = [f'gene_{i}' for i in range(counts.shape[1])]
     design.index=cell_names
@@ -179,6 +156,7 @@ if __name__ == '__main__':
     de_genes = np.zeros(num_genes)
     de_genes[de_idxs] = 1
     anndata.var['is_de'] = de_genes.astype(bool)
+    anndata.var['treatment_effect'] = treatment_effect
 
     anndata.write(data_path + 'de/anndata.h5ad')
     pseudobulks.T.to_csv(data_path + 'de/pseudobulks.csv')
