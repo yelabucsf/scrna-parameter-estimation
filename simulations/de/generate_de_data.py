@@ -108,8 +108,8 @@ if __name__ == '__main__':
         itertools.product(groups, conditions),
         columns=['group', 'condition'])
 
-    cov_df = pd.get_dummies(df[['group']], drop_first=True).astype(float)
-    cov_df -= cov_df.mean()
+    cov_df = pd.get_dummies(df[['group']], drop_first=False).astype(float)
+    # cov_df -= cov_df.mean()
     stim_df = (df[['condition']]=='stim').astype(float)
     interaction_df = cov_df*stim_df[['condition']].values
     interaction_df.columns=[f'interaction_{col}' for col in cov_df.columns]
@@ -121,8 +121,8 @@ if __name__ == '__main__':
 
     mean_beta = np.vstack([
         np.log(x_param_1[0]),
-        np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0.0, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
+        np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=0.0, size=num_genes) for i in range((num_replicates))]), # treatment random effect
         treatment_effect])
 
     means = np.exp(design.values@mean_beta)
@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
     cell_sizes = np.random.choice(Nc_1, num_replicates*2).reshape(-1,1)
 
-    num_cells = np.array([100, 50, 100, 50, 100, 50, 100, 50, 100, 50])
+    num_cells = np.array([100, 50, 100, 50, 100, 50, 100, 50, 100, 50])*5
     design = df
     # design = pd.concat([design for i in range(num_cells_per_group)])
     design = design.loc[design.index.repeat(num_cells)]
