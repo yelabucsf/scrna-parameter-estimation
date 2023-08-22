@@ -26,5 +26,11 @@ if __name__ == '__main__':
     _, result['fdr'] = fdrcorrection(result['pval'])
     
     result.to_csv(data_path + 'de/t.csv')
+
+    result = result.join(adata.var[['is_de']],how='inner')
+
+    check_thresh = 0.05
+    tpr = (result.query('is_de')['pval'] < check_thresh).mean()
+    fpr = (result.query('~is_de')['pval'] < check_thresh).mean()
     
-    print('t test successful')
+    print(f't test successful, fpr = {fpr}, tpr = {tpr}')

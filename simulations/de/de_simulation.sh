@@ -2,7 +2,7 @@
 python generate_de_data.py
 
 # # Run edgeR
-Rscript edger.R
+# Rscript edger.R
 
 # # Run memento
 # python run_memento.py
