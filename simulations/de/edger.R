@@ -1,12 +1,11 @@
 suppressMessages(library(edgeR))
 
-num_groups_per_condition <- 5
+num_groups_per_condition <- 2
 
 data = read.table('/data_volume/memento/simulation/de/pseudobulks.csv', sep=',', header=1, row.names=1)
 # groups <- c( rep('ctrl', num_groups_per_condition), rep('stim', num_groups_per_condition))
 groups <- rep(c('ctrl', 'stim'), num_groups_per_condition)
-names <- 
-replicates <- c('A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E')
+replicates <- c('A', 'A', 'B', 'B')
 
 y <- DGEList(counts=data,group=groups)
 keep <- filterByExpr(y,min.count=1)

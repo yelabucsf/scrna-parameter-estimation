@@ -41,10 +41,10 @@ if __name__ == '__main__':
             q_column='q',
             label_columns=['group', 'condition'],
             num_bins=30,
-            trim_percent=0.1,
-            shrinkage=0.5)
+            trim_percent=1,
+            shrinkage=0.0)
 
-    adata = adata[:, adata.X.mean(axis=0).A1 > 0.05]
+    adata = adata[:, adata.X.mean(axis=0).A1 > 0.01]
     model = rna.MementoRNA(adata=adata)
 
     model.compute_estimate(
@@ -84,11 +84,5 @@ if __name__ == '__main__':
 
     _, wls_result['fdr'] = fdrcorrection(wls_result['pval'])
     wls_result.to_csv(data_path + 'de/memento_wls.csv')
-
-    wls_result = wls_result.join(adata.var[['is_de']],how='inner')
     
-    check_thresh = 0.05
-    tpr = (wls_result.query('is_de')['pval'] < check_thresh).mean()
-    fpr = (wls_result.query('~is_de')['pval'] < check_thresh).mean()
-    
-    print(f'memento successful, fpr = {fpr}, tpr = {tpr}')
+    print('memento successful')

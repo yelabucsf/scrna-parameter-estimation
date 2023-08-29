@@ -22,7 +22,7 @@ import memento
 import memento.simulate as simulate
 
 data_path = '/data_volume/memento/simulation/'
-num_replicates = 5
+num_replicates = 2
 
 
 def get_random_string(length):
@@ -93,6 +93,7 @@ if __name__ == '__main__':
     x_param_2 = (x_param_2[0][pos_var_condition], x_param_2[1][pos_var_condition])
 
     estimated_TE = np.log(x_param_2[0]) - np.log(x_param_1[0])
+    estimated_TE = stats.norm.rvs(scale=1, size=x_param_2[0].shape[0])
     estimated_TE[np.absolute(estimated_TE) < 0.25] = 0
     available_de_idxs = np.where(np.absolute(estimated_TE) > 0)[0]
 
@@ -100,7 +101,7 @@ if __name__ == '__main__':
     treatment_effect = np.zeros(num_genes)
     num_de = 2000
     de_idxs = np.random.choice(available_de_idxs, num_de)
-    treatment_effect[de_idxs] = estimated_TE[de_idxs]
+    treatment_effect[de_idxs] = stats.norm.rvs(size=num_de)     #estimated_TE[de_idxs]
 
     conditions = ['ctrl', 'stim']
     groups = [get_random_string(5) for i in range(num_replicates)]
@@ -108,8 +109,8 @@ if __name__ == '__main__':
         itertools.product(groups, conditions),
         columns=['group', 'condition'])
 
-    cov_df = pd.get_dummies(df[['group']], drop_first=False).astype(float)
-    # cov_df -= cov_df.mean()
+    cov_df = pd.get_dummies(df[['group']], drop_first=True).astype(float)
+    cov_df -= cov_df.mean()
     stim_df = (df[['condition']]=='stim').astype(float)
     interaction_df = cov_df*stim_df[['condition']].values
     interaction_df.columns=[f'interaction_{col}' for col in cov_df.columns]
@@ -117,12 +118,12 @@ if __name__ == '__main__':
     cov_df = sm.add_constant(cov_df)
     design = pd.concat([cov_df, stim_df], axis=1)
 
-    base_mean = np.log(z_param_1[0])
+    base_mean = np.log(x_param_1[0])
 
     mean_beta = np.vstack([
         np.log(x_param_1[0]),
-        np.vstack([stats.norm.rvs(scale=0.5, size=num_genes) for i in range((num_replicates))]), # intercept random effect
-        np.vstack([stats.norm.rvs(scale=0.0, size=num_genes) for i in range((num_replicates))]), # treatment random effect
+        np.vstack([stats.norm.rvs(scale=0.0, size=num_genes) for i in range((num_replicates-1))]), # intercept random effect
+        np.vstack([stats.norm.rvs(scale=1.0, size=num_genes) for i in range((num_replicates-1))]), # treatment random effect
         treatment_effect])
 
     means = np.exp(design.values@mean_beta)
@@ -130,8 +131,12 @@ if __name__ == '__main__':
     dispersions = stats.uniform.rvs(0.1, 1, size=(num_replicates*2, num_genes))
 
     cell_sizes = np.random.choice(Nc_1, num_replicates*2).reshape(-1,1)
+    cell_sizes = (np.ones(num_replicates*2)*20000).reshape(-1,1)
+    print(df)
+    print(design)
+    print(means[:, de_idxs])
 
-    num_cells = np.array([100, 50, 100, 50, 100, 50, 100, 50, 100, 50])*5
+    num_cells = np.array([1000, 1000, 1000, 1000])
     design = df
     # design = pd.concat([design for i in range(num_cells_per_group)])
     design = design.loc[design.index.repeat(num_cells)]
