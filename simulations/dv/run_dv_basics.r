@@ -2,7 +2,7 @@ suppressMessages(library(Seurat))
 suppressMessages(library(SeuratDisk))
 
 suppressMessages(library(cowplot))
-suppressMessages(library(tidyverse))
+# suppressMessages(library(tidyverse))
 suppressMessages(library(dplyr))
 suppressMessages(library(BiocParallel))
 suppressMessages(library(readr))
@@ -19,8 +19,8 @@ get_chain <- function(seurat, cond) {
 
     Chain <- BASiCS_MCMC(
       dat.sce,
-      N = 10000, Thin = 5, Burn = 1000, WithSpikes = FALSE, SubsetBy = 'cell',
-      PrintProgress = FALSE, Regression = TRUE,Threads = getOption("Ncpus", 10),)
+      N = 80000, Thin = 5, Burn = 1000, WithSpikes = FALSE, SubsetBy = 'cell',
+      PrintProgress = FALSE, Regression = TRUE,Threads = getOption("Ncpus", 5),)
     return(Chain)
    }
 
@@ -30,8 +30,10 @@ seurat <- LoadH5Seurat('high_expr_anndata_clean.h5seurat', meta.data=FALSE,misc=
 df <- read.table('obs.csv', sep=',', header=TRUE)
 
 seurat$condition <- df$condition
-seurat$batch<- df$group
+seurat$batch<- 'const'#df$group
 Idents(seurat) <- 'condition'
+
+print(dim(seurat))
 
 ctrl_chain <- get_chain(seurat, 'ctrl')
 saveRDS(ctrl_chain, file = 'ctrl_chain.rds')

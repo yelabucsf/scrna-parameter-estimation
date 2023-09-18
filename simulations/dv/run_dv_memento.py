@@ -41,15 +41,15 @@ if __name__ == '__main__':
             q_column='q',
             label_columns=['group', 'condition'],
             num_bins=30,
-            trim_percent=0.03,
-            shrinkage=0.0)
+            trim_percent=0.1,
+            shrinkage=0.5)
+    
+    adata.obs['memento_size_factor'] = 1
+    adata.obs['memento_approx_size_factor'] = 1
 
     means = adata.X.mean(axis=0).A1
     # adata = adata[:, means > np.quantile(means, 0.9)]
-    adata = adata[:, means > 0.07]
-
-    sc.AnnData(X=adata.X, obs=adata.obs, var=adata.var).write(data_path + 'dv/high_expr_anndata.h5ad')
-    sc.AnnData(X=adata.X.toarray()).write(data_path + 'dv/high_expr_anndata_clean.h5ad')
+    adata = adata[:, means > 0.2]
     model = rna.MementoRNA(adata=adata)
 
     model.compute_estimate(
@@ -75,7 +75,7 @@ if __name__ == '__main__':
         covariates=cov_df, 
         treatments=stim_df,
         verbose=0,
-        n_jobs=5).fillna(1.0)
+        n_jobs=5)#.fillna(1.0)
 
     _, dv_result['fdr'] = fdrcorrection(dv_result['pval'])
     dv_result.to_csv(data_path + 'dv/memento.csv')
