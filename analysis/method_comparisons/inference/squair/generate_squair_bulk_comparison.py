@@ -40,50 +40,70 @@ def scaled_mean_se2(data, sf, q):
 
 
 def generate_pseudobulks():
+    
+    num_trials = 1
 	
     for fname in files:
         
-        print('working on', fname)
+        for trial in range(1,num_trials+1):
+        
+            print('working on', fname)
 
-        adata = sc.read(data_path + 'sc_rnaseq/h5Seurat/' + fname + '.h5ad')
-        adata.obs['q'] = 0.07
-        memento.setup_memento(adata, q_column='q', trim_percent=0.05)
-        
-        inds = adata.obs['replicate'].drop_duplicates().tolist()
-        stims = adata.obs['label'].drop_duplicates().tolist()
+            adata = sc.read(data_path + 'sc_rnaseq/h5Seurat/' + fname + '.h5ad')
+            adata.obs['q'] = 0.07
+            memento.setup_memento(adata, q_column='q', trim_percent=0.05)
 
-        pseudobulks = []
-        memento_pseudobulks = []
-        names = []
-        adata_list = []
-        for ind in inds:
-            for stim in stims:
-                ind_stim_adata = adata[(adata.obs['replicate']==ind) & (adata.obs['label']==stim)].copy()
-                sc.pp.subsample(ind_stim_adata, n_obs=100)
+            inds = adata.obs['replicate'].drop_duplicates().tolist()
+            stims = adata.obs['label'].drop_duplicates().tolist()
 
-                data = ind_stim_adata.X.toarray()
-                sf = ind_stim_adata.obs['memento_size_factor'].values
-                q = ind_stim_adata.obs['q'].values
-                s, se2 = scaled_mean_se2(data, sf, q)
-                
-                memento_pseudobulks.append(s)
-                pseudobulks.append( ind_stim_adata.X.sum(axis=0).A1)
-                
-                names.append(stim + '_' + ind )
-                adata_list.append(ind_stim_adata.copy())
-                
-        memento_pseudobulks = np.vstack(memento_pseudobulks)
-        memento_pseudobulks = pd.DataFrame(memento_pseudobulks.T, columns=names, index=adata.var.index.tolist())
-        
-        pseudobulks = np.vstack(pseudobulks)
-        pseudobulks = pd.DataFrame(pseudobulks.T, columns=names, index=adata.var.index.tolist())
-        
-        sc_adata = sc.AnnData.concatenate(*adata_list)
-        
-        sc_adata.write(data_path + 'sc_rnaseq/h5Seurat/' + fname + '.h5ad')
-        pseudobulks.to_csv(data_path + 'sc_rnaseq/pseudobulks/' + fname + '.csv')
-        memento_pseudobulks.to_csv(data_path + 'sc_rnaseq/pseudobulks/memento_' + fname + '.csv')
+            pseudobulks = []
+            memento_pseudobulks = []
+            names = []
+            adata_list = []
+            for ind in inds:
+                for stim in stims:
+                    ind_stim_adata = adata[(adata.obs['replicate']==ind) & (adata.obs['label']==stim)].copy()
+                    
+                    # idxs = np.random.choice(ind_stim_adata.obs.index, size=100, replace=False)
+                    # ind_stim_adata = ind_stim_adata[idxs].copy()
+                    
+                    data = ind_stim_adata.X.toarray()
+                    sf = ind_stim_adata.obs['memento_size_factor'].values
+                    q = ind_stim_adata.obs['q'].values
+                    s, se2 = scaled_mean_se2(data, sf, q)
+
+                    memento_pseudobulks.append(s)
+                    pseudobulks.append( ind_stim_adata.X.sum(axis=0).A1)
+
+                    names.append(stim + '_' + ind )
+                    adata_list.append(ind_stim_adata.copy())
+
+            memento_pseudobulks = np.vstack(memento_pseudobulks)
+            memento_pseudobulks = pd.DataFrame(memento_pseudobulks.T, columns=names, index=adata.var.index.tolist())
+
+            pseudobulks = np.vstack(pseudobulks)
+            pseudobulks = pd.DataFrame(pseudobulks.T, columns=names, index=adata.var.index.tolist())
+
+            sc_adata = sc.AnnData.concatenate(*adata_list)
+
+            sc_adata.write(data_path + 'sc_rnaseq/h5Seurat/replicates/' + fname + '_all.h5ad')
+            pseudobulks.to_csv(data_path + 'sc_rnaseq/pseudobulks/' + fname + '_all.csv')
+            # memento_pseudobulks.to_csv(data_path + 'sc_rnaseq/pseudobulks/memento_' + fname + '_{}.csv'.format(trial))
+
+def separate_datasets():
 	
+	for fname in files:
+			
+		adata = sc.read(data_path + 'sc_rnaseq/h5Seurat/replicates/' + fname + '_all.h5ad')
+
+		expr_df = pd.DataFrame(adata.X.toarray(), columns=adata.var.index, index=adata.obs.index)
+
+		expr_df.to_csv(data_path + 'sc_rnaseq/h5Seurat/replicates/{}_all_expr.csv'.format(fname, ))
+		adata.obs.to_csv(data_path + 'sc_rnaseq/h5Seurat/replicates/{}_all_obs.csv'.format(fname, ))
+		adata.var.to_csv(data_path + 'sc_rnaseq/h5Seurat/replicates/{}_all_var.csv'.format(fname, ))
+		
 if __name__ == '__main__':
 
-	generate_pseudobulks()
+	# generate_pseudobulks()
+	
+	separate_datasets()

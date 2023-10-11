@@ -189,9 +189,6 @@ def _ht_1d(
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
 			precomputed=None)
-		se = np.sqrt(var/Nc_list[group_idx])
-		log_se = (np.log(mean + se) - np.log(mean - se))/2
-		boot_means.append(mean)
 
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
@@ -204,7 +201,7 @@ def _ht_1d(
 		if filled_mean is None or filled_var is None:
 			continue
 
-		boot_mean[group_idx, 1:] = np.log(filled_mean)/log_se
+		boot_mean[group_idx, 1:] = np.log(filled_mean)
 		boot_var[group_idx, 1:] = np.log(filled_var)
 		
 # 		# This replicate is good
