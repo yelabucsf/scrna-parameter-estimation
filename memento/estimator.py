@@ -206,6 +206,12 @@ def _mean_only_1p(data, n_obs, q, size_factor=None):
 	return [mm_mean+1, np.ones(mm_mean.shape)*10]
 
 
+def _mean_only_shrink(data, n_obs, q, size_factor=None):
+    """
+        
+    """
+
+
 def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
 	"""
 		Estimate the covariance using the hypergeometric noise process between genes at idx1 and idx2.
