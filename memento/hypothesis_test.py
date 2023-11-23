@@ -188,7 +188,7 @@ def _ht_1d(
 			num_boot=num_boot,
 			q=q[group_idx],
 			_estimator_1d=_estimator_1d,
-			precomputed=None)
+			**kwargs)
 
 		# Compute the residual variance
 		res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])

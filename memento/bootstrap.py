@@ -78,7 +78,7 @@ def _bootstrap_1d(
 	_estimator_1d,
 	num_boot=1000,
 	return_times=False,
-	precomputed=None):
+	**kwargs):
 	"""
 		Perform the bootstrap and CI calculation for mean and variance.
 		
@@ -107,7 +107,8 @@ def _bootstrap_1d(
 		data=(expr, gene_rvs),
 		n_obs=n_obs,
 		q=q,
-		size_factor=(inv_sf, inv_sf_sq))
+		size_factor=(inv_sf, inv_sf_sq),
+        **kwargs)
 	boot_time = time.time()
 	
 	if return_times:
