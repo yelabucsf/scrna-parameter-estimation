@@ -220,7 +220,7 @@ def _mean_only_1p(data, n_obs, q, size_factor=None):
     return [mm_mean+1, np.ones(mm_mean.shape)*10]
 
 
-def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0.9, max_to_replace=10):
+def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0, max_to_replace=13):
     """
         Hypergeometric mean estimator based on Good's estimator.
     """
@@ -230,7 +230,7 @@ def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0.9, max_to_replace=
     else:
 
         arr = data
-        
+        n_genes = data.shape[1]
         pb = (arr.sum(axis=0).A1+1)
         total_umi = pb.sum()
         denom = np.array([total_umi - pb[sparse.find(arr[i])[1]].sum() for i in range(n_obs)]).mean()
@@ -239,7 +239,7 @@ def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0.9, max_to_replace=
         expected_freqs = freqs.mean(axis=0).A1
         initial_values = np.tile(np.arange(max_to_replace)[:,np.newaxis], (1,n_genes))
         final_values = (initial_values + 1) * expected_freqs[initial_values+1] / expected_freqs[initial_values]
-        final_values[0] = (0+1) * expected_freqs[1] * (alpha*(pb/denom) + ((1-alpha)/expected_freqs[0]))
+        final_values[0] = 0#(0+1) * expected_freqs[1] * (alpha*(pb/denom) + ((1-alpha)/expected_freqs[0]))
 
         corrected_counts = sparse.csr_matrix(arr, dtype=float)
         for val in range(1,max_to_replace):
