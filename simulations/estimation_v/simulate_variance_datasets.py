@@ -20,9 +20,8 @@ DATA_PATH = '/home/ubuntu/Data/'
 CELL_TYPE = 'CD4 T cells - ctrl'
 
 NUM_TRIALS = 20
-METHODS = ['naive', 'pb', 'hypergeometric']
 CAPTURE_EFFICIENCIES = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
-NUMBER_OF_CELLS = [10, 20, 30, 40, 50, 100, 200, 500]
+NUMBER_OF_CELLS = [10, 20, 30, 40, 50, 100, 200]
 
 
 def concordance(x, y, log=True):
@@ -89,16 +88,6 @@ if __name__ == '__main__':
     x_param, z_param, Nc = get_simulation_parameters(q=0.07)
     true_mean = x_param[0]
     
-    # Simulation setup
-    num_genes = true_mean.shape[0]
-    num_simulations = len(CAPTURE_EFFICIENCIES) * len(NUMBER_OF_CELLS) * len(METHODS) * NUM_TRIALS
-    mean_estimates = np.zeros((num_simulations+1, num_genes))
-    simulation_details = []
-    
-    # First "simulation" is the true data
-    mean_estimates[0, :] = true_mean
-    simulation_details.append((1, np.inf, 0, 'ground_truth'))
-    
     simulation_idx = 1
     for q in CAPTURE_EFFICIENCIES:
         
@@ -108,16 +97,10 @@ if __name__ == '__main__':
                 
                 true_data, captured_data = simulate_data(num_cell, z_param, Nc)
                 size_factor = captured_data.sum(axis=1).A1
+
+                sc.AnnData(captured_data).write(DATA_PATH + f'simulation/variance/{num_cell}_{q}_{trial}.h5ad')
+
                 
-                for method in METHODS:
-                    
-                    mean_estimates[simulation_idx, :] = estimate_means(captured_data, size_factor, method)
-                    simulation_details.append((q, num_cell, trial+1, method))
-                    simulation_idx += 1
-    metadata = pd.DataFrame(simulation_details, columns=['q', 'num_cell', 'trial', 'method'])
-    metadata.to_csv(DATA_PATH + 'simulation/mean/simulation_metadata.csv', index=False)
-    np.savez_compressed(DATA_PATH + 'simulation/mean/simulation_means', means=mean_estimates)
-                                                         
                     
                 
                 
