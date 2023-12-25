@@ -1,8 +1,8 @@
-# simulate_mean_estimation.py
+# simulate_variance_datasets.py
 
 # Authors: Min Cheol Kim
 
-# This script generates the figure for mean comparisons, comparing the naive mean estimator and the memento estimator. 
+# This script generates datasets for variance estimation comparisons
 
 import scanpy as sc
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ CELL_TYPE = 'CD4 T cells - ctrl'
 
 NUM_TRIALS = 20
 CAPTURE_EFFICIENCIES = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
-NUMBER_OF_CELLS = [10, 20, 30, 40, 50, 100, 200]
+NUMBER_OF_CELLS = [50, 100, 200, 300, 500]
 
 
 def concordance(x, y, log=True):
