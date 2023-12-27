@@ -25,21 +25,6 @@ CAPTURE_EFFICIENCIES = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
 NUMBER_OF_CELLS = [10, 20, 30, 40, 50, 100, 200, 500]
 
 
-def concordance(x, y, log=True):
-    
-    if log:
-        a = np.log(x)
-        b = np.log(y)
-    else:
-        a = x
-        b = y
-    cond = np.isfinite(a) & np.isfinite(b)
-    a = a[cond]
-    b = b[cond]
-    cmat = np.cov(a, b)
-    return 2*cmat[0,1]/(cmat[0,0] + cmat[1,1] + (a.mean()-b.mean())**2)
-
-
 def get_simulation_parameters(q=0.07):
     """ Extracts simulation parameters. """
     
@@ -76,7 +61,7 @@ def estimate_means(data, size_factor, method):
     
     elif method == 'hypergeometric':
         
-        return memento.estimator.RNAHypergeometric().mean(data, size_factor)
+        return memento.estimator.RNAHypergeometric(0.07).mean(data, size_factor)
     else:
         
         print('Not implemented!')
