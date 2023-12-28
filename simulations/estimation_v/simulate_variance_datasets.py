@@ -20,9 +20,8 @@ DATA_PATH = '/home/ubuntu/Data/'
 CELL_TYPE = 'CD4 T cells - ctrl'
 
 NUM_TRIALS = 20
-CAPTURE_EFFICIENCIES = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
-NUMBER_OF_CELLS = [50, 100, 200, 300, 500]
-
+CAPTURE_EFFICIENCIES = [0.05, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
+NUMBER_OF_CELLS = [50, 100, 500]
 
 def concordance(x, y, log=True):
     
@@ -59,27 +58,10 @@ def simulate_data(n_cells, z_param, Nc):
     true_data[true_data < 0] = 0
     
     qs, captured_data = simulate.capture_sampling(true_data, q, q_sq=None)
+    true_data = sparse.csr_matrix(true_data)
     captured_data = sparse.csr_matrix(captured_data)
     
     return true_data, captured_data
-
-
-def estimate_means(data, size_factor, method):
-    
-    
-    if method == 'naive':
-        return (data/size_factor.reshape(-1,1)).mean(axis=0).A1
-
-    elif method == 'pb':
-        return data.sum(axis=0).A1/data.sum()
-    
-    elif method == 'hypergeometric':
-        
-        return memento.estimator.RNAHypergeometric().mean(data, size_factor)
-    else:
-        
-        print('Not implemented!')
-        return np.zeros(data.shape[-1])
         
 
 if __name__ == '__main__':
@@ -98,6 +80,7 @@ if __name__ == '__main__':
                 true_data, captured_data = simulate_data(num_cell, z_param, Nc)
                 size_factor = captured_data.sum(axis=1).A1
 
+                sc.AnnData(true_data).write(DATA_PATH + f'simulation/variance/{num_cell}_{q}_{trial}_ground_truth.h5ad')
                 sc.AnnData(captured_data).write(DATA_PATH + f'simulation/variance/{num_cell}_{q}_{trial}.h5ad')
 
                 

@@ -11,9 +11,10 @@ suppressMessages(library(Matrix))
 suppressMessages(library(BASiCS))
 
 DATA_PATH <- '/home/ubuntu/Data/'
+
 NUM_TRIALS = 20
-CAPTURE_EFFICIENCIES = c(0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1)
-NUMBER_OF_CELLS = c(50, 100, 200, 300, 500)
+CAPTURE_EFFICIENCIES = c(0.05, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1)
+NUMBER_OF_CELLS = c(50, 100, 500)
 
 get_chain <- function(seurat, cond) {
     dat <- subset(x=seurat, idents=cond)
@@ -41,7 +42,7 @@ for (num_cell in NUMBER_OF_CELLS){
             Convert(paste(fname, '.h5ad', sep=''), dest = "h5seurat", overwrite = TRUE, verbose = FALSE, misc=FALSE)
             seurat <- LoadH5Seurat(paste(fname, '.h5seurat', sep=''), meta.data=FALSE,misc=FALSE, verbose = FALSE)
             seurat$condition<- 'const'
-            seurat$batch <- 'same'
+            seurat$batch <- sample( c('A','B'), num_cell, replace=TRUE)
             Idents(seurat) <- 'condition'
             chain <- get_chain(seurat, 'const')
             
@@ -57,7 +58,6 @@ for (num_cell in NUMBER_OF_CELLS){
             parameters$variance = parameters$mu + parameters$delta*parameters$mu**2
 
             write.csv(parameters, paste(fname, 'parameters.csv', sep='_'))
-        
         }  
     }
 }
