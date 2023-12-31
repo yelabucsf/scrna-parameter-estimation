@@ -20,7 +20,7 @@ DATA_PATH = '/home/ubuntu/Data/'
 CELL_TYPE = 'CD4 T cells - ctrl'
 
 NUM_TRIALS = 20
-CAPTURE_EFFICIENCIES = [0.05, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
+CAPTURE_EFFICIENCIES = [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
 NUMBER_OF_CELLS = [50, 100, 500]
 
 def concordance(x, y, log=True):
