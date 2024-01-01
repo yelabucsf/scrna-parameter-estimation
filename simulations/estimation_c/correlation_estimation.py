@@ -21,9 +21,9 @@ import itertools
 DATA_PATH = '/home/ubuntu/Data/'
 CELL_TYPE = 'CD4 T cells - ctrl'
 
-NUM_CORR_GENES = 500 # First hundred genes display correlation
+NUM_CORR_GENES = 300 # First hundred genes display correlation
 NUM_TRIALS = 20
-CAPTURE_EFFICIENCIES = [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
+CAPTURE_EFFICIENCIES = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
 NUMBER_OF_CELLS = [50, 100, 500]
 
 METHODS = ['ground_truth','naive', 'poisson', 'hypergeometric']
@@ -46,44 +46,51 @@ def get_simulation_parameters(q=0.07):
 def simulate_data(n_cells, z_param, Nc):
     """ Generates simulated data. """
     
+    # Generate ground truth data
     cov_matrix = sklearn_datasets.make_spd_matrix(NUM_CORR_GENES)
     true_data = simulate.simulate_transcriptomes(n_cells=n_cells, means=z_param[0], variances=z_param[1], Nc=Nc, norm_cov=cov_matrix)
     true_data[true_data < 0] = 0
-    cell_filter = true_data.sum(axis=1) > 0
-    true_data = true_data[cell_filter, :]
     
+    # Sample transcripts
     qs, captured_data = simulate.capture_sampling(true_data, q, q_sq=None)
+
+    # Filter cells
+    cell_filter = captured_data.sum(axis=1) > 0
+    gene_filter = captured_data.sum(axis=0) > 0
+    true_data = true_data[cell_filter, :][:, gene_filter]
+    captured_data = captured_data[cell_filter, :][:, gene_filter]
+    
     captured_data = sparse.csr_matrix(captured_data)
     true_data = sparse.csr_matrix(true_data)
-    return true_data, captured_data
+    return true_data, captured_data, int(gene_filter[:NUM_CORR_GENES].sum())
 
 
-def estimate_correlations(true_data, captured_data, method, q):
+def estimate_correlations(true_data, captured_data, method, q, filtered_num_corr_genes):
     
     
     if method == 'ground_truth':
         size_factor = true_data.sum(axis=1).A1
-        relative_data = true_data[:, :NUM_CORR_GENES].toarray()/size_factor.reshape(-1,1)
+        relative_data = true_data[:, :filtered_num_corr_genes].toarray()/size_factor.reshape(-1,1)
         mat = np.corrcoef(relative_data, rowvar=False)
-        pairs = list(itertools.combinations(np.arange(NUM_CORR_GENES), 2))
+        pairs = list(itertools.combinations(np.arange(filtered_num_corr_genes), 2))
         return np.array([mat[a,b] for a, b in pairs])
         
         
     elif method == 'naive':
         size_factor = captured_data.sum(axis=1).A1
-        relative_data = captured_data[:, :NUM_CORR_GENES].toarray()/size_factor.reshape(-1,1)
+        relative_data = captured_data[:, :filtered_num_corr_genes].toarray()/size_factor.reshape(-1,1)
         mat =  np.corrcoef(relative_data, rowvar=False)
-        pairs = list(itertools.combinations(np.arange(NUM_CORR_GENES), 2))
+        pairs = list(itertools.combinations(np.arange(filtered_num_corr_genes), 2))
         return np.array([mat[a,b] for a, b in pairs])
     
     elif method == 'hypergeometric':
         size_factor = captured_data.sum(axis=1).A1
-        i1, i2 = zip(*list(itertools.combinations(np.arange(NUM_CORR_GENES), 2)))
+        i1, i2 = zip(*list(itertools.combinations(np.arange(filtered_num_corr_genes), 2)))
         return memento.estimator.RNAHypergeometric(q).correlation(captured_data, size_factor, i1, i2)
     
     elif method == 'poisson':
         size_factor = captured_data.sum(axis=1).A1
-        i1, i2 = zip(*list(itertools.combinations(np.arange(NUM_CORR_GENES), 2)))
+        i1, i2 = zip(*list(itertools.combinations(np.arange(filtered_num_corr_genes), 2)))
         return memento.estimator.RNAPoisson().correlation(captured_data, size_factor, i1, i2)
     
     else:
@@ -110,15 +117,16 @@ if __name__ == '__main__':
             
             for trial in range(NUM_TRIALS):
                 
-                true_data, captured_data = simulate_data(num_cell, z_param, Nc)
+                true_data, captured_data, filtered_num_corr_genes = simulate_data(num_cell, z_param, Nc)
+                num_avail_pairs = int(filtered_num_corr_genes*(filtered_num_corr_genes-1)/2)
                 
                 for method in METHODS:
                     
-                    correlation_estimates[simulation_idx, :] = estimate_correlations(true_data, captured_data, method, q)
-                    simulation_details.append((q, num_cell, trial+1, method))
+                    correlation_estimates[simulation_idx, :num_avail_pairs] = estimate_correlations(true_data, captured_data, method, q, filtered_num_corr_genes)
+                    simulation_details.append((q, num_cell, trial+1, method, num_avail_pairs))
                     simulation_idx += 1
                     
-    metadata = pd.DataFrame(simulation_details, columns=['q', 'num_cell', 'trial', 'method'])
+    metadata = pd.DataFrame(simulation_details, columns=['q', 'num_cell', 'trial', 'method', 'num_pairs'])
     metadata.to_csv(DATA_PATH + 'simulation/correlation/simulation_metadata.csv', index=False)
     np.savez_compressed(DATA_PATH + 'simulation/correlation/simulation_correlations', correlations=correlation_estimates)
                                                          
