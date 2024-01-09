@@ -18,9 +18,9 @@ import scipy.sparse as sparse
 
 DATA_PATH = '/home/ubuntu/Data/'
 
-NUM_TRIALS = 1
+NUM_TRIALS = 50
 METHODS = ['naive', 'hypergeometric']
-NUMBER_OF_CELLS = [50, 100, 500, 1000, 5000]
+NUMBER_OF_CELLS = [10, 100, 500, 1000, 5000]
 
 
 def sample_dropseq_data(adata, num_cells):
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     
     # Analysis setup
     num_samples = len(NUMBER_OF_CELLS) * len(METHODS) * NUM_TRIALS
-    mean_estimates = np.zeros((num_samples, num_genes), dtype=np.float64)
+    mean_estimates = np.zeros((num_samples+len(METHODS), num_genes), dtype=np.float64)
     sample_details = []
     
     sample_idx = 0
@@ -70,6 +70,14 @@ if __name__ == '__main__':
                 mean_estimates[sample_idx, :] = estimate_mean(sampled.X, method)
                 sample_details.append((num_cell, trial+1, method))
                 sample_idx += 1
+                
+                
+    # Run the entire dataset
+    for method in METHODS:
+
+        mean_estimates[sample_idx, :] = estimate_mean(dropseq_adata.X, method)
+        sample_details.append((dropseq_adata.shape[0], 1, method))
+        sample_idx += 1
                     
     metadata = pd.DataFrame(sample_details, columns=['num_cell', 'trial', 'method'])
     metadata.to_csv(DATA_PATH + 'smfish/mean/subsample_metadata.csv', index=False)

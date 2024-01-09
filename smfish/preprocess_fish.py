@@ -41,8 +41,6 @@ if __name__ == '__main__':
     z_means = dropseq_adata.X.mean(axis=0).A1    
     dropseq_genes = dropseq_adata.var.index[z_means > MIN_MEAN_THRESH].tolist()
     
-    dropseq_adata.obs.index = [f'cell{i}' for i in range(dropseq_adata.shape[0])]
-    dropseq_adata.var.index = [f'gene{i}' for i in range(dropseq_adata.shape[1])]
     dropseq_adata.write(DATA_PATH + 'smfish/filtered_dropseq.h5ad')
 
     # Calculate stuff for smFISH

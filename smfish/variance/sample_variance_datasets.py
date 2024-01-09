@@ -25,8 +25,12 @@ def sample_dropseq_data(adata, num_cells):
     
     random_idxes = np.random.choice(adata.shape[0], num_cells, replace=False)
     
-    return adata[random_idxes].copy()
+    sampled_adata =  adata[random_idxes].copy()
         
+    sampled_adata.obs.index = [f'cell{i}' for i in range(sampled_adata.shape[0])]
+    sampled_adata.var.index = [f'gene{i}' for i in range(sampled_adata.shape[1])]
+    
+    return sampled_adata
 
 if __name__ == '__main__':
     
@@ -39,6 +43,8 @@ if __name__ == '__main__':
             sampled = sample_dropseq_data(dropseq_adata, num_cell)
             
             sampled.write(DATA_PATH + f'smfish/variance/{num_cell}_{trial}.h5ad')
+            
+    dropseq_adata.write(DATA_PATH + f'smfish/variance/8000_0.h5ad')
 
                 
                     
