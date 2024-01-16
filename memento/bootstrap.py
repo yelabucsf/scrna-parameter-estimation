@@ -90,7 +90,7 @@ def _bootstrap_1d(
 	
 	# Pre-compute size factor
 	# Pass the pre-computed values for permutation test
-	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor) if precomputed is None else precomputed
+	inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor)
 	count_time = time.time()
 		
 	# Skip this gene if it has no expression
@@ -107,8 +107,7 @@ def _bootstrap_1d(
 		data=(expr, gene_rvs),
 		n_obs=n_obs,
 		q=q,
-		size_factor=(inv_sf, inv_sf_sq),
-        **kwargs)
+		size_factor=(inv_sf, inv_sf_sq))
 	boot_time = time.time()
 	
 	if return_times:

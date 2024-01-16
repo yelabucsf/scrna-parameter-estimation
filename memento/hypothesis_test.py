@@ -310,8 +310,11 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 
 	mean_se = np.nanstd(mean_coef[:, 1:], axis=1)
 	var_se = np.nanstd(var_coef[:, 1:], axis=1)
+    
+	mean_coef = np.nanmean(mean_coef, axis=1)
+	var_coef = np.nanmean(var_coef, axis=1)
 
-	return mean_coef[:, 0], mean_se, mean_asl, var_coef[:, 0], var_se, var_asl
+	return mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl
 
 
 def _ht_2d(
