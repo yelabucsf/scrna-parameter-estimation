@@ -22,9 +22,9 @@ from .estimators import compute_mean, compute_sem, bin_size_factor, compute_sev,
 TEST_MODE = bool(os.getenv("TEST_MODE", False))  # Read data from simple test fixture Census data
 PROFILE_MODE = bool(os.getenv("PROFILE_MODE", False))  # Run pass 2 in single-process mode with profiling output
 
-ESTIMATORS_CUBE_ARRAY_URI = "estimators_cube_2"
+ESTIMATORS_CUBE_ARRAY_URI = "estimators_cube_dcs_many"
 
-OBS_WITH_SIZE_FACTOR_TILEDB_ARRAY_URI = "obs_with_size_factor_2"
+OBS_WITH_SIZE_FACTOR_TILEDB_ARRAY_URI = "obs_with_size_factor_many"
 
 TILEDB_SOMA_BUFFER_BYTES = 2**31
 if TEST_MODE:
@@ -33,7 +33,7 @@ if TEST_MODE:
 # The minimum number of cells that should be processed at a time by each child process.
 MIN_BATCH_SIZE = 2**14
 # For testing
-MIN_BATCH_SIZE = 5000
+MIN_BATCH_SIZE = 1000
 
 CUBE_TILEDB_DIMS_OBS = [
     "cell_type",
@@ -61,7 +61,8 @@ if TEST_MODE:
 
 CUBE_TILEDB_DIMS = CUBE_DIMS_VAR + CUBE_TILEDB_DIMS_OBS
 
-ESTIMATOR_NAMES = ['nnz', 'n_obs', 'min', 'max', 'sum', 'mean', 'sem', 'var', 'sev', 'selv']
+# ESTIMATOR_NAMES = ['nnz', 'n_obs', 'min', 'max', 'sum', 'mean', 'sem', 'var', 'sev', 'selv']
+ESTIMATOR_NAMES = ['nnz', 'n_obs', 'min', 'max', 'sum', 'mean', 'sem']
 
 
 CUBE_SCHEMA = ArraySchema(
@@ -86,13 +87,38 @@ MAX_WORKERS = 30  # None means use multiprocessing's dynamic default
 
 VAR_VALUE_FILTER = None
 # For testing. Note this only affects pass 2, since all genes must be considered when computing size factors in pass 1.
-# VAR_VALUE_FILTER = "feature_id == 'ENSG00000000419'" #ENSG00000002330'"
+# VAR_VALUE_FILTER = "feature_id == 'ENSG00000002330'" #ENSG00000002330'"
 
 # OBS_VALUE_FILTER = "is_primary_data == True"
 # For testing
 # OBS_VALUE_FILTER = "is_primary_data == True and tissue_general == 'embryo'"
 
-dataset_ids_to_query = ['c7775e88-49bf-4ba2-a03b-93f00447c958', '218acb0f-9f2f-4f76-b90b-15a4b7c7f629', '4c4cd77c-8fee-4836-9145-16562a8782fe']
+dataset_ids_to_query = [
+    '2672b679-8048-4f5e-9786-f1b196ccfd08',
+    '86282760-5099-4c71-8cdd-412dcbbbd0b9',
+    '2872f4b0-b171-46e2-abc6-befcf6de6306',
+    '644a578d-ffdc-446b-9679-e7ab4c919c13',
+    '11ff73e8-d3e4-4445-9309-477a2c5be6f6',
+    '4dd00779-7f73-4f50-89bb-e2d3c6b71b18',
+    'bd65a70f-b274-4133-b9dd-0d1431b6af34',
+    'b07fb54c-d7ad-4995-8bb0-8f3d8611cabe',
+    '3f32121d-126b-4e8d-9f69-d86502d2a1b1',
+    'a51c6ece-5731-4128-8c1e-5060e80c69e4',
+    'd7dcfd8f-2ee7-4385-b9ac-e074c23ed190',
+    '2d31c0ca-0233-41ce-bd1a-05aa8404b073',
+    '1e5bd3b8-6a0e-4959-8d69-cafed30fe814',
+    # 'cd4c96bb-ad66-4e83-ba9e-a7df8790eb12',
+    '44882825-0da1-4547-b721-2c6105d4a9d1',
+    '4ed927e9-c099-49af-b8ce-a2652d069333',
+    '00ff600e-6e2e-4d76-846f-0eec4f0ae417',
+    '105c7dad-0468-4628-a5be-2bb42c6a8ae4',
+    'c5d88abe-f23a-45fa-a534-788985e93dad',
+    # 'ed5d841d-6346-47d4-ab2f-7119ad7e3a35',
+    '53d208b0-2cfd-4366-9866-c3c6114081bc',
+    '3de0ad6d-4378-4f62-b37b-ec0b75a50d94',
+    '574e9f9e-f8b4-41ef-bf19-89a9964fd9c7',
+    '1a2e3350-28a8-4f49-b33c-5b67ceb001f6',
+    'd3a83885-5198-4b04-8314-b753b66ef9a8']
 dataset_query = '('
 for idx, di in enumerate(dataset_ids_to_query): 
     dataset_query += f'dataset_id == "{di}" '
@@ -169,20 +195,20 @@ def compute_all_estimators_for_gene(obs_group_name: str, gene_group: pd.DataFram
     X_csc = scipy.sparse.coo_array((X_sparse, (data_sparse.index, np.zeros(len(data_sparse), dtype=int))),
                                    shape=(len(data_dense), 1)).tocsc()
 
-    n_obs = len(X_dense)
+    n_obs = X_dense.shape[0]
     if n_obs == 0:
-        return pd.Series(data=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-
+        return pd.Series(data=[0, 0, 0, 0, 0, 0, 0])
+    
     nnz = gene_group.shape[0]
     min_ = X_sparse.min()
     max_ = X_sparse.max()
     sum_ = X_sparse.sum()
     mean = compute_mean(X_dense, size_factors_dense)
     sem = compute_sem(X_dense, size_factors_dense)
-    variance = compute_variance(X_csc, Q, size_factors_dense, group_name=group_name)
-    sev, selv = compute_sev(X_csc, Q, size_factors_dense, num_boot=500, group_name=group_name)
+    # variance = compute_variance(X_csc, Q, size_factors_dense, group_name=group_name)
+    # sev, selv = compute_sev(X_csc, Q, size_factors_dense, num_boot=500, group_name=group_name)
 
-    return pd.Series(data=[nnz, n_obs, min_, max_, sum_, mean, sem, variance, sev, selv])
+    return pd.Series(data=[nnz, n_obs, min_, max_, sum_, mean, sem])
 
 
 def compute_all_estimators_for_batch_tdb(soma_dim_0, obs_df: pd.DataFrame, var_df: pd.DataFrame, X_uri: str,
@@ -266,7 +292,7 @@ def pass_1_compute_size_factors(query: ExperimentAxisQuery, layer: str) -> pd.Da
     obs_df['size_factor'] = obs_df['size_factor'].values#/global_n_umi
 
     # Bin all sums to have fewer unique values, to speed up bootstrap computation
-    obs_df['approx_size_factor'] = bin_size_factor(obs_df['size_factor'].values)
+    obs_df['approx_size_factor'] = obs_df['size_factor'].values#bin_size_factor(obs_df['size_factor'].values)
 
     return obs_df[CUBE_LOGICAL_DIMS_OBS + ['approx_size_factor']]
 
@@ -276,6 +302,9 @@ def pass_2_compute_estimators(query: ExperimentAxisQuery, size_factors: pd.DataF
     var_df = query.var().concat().to_pandas().set_index("soma_joinid")
     obs_df = query.obs(column_names=['soma_joinid'] + CUBE_LOGICAL_DIMS_OBS).concat().to_pandas().set_index("soma_joinid")
     obs_df = obs_df.join(size_factors[['approx_size_factor']])
+    
+    # SHUFFLE CELL TYPE LABELS HERE
+    # obs_df['cell_type'] = obs_df['cell_type'].sample(frac=1).values
 
     # accumulate into a TileDB array
     tiledb.Array.create(ESTIMATORS_CUBE_ARRAY_URI, CUBE_SCHEMA, overwrite=True)
