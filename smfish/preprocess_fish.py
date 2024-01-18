@@ -10,7 +10,7 @@ import scipy.optimize as opt
 import itertools
 
 DATA_PATH = '/home/ubuntu/Data/'
-MIN_MEAN_THRESH = 0.001
+MIN_MEAN_THRESH = 0.01
 
 if __name__ == '__main__':
     

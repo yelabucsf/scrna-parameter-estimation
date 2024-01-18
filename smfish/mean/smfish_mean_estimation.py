@@ -80,8 +80,8 @@ if __name__ == '__main__':
         sample_idx += 1
                     
     metadata = pd.DataFrame(sample_details, columns=['num_cell', 'trial', 'method'])
-    metadata.to_csv(DATA_PATH + 'smfish/mean/subsample_metadata.csv', index=False)
-    np.savez_compressed(DATA_PATH + 'smfish/mean/subsample_means', means=mean_estimates)
+    metadata.to_csv(DATA_PATH + 'smfish/mean/sample_metadata.csv', index=False)
+    np.savez_compressed(DATA_PATH + 'smfish/mean/sample_means', means=mean_estimates)
                                                          
                     
                 
