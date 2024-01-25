@@ -17,11 +17,11 @@ import scipy.sparse as sparse
 
 
 DATA_PATH = '/home/ubuntu/Data/'
-NUM_TRIALS = 20
-NUMBER_OF_CELLS = [5000]
-# NUMBER_OF_CELLS = [8000]
+NUM_TRIALS = 100
+# NUMBER_OF_CELLS = [5000]
+NUMBER_OF_CELLS = [500, 1000, 5000, 8000]
 
-METHODS = ['naive','hypergeometric', 'poisson']
+METHODS = ['naive','hypergeometric', 'poisson', 'basics']
 
 
 def estimate_variance(method, nc, trial): # x_param used for scaling for basics
@@ -40,14 +40,16 @@ def estimate_variance(method, nc, trial): # x_param used for scaling for basics
     
     elif method == 'hypergeometric':
         
-        return memento.estimator.RNAHypergeometric(0.1).variance(data, size_factor)
+        return memento.estimator.RNAHypergeometric(0.01485030176341905).variance(data, size_factor)
     
     elif method == 'basics': # just load the values already calculated from BASICS R script
         
-        basics_parameters = pd.read_csv(DATA_PATH + f'smfish/variance/{num_cell}_{q}_{trial}_parameters.csv', index_col=0)
-        scale_factor = (basics_parameters['mu']/x_param[0]).mean()
+        basics_parameters = pd.read_csv(DATA_PATH + f'smfish/variance/{num_cell}_{trial}_parameters.csv', index_col=0)
+        naive_means = (data.toarray()/size_factor.reshape(-1,1)).mean(axis=0)
+        scale_factor = basics_parameters['mu'].values/naive_means
+        scale_factor = scale_factor[np.isfinite(scale_factor)].mean()
         basics_parameters['scaled_variance'] = basics_parameters['variance']/scale_factor**2
-
+        
         return basics_parameters['scaled_variance'].values
     else:
         
@@ -75,8 +77,10 @@ def estimate_mean(method, nc, trial): # x_param used for scaling for basics
 
     elif method == 'basics': # just load the values already calculated from BASICS R script
 
-        basics_parameters = pd.read_csv(DATA_PATH + f'smfish/variance/{num_cell}_{q}_{trial}_parameters.csv', index_col=0)
-        scale_factor = (basics_parameters['mu']/x_param[0]).mean()
+        basics_parameters = pd.read_csv(DATA_PATH + f'smfish/variance/{num_cell}_{trial}_parameters.csv', index_col=0)
+        naive_means = (data.toarray()/size_factor.reshape(-1,1)).mean(axis=0)
+        scale_factor = basics_parameters['mu'].values/naive_means
+        scale_factor = scale_factor[np.isfinite(scale_factor)].mean()
         basics_parameters['scaled_mean'] = basics_parameters['mu']/scale_factor
 
         return basics_parameters['scaled_mean'].values
@@ -101,10 +105,14 @@ if __name__ == '__main__':
         
     for num_cell in NUMBER_OF_CELLS:
 
-        for trial in range(NUM_TRIALS):
+        for trial in range(NUM_TRIALS if num_cell < 8000 else 1):
 
             # Iterate through the methods and calculate variance
             for method in METHODS:
+                
+                if method == 'basics' and ((num_cell > 1000 and trial > 0) or (num_cell <= 1000 and trial > 1)):
+                    
+                    continue
 
                 variance_estimates[sample_idx, :] = estimate_variance(method, num_cell, trial)
                 mean_estimates[sample_idx, :] = estimate_mean(method, num_cell, trial)

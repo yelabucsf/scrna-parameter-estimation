@@ -12,14 +12,8 @@ suppressMessages(library(BASiCS))
 
 DATA_PATH <- '/home/ubuntu/Data/'
 
-NUM_TRIALS = 20
-NUMBER_OF_CELLS = c(50, 100, 500)
-
-NUM_TRIALS = 20
-NUMBER_OF_CELLS = c(500)
-
-NUM_TRIALS = 1
-NUMBER_OF_CELLS = c(8000)
+NUM_TRIALS = 100
+# NUMBER_OF_CELLS = c(500, 1000, 5000, 8000)
 
 get_chain <- function(seurat, cond) {
     dat <- subset(x=seurat, idents=cond)
@@ -36,9 +30,15 @@ get_chain <- function(seurat, cond) {
 
 setwd(paste(DATA_PATH, 'smfish/variance/', sep=''))
 
-for (num_cell in NUMBER_OF_CELLS){
+for (trial in seq(0, NUM_TRIALS-1)){
+    
+    if (trial == 0) { NUMBER_OF_CELLS <- c(500, 1000, 5000, 8000) }
+    
+    else { NUMBER_OF_CELLS <- c(500, 1000) }
+    
+    for (num_cell in NUMBER_OF_CELLS){
             
-    for (trial in seq(0, NUM_TRIALS-1)){
+
 
         # Setup and run BASiCS
         fname = paste(num_cell, trial, sep='_')

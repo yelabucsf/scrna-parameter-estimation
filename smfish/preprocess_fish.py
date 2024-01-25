@@ -45,11 +45,11 @@ if __name__ == '__main__':
 
     # Calculate stuff for smFISH
     smfish = pd.read_csv(DATA_PATH + 'smfish/fishSubset.txt', index_col=0, sep=' ')
-    filtered_fish = smfish.query('GAPDH > 0')
+    filtered_fish = smfish.query('GAPDH > 50')
     overlap_genes = list(set(dropseq_genes) & set(smfish.columns))
 
-    mean_genes = overlap_genes
-    var_genes = [i for i in overlap_genes if i != 'GAPDH']
+    mean_genes = overlap_genes#[i for i in overlap_genes if i != 'GAPDH']
+    var_genes = overlap_genes#[i for i in overlap_genes if i != 'GAPDH']
     corr_genes = [(a,b) for a,b in itertools.combinations(overlap_genes, 2) if 'GAPDH' not in [a,b]]
 
     smfish_means = np.zeros(len(mean_genes))
@@ -57,8 +57,7 @@ if __name__ == '__main__':
     smfish_correlations = np.zeros(len(corr_genes))
 
     for idx, gene in enumerate(mean_genes):
-        if gene == 'GAPDH':
-            smfish_means[idx] = 1.0
+
         df = filtered_fish[['GAPDH', gene]].dropna()
         norm = df[gene].values/df['GAPDH'].values
         smfish_means[idx] = norm.mean()
@@ -66,7 +65,7 @@ if __name__ == '__main__':
     for idx, gene in enumerate(var_genes):
 
         df = filtered_fish[['GAPDH', gene]].dropna()
-        norm = df[gene].values/df['GAPDH'].values
+        norm = df[gene].values#/df['GAPDH'].values
         smfish_variances[idx] = norm.var()
 
     for idx, pair in enumerate(corr_genes):
@@ -77,8 +76,10 @@ if __name__ == '__main__':
         if df.shape[0] < 2:
             smfish_correlations[idx] = np.nan
             continue
-        norm1 = (df[gene1]/df['GAPDH']).values
-        norm2 = (df[gene2]/df['GAPDH']).values
+        # norm1 = (df[gene1]/df['GAPDH']).values
+        # norm2 = (df[gene2]/df['GAPDH']).values
+        norm1 = (df[gene1]).values
+        norm2 = (df[gene2]).values
         smfish_correlations[idx] = stats.pearsonr(norm1, norm2)[0]
 
 

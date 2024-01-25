@@ -1,4 +1,4 @@
-# simulate_variance_datasets.py
+# sample_correlation_datasets.py
 
 # Authors: Min Cheol Kim
 
@@ -43,9 +43,9 @@ if __name__ == '__main__':
 
             sampled = sample_dropseq_data(dropseq_adata, num_cell)
             
-            sampled.write(DATA_PATH + f'smfish/variance/{num_cell}_{trial}.h5ad')
+            sampled.write(DATA_PATH + f'smfish/correlation/{num_cell}_{trial}.h5ad')
             
-    dropseq_adata.write(DATA_PATH + f'smfish/variance/8000_0.h5ad')
+    dropseq_adata.write(DATA_PATH + f'smfish/correlation/8000_0.h5ad')
 
                 
                     

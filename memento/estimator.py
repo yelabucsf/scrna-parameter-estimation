@@ -86,7 +86,7 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
         
     if mask is not None:
     
-        Nrc = X.multiply(mask).sum(axis=1).A1
+        Nrc = X.multiply(mask).sum(axis=1).A1.astype(float)
         if shrinkage > 0:
             Nrc += np.quantile(Nrc, shrinkage) # Shrinkage
         Nr = Nrc.mean()

@@ -18,13 +18,17 @@ import scipy.sparse as sparse
 
 DATA_PATH = '/home/ubuntu/Data/'
 
-NUM_TRIALS = 50
+NUM_TRIALS = 100
 METHODS = ['naive', 'hypergeometric']
-NUMBER_OF_CELLS = [10, 100, 500, 1000, 5000]
+NUMBER_OF_CELLS = [10, 100, 500, 1000, 5000, 8000]
 
 
 def sample_dropseq_data(adata, num_cells):
     """ Generates sampled data. """
+    
+    if num_cells >= 8000:
+        
+        return adata.copy()
     
     random_idxes = np.random.choice(adata.shape[0], num_cells, replace=False)
     
@@ -33,9 +37,11 @@ def sample_dropseq_data(adata, num_cells):
 
 def estimate_mean(data, method):
     
+    # size_factor = np.ones(data.shape[0])
     size_factor = data.sum(axis=1).A1
     
     if method == 'naive':
+        
         return (data/size_factor.reshape(-1,1)).mean(axis=0).A1
     
     elif method == 'hypergeometric':
@@ -53,35 +59,28 @@ if __name__ == '__main__':
     num_genes = dropseq_adata.shape[1]
     
     # Analysis setup
-    num_samples = len(NUMBER_OF_CELLS) * len(METHODS) * NUM_TRIALS
-    mean_estimates = np.zeros((num_samples+len(METHODS), num_genes), dtype=np.float64)
+    num_samples = (len(NUMBER_OF_CELLS)-1) * len(METHODS) * NUM_TRIALS + len(METHODS)
+    mean_estimates = np.zeros((num_samples, num_genes), dtype=np.float64)
     sample_details = []
     
     sample_idx = 0
         
     for num_cell in NUMBER_OF_CELLS:
 
-        for trial in range(NUM_TRIALS):
+        for trial in range(NUM_TRIALS if num_cell < 8000 else 1):
 
             # Iterate through the methods and calculate mean
             sampled = sample_dropseq_data(dropseq_adata, num_cell)
             for method in METHODS:
-
+                
                 mean_estimates[sample_idx, :] = estimate_mean(sampled.X, method)
                 sample_details.append((num_cell, trial+1, method))
                 sample_idx += 1
-                
-                
-    # Run the entire dataset
-    for method in METHODS:
-
-        mean_estimates[sample_idx, :] = estimate_mean(dropseq_adata.X, method)
-        sample_details.append((dropseq_adata.shape[0], 1, method))
-        sample_idx += 1
                     
     metadata = pd.DataFrame(sample_details, columns=['num_cell', 'trial', 'method'])
     metadata.to_csv(DATA_PATH + 'smfish/mean/sample_metadata.csv', index=False)
     np.savez_compressed(DATA_PATH + 'smfish/mean/sample_means', means=mean_estimates)
+
                                                          
                     
                 
