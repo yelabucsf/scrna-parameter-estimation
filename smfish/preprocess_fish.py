@@ -36,7 +36,7 @@ if __name__ == '__main__':
     dropseq_adata = dropseq_adata[dropseq_adata.X.sum(axis=1).A1 > 0].copy()
 
     dropseq_adata.obs['n_counts'] = dropseq_adata.X.sum(axis=1).A1
-    dropseq_adata.obs['n_genes'] = (dropseq_adata.X > 0).sum(axis=1).A1
+    dropseq_adata.obs['n_genes'] = (dropseq_adata.X > 50).sum(axis=1).A1
 
     z_means = dropseq_adata.X.mean(axis=0).A1    
     dropseq_genes = dropseq_adata.var.index[z_means > MIN_MEAN_THRESH].tolist()
@@ -45,8 +45,9 @@ if __name__ == '__main__':
 
     # Calculate stuff for smFISH
     smfish = pd.read_csv(DATA_PATH + 'smfish/fishSubset.txt', index_col=0, sep=' ')
-    filtered_fish = smfish.query('GAPDH > 50')
+    filtered_fish = smfish.query('GAPDH > 0')
     overlap_genes = list(set(dropseq_genes) & set(smfish.columns))
+    print('number of overlap genes: ', len(overlap_genes))
 
     mean_genes = overlap_genes#[i for i in overlap_genes if i != 'GAPDH']
     var_genes = overlap_genes#[i for i in overlap_genes if i != 'GAPDH']
@@ -76,8 +77,8 @@ if __name__ == '__main__':
         if df.shape[0] < 2:
             smfish_correlations[idx] = np.nan
             continue
-        # norm1 = (df[gene1]/df['GAPDH']).values
-        # norm2 = (df[gene2]/df['GAPDH']).values
+        norm1 = (df[gene1]/df['GAPDH']).values
+        norm2 = (df[gene2]/df['GAPDH']).values
         norm1 = (df[gene1]).values
         norm2 = (df[gene2]).values
         smfish_correlations[idx] = stats.pearsonr(norm1, norm2)[0]

@@ -23,6 +23,7 @@ NUM_TRIALS = 20
 METHODS = ['naive', 'pb', 'hypergeometric']
 CAPTURE_EFFICIENCIES = [0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1]
 NUMBER_OF_CELLS = [10, 20, 30, 40, 50, 100, 200, 500]
+NUMBER_OF_CELLS = [10, 500]
 
 
 def get_simulation_parameters(q=0.07):
@@ -60,8 +61,9 @@ def estimate_means(data, size_factor, method):
         return data.sum(axis=0).A1/data.sum()
     
     elif method == 'hypergeometric':
-        
-        return memento.estimator.RNAHypergeometric(0.07).mean(data, size_factor)
+        estimator = memento.estimator.RNAHypergeometric(0.07)
+        sf = estimator.estimate_size_factor(data)
+        return estimator.mean(data, sf)
     else:
         
         print('Not implemented!')

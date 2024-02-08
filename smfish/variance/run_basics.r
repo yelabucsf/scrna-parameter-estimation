@@ -12,7 +12,7 @@ suppressMessages(library(BASiCS))
 
 DATA_PATH <- '/home/ubuntu/Data/'
 
-NUM_TRIALS = 100
+NUM_TRIALS = 20
 # NUMBER_OF_CELLS = c(500, 1000, 5000, 8000)
 
 get_chain <- function(seurat, cond) {

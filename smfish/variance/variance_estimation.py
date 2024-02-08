@@ -18,6 +18,7 @@ import scipy.sparse as sparse
 
 DATA_PATH = '/home/ubuntu/Data/'
 NUM_TRIALS = 100
+NUM_BASICS_TRIALS = 20
 # NUMBER_OF_CELLS = [5000]
 NUMBER_OF_CELLS = [500, 1000, 5000, 8000]
 
@@ -40,7 +41,9 @@ def estimate_variance(method, nc, trial): # x_param used for scaling for basics
     
     elif method == 'hypergeometric':
         
-        return memento.estimator.RNAHypergeometric(0.01485030176341905).variance(data, size_factor)
+        est = memento.estimator.RNAHypergeometric(0.01485030176341905)
+        sf = est.estimate_size_factor(data, shrinkage=0.2, filter_mean_thresh=0.07, trim_percent=0.1)
+        return est.variance(data, sf)
     
     elif method == 'basics': # just load the values already calculated from BASICS R script
         
@@ -110,7 +113,7 @@ if __name__ == '__main__':
             # Iterate through the methods and calculate variance
             for method in METHODS:
                 
-                if method == 'basics' and ((num_cell > 1000 and trial > 0) or (num_cell <= 1000 and trial > 1)):
+                if method == 'basics' and ((num_cell > 1000 and trial > 0) or (num_cell <= 1000 and trial >= NUM_BASICS_TRIALS)):
                     
                     continue
 

@@ -26,7 +26,6 @@ NUMBER_OF_CELLS = [500, 1000, 5000, 8000]
 MIN_MEAN_THRESH = 0.01
 
 METHODS = ['hypergeometric','poisson', 'saver' ,'naive']
-METHODS = ['naive', 'saver', 'poisson', 'hypergeometric']
 
 NUM_SAMPLES = NUM_TRIALS*3*len(NUMBER_OF_CELLS)
 NUM_SAMPLES += NUM_TRIALS*2 + 1
