@@ -10,7 +10,7 @@ import scipy.optimize as opt
 import itertools
 
 DATA_PATH = '/home/ubuntu/Data/'
-MIN_MEAN_THRESH = 0.01
+MIN_MEAN_THRESH = 0.001
 
 if __name__ == '__main__':
     
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     dropseq_adata = dropseq_adata[dropseq_adata.X.sum(axis=1).A1 > 0].copy()
 
     dropseq_adata.obs['n_counts'] = dropseq_adata.X.sum(axis=1).A1
-    dropseq_adata.obs['n_genes'] = (dropseq_adata.X > 50).sum(axis=1).A1
+    dropseq_adata.obs['n_genes'] = (dropseq_adata.X > 0).sum(axis=1).A1
 
     z_means = dropseq_adata.X.mean(axis=0).A1    
     dropseq_genes = dropseq_adata.var.index[z_means > MIN_MEAN_THRESH].tolist()
@@ -47,10 +47,9 @@ if __name__ == '__main__':
     smfish = pd.read_csv(DATA_PATH + 'smfish/fishSubset.txt', index_col=0, sep=' ')
     filtered_fish = smfish.query('GAPDH > 0')
     overlap_genes = list(set(dropseq_genes) & set(smfish.columns))
-    print('number of overlap genes: ', len(overlap_genes))
 
-    mean_genes = overlap_genes#[i for i in overlap_genes if i != 'GAPDH']
-    var_genes = overlap_genes#[i for i in overlap_genes if i != 'GAPDH']
+    mean_genes = overlap_genes
+    var_genes = [i for i in overlap_genes if i != 'GAPDH']
     corr_genes = [(a,b) for a,b in itertools.combinations(overlap_genes, 2) if 'GAPDH' not in [a,b]]
 
     smfish_means = np.zeros(len(mean_genes))
@@ -58,7 +57,8 @@ if __name__ == '__main__':
     smfish_correlations = np.zeros(len(corr_genes))
 
     for idx, gene in enumerate(mean_genes):
-
+        if gene == 'GAPDH':
+            smfish_means[idx] = 1.0
         df = filtered_fish[['GAPDH', gene]].dropna()
         norm = df[gene].values/df['GAPDH'].values
         smfish_means[idx] = norm.mean()
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     for idx, gene in enumerate(var_genes):
 
         df = filtered_fish[['GAPDH', gene]].dropna()
-        norm = df[gene].values#/df['GAPDH'].values
+        norm = df[gene].values/df['GAPDH'].values
         smfish_variances[idx] = norm.var()
 
     for idx, pair in enumerate(corr_genes):
