@@ -25,12 +25,12 @@ NUMBER_OF_CELLS = [500, 1000, 5000, 8000]
 
 MIN_MEAN_THRESH = 0.01
 
-METHODS = ['hypergeometric','poisson', 'saver' ,'naive']
-# METHODS = ['naive', 'saver', 'poisson', 'hypergeometric', 'scvi']
+# METHODS = ['hypergeometric','poisson', 'saver' ,'naive']
+METHODS = ['naive', 'saver', 'poisson', 'hypergeometric', 'scvi']
 
 NUM_SAMPLES = NUM_TRIALS*3*len(NUMBER_OF_CELLS)
 NUM_SAMPLES += NUM_TRIALS*2 + 1 # for saver
-# NUM_SAMPLES += NUM_TRIALS*2 + 1 # for scvi
+NUM_SAMPLES += NUM_TRIALS*2 + 1 # for scvi
 NUM_SAMPLES += len(METHODS) # for using all cells
 
 
@@ -86,7 +86,7 @@ def estimate_correlations(method, nc, trial): # x_param used for scaling for bas
         
         scvi_correlations = pd.read_csv(DATA_PATH + f'smfish/correlation/{nc}_{trial}_scvi_corr.csv', index_col=0)
         scvi_genes = scvi_correlations.index.tolist()
-        correlations = np.array([scvi_correlations.loc[a,b] if a in scvi_genes and b in scvi_genes else np.nan for a,b in smfish_estimates['corr_genes']])
+        correlations = np.array([scvi_correlations.loc[a,b] for a,b in smfish_estimates['corr_genes']])
         correlations[(obs_mean[gene_idxs_1]<MIN_MEAN_THRESH) | (obs_mean[gene_idxs_2]<MIN_MEAN_THRESH)] = np.nan
         return correlations
     

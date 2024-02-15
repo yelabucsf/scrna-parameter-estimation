@@ -60,13 +60,13 @@ if __name__ == '__main__':
         if gene == 'GAPDH':
             smfish_means[idx] = 1.0
         df = filtered_fish[['GAPDH', gene]].dropna()
-        norm = df[gene].values/df['GAPDH'].values
+        norm = df[gene].values#/df['GAPDH'].values
         smfish_means[idx] = norm.mean()
 
     for idx, gene in enumerate(var_genes):
 
         df = filtered_fish[['GAPDH', gene]].dropna()
-        norm = df[gene].values/df['GAPDH'].values
+        norm = df[gene].values#/df['GAPDH'].values
         smfish_variances[idx] = norm.var()
 
     for idx, pair in enumerate(corr_genes):
