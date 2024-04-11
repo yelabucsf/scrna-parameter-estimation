@@ -17,7 +17,7 @@ from sklearn.datasets import make_spd_matrix
 from statsmodels.stats.moment_helpers import cov2corr
 
 import sys
-sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/dist/memento-0.1.0-py3.10.egg')
+sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/dist/memento-0.1.0-py3.8.egg')
 import memento
 import memento.simulate as simulate
 
