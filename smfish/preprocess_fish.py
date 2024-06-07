@@ -11,6 +11,7 @@ import itertools
 
 DATA_PATH = '/home/ubuntu/Data/'
 MIN_MEAN_THRESH = 0.001
+STRICT_MEAN_THRESH = 0.02
 
 if __name__ == '__main__':
     
@@ -40,6 +41,8 @@ if __name__ == '__main__':
 
     z_means = dropseq_adata.X.mean(axis=0).A1    
     dropseq_genes = dropseq_adata.var.index[z_means > MIN_MEAN_THRESH].tolist()
+    strict_dropseq_genes = dropseq_adata.var.index[z_means > STRICT_MEAN_THRESH].tolist()
+
     
     dropseq_adata.write(DATA_PATH + 'smfish/filtered_dropseq.h5ad')
 
@@ -49,8 +52,10 @@ if __name__ == '__main__':
     overlap_genes = list(set(dropseq_genes) & set(smfish.columns))
 
     mean_genes = overlap_genes
-    var_genes = [i for i in overlap_genes if i != 'GAPDH']
+    var_genes = [i for i in overlap_genes if i in strict_dropseq_genes ]
     corr_genes = [(a,b) for a,b in itertools.combinations(overlap_genes, 2) if 'GAPDH' not in [a,b]]
+    print(len(mean_genes))
+    print(len(var_genes))
 
     smfish_means = np.zeros(len(mean_genes))
     smfish_variances = np.zeros(len(var_genes))

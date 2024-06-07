@@ -17,7 +17,7 @@ import scipy.sparse as sparse
 
 
 DATA_PATH = '/home/ubuntu/Data/'
-NUM_TRIALS = 100
+NUM_TRIALS = 20
 NUM_BASICS_TRIALS = 20
 # NUMBER_OF_CELLS = [5000]
 NUMBER_OF_CELLS = [500, 1000, 5000, 8000]
