@@ -1,8 +1,9 @@
-memento package
+memento basic usage
 ===============
 
-Submodules
-----------
+
+memento advanced usage
+===============
 
 memento.bootstrap module
 ------------------------
