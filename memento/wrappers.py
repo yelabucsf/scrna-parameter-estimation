@@ -1,4 +1,5 @@
 import memento
+import scipy.stats as stats
 import pandas as pd
 
 
@@ -67,7 +68,7 @@ def run_eqtl(
 			num_boot=num_boot,
 			verbose=1,
 			num_cpus=num_cpu,
-			approx=True,
+			approx=stats.norm,
 			resample_rep=True)
 		results.append(memento.get_1d_ht_result(adata))
 

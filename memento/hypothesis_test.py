@@ -58,7 +58,7 @@ def _push(val, cond='neg'):
 	return val
 
 
-def _compute_asl(perm_diff, approx=False):
+def _compute_asl(perm_diff, approx='boot'):
 	""" 
 		Use the generalized pareto distribution to model the tail of the permutation distribution. 
 	"""
@@ -80,24 +80,26 @@ def _compute_asl(perm_diff, approx=False):
 	
 	stat = perm_diff[0]
 	
-	if approx:
+	if type(approx) != str:
 		
-		null_params = stats.norm.fit(null)
+		dist = approx
+		null_params = dist.fit(null)
 		
 		abs_stat = np.abs(stat)
 		
-		return stats.norm.sf(abs_stat, *null_params) + stats.norm.cdf(-abs_stat, *null_params)
+		return dist.sf(abs_stat, *null_params) + dist.cdf(-abs_stat, *null_params)
 
 	if stat > 0:
 		extreme_count = (null > stat).sum() + (null < -stat).sum()
 	else:
 		extreme_count = (null > -stat).sum() + (null < stat).sum()
 
-	if extreme_count > 10: # We do not need to use the GDP approximation. 
+	if extreme_count > 10 or approx == 'boot': # We do not need to use the GDP approximation. 
+        
+		return (extreme_count) / (null.shape[0])
+		# return (extreme_count+1) / (null.shape[0]+1)
 
-		return (extreme_count+1) / (null.shape[0]+1)
-
-	else: # We use the GDP approximation
+	else: # We use the GDP approximation, approx == 'gdp'
 		with warnings.catch_warnings():
 			warnings.simplefilter("ignore")
 			try:
