@@ -235,7 +235,11 @@ def _cross_coef(A, B, sample_weight):
     ssA = np.average(A_mA**2, axis=0, weights=sample_weight)
 
     # Finally get corr coeff
-    return A_mA.T.dot(np.diag(sample_weight)).dot(B_mB)/sample_weight.sum() / ssA[:, None]
+    numerator = A_mA.T.dot(np.diag(sample_weight)).dot(B_mB)/sample_weight.sum()
+    if np.sum(ssA[:, None]) > 0:
+        return numerator / ssA[:, None]
+    else:
+        return numerator
 
 
 def _cross_coef_resampled(A, B, sample_weight):
