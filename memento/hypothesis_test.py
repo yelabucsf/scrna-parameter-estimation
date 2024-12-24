@@ -184,7 +184,7 @@ def _get_bootstrap_samples(
             continue
 
         # Fill in the true value
-        boot_mean[group_idx, 0], boot_var[group_idx, 0] = np.log(true_mean[group_idx]), np.log(true_res_var[group_idx])
+        boot_mean[group_idx, 0], boot_var[group_idx, 0] = true_mean[group_idx], true_res_var[group_idx]
                         
         # Generate the bootstrap values (us)
         mean, var = bootstrap._bootstrap_1d(
@@ -206,8 +206,8 @@ def _get_bootstrap_samples(
         if filled_mean is None or filled_var is None:
             continue
 
-        boot_mean[group_idx, 1:] = np.log(filled_mean)
-        boot_var[group_idx, 1:] = np.log(filled_var)
+        boot_mean[group_idx, 1:] = filled_mean
+        boot_var[group_idx, 1:] = filled_var
         
 #         # This replicate is good
         good_idxs[group_idx] = True
@@ -238,7 +238,7 @@ def _ht_1d(
     # Get the bootstrap sample statistics for each replicate
     good_idxs, boot_mean, boot_var = _get_bootstrap_samples(
         true_mean,
-        true_res_var
+        true_res_var,
         cells,
         approx_sf,
         covariate,
@@ -252,8 +252,8 @@ def _ht_1d(
     vals = _regress_1d(
             covariate=covariate[good_idxs, :],
             treatment=treatment[good_idxs, :],
-            boot_mean=boot_mean[good_idxs, :], 
-            boot_var=boot_var[good_idxs, :],
+            boot_mean=np.log(boot_mean[good_idxs, :]), 
+            boot_var=np.log(boot_var[good_idxs, :]),
             Nc_list=Nc_list[good_idxs],
             **kwargs)
     return vals
@@ -283,7 +283,7 @@ def _mean_summary_statistics(
     # Get the bootstrap sample statistics for each replicate
     good_idxs, boot_mean, boot_var = _get_bootstrap_samples(
         true_mean,
-        true_res_var
+        true_res_var,
         cells,
         approx_sf,
         covariate,
@@ -294,10 +294,13 @@ def _mean_summary_statistics(
         q,
         _estimator_1d)
     
-    sem = np.nanstd(mean, axis=1)
-    selm = np.nanstd(np.log(mean[mean>0]), axis=1)
-    sel1pm = np.nanstd(np.log(mean+1), axis=1)
+    sem = np.nanstd(boot_mean, axis=1)
+    pos_boot_mean = boot_mean.copy()
+    pos_boot_mean[pos_boot_mean<0] = np.nan
+    selm = np.nanstd(np.log(pos_boot_mean), axis=1)
+    sel1pm = np.nanstd(np.log(pos_boot_mean+1), axis=1)
     
+    return np.nanmean(boot_mean, axis=1), sem, selm, sel1pm
     return np.array(true_mean), sem, selm, sel1pm 
 
 

@@ -492,9 +492,9 @@ def ht_mean(
     get_stats_funcs = []
     for idx in range(len(test_genes)):
         
-        ht_funcs.append(
+        get_stats_funcs.append(
             partial(
-                hypothesis_test._ht_1d,
+                hypothesis_test._mean_summary_statistics,
                 true_mean=[adata.uns['memento']['1d_moments'][group][0][idx] for group in adata.uns['memento']['groups']],
                 true_res_var=[adata.uns['memento']['1d_moments'][group][2][idx] for group in adata.uns['memento']['groups']],
                 cells=[adata.uns['memento']['group_cells'][group][:, idx] for group in adata.uns['memento']['groups']],
@@ -508,7 +508,9 @@ def ht_mean(
                 _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
                 **kwargs))
 
-    results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
+    results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in get_stats_funcs)
+    
+    return results
     
     ci = 0
     for output_idx, output in enumerate(results): #ouptut_idx refers to the index of the gene, output refers to the output from the parallel
@@ -517,6 +519,9 @@ def ht_mean(
         mean_coef[ci:(ci+nt)], mean_se[ci:(ci+nt)], mean_asl[ci:(ci+nt)], var_coef[ci:(ci+nt)], var_se[ci:(ci+nt)], var_asl[ci:(ci+nt)] = output
         ci += nt
 
+        
+        
+        
     # Save the hypothesis test result
     adata.uns['memento']['1d_ht'] = {}
     if treatment_for_gene is not None:
