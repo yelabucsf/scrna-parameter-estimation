@@ -486,6 +486,8 @@ def ht_mean(
     if covariate is None:
         covariate = pd.DataFrame(np.ones((treatment.shape[0], 1)))
     
+    logging.info('Differential mean expression in quasiML mode.')
+    
     # Initialize empty arrays to hold fitted coefficients and achieved significance level
     mean_coef, mean_se, mean_asl = [np.zeros(num_tests)*np.nan for i in range(3)]
     
@@ -508,24 +510,116 @@ def ht_mean(
                 _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
                 **kwargs))
 
+    logging.info('Computing statistics for differential mean')
+
     results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in get_stats_funcs)
     
-    return results
+    results_df = pd.DataFrame(results)
+    group_names = get_groups(adata).index.tolist()
+    gene_names = adata.var.index.tolist()
     
-    ci = 0
-    for output_idx, output in enumerate(results): #ouptut_idx refers to the index of the gene, output refers to the output from the parallel
-#         return output #debug
-        nt = treatment.shape[1] if treatment_for_gene is None else len(treatment_for_gene[test_genes[output_idx]])
-        mean_coef[ci:(ci+nt)], mean_se[ci:(ci+nt)], mean_asl[ci:(ci+nt)], var_coef[ci:(ci+nt)], var_se[ci:(ci+nt)], var_asl[ci:(ci+nt)] = output
-        ci += nt
+    mean_df = pd.DataFrame([a[0] for a in results], columns=group_names, index=gene_names).T
+    sem_df = pd.DataFrame([a[1] for a in results], columns=group_names, index=gene_names).T
+    total_umi = np.array([adata.uns['memento']['total_umi'][g] for g in group_names])[:, np.newaxis]
+    
+    count_multiplier = total_umi/adata.uns['memento']['umi_depth']
+    expr = mean_df*count_multiplier
+    sampling_variance =  (sem_df**2)*count_multiplier**2
+    
+    # Fit loglinear models
+    regressions = []
+    for idx, gene in enumerate(expr.columns):
 
-        
-        
-        
+        # if treatment_for_gene is not None:
+        #     if gene in treatment_for_gene: # Get treatments for this gene
+        #         treatment_list = treatment_for_gene[gene]
+        #     else: # Pass this gene
+        #         continue
+        # else: # Default, get all pairwise treatment-gene tests
+        treatment_list = treatment.columns
+
+        for t in treatment_list:
+
+            design_matrix = pd.concat([covariate, treatment[[t]]], axis=1)
+
+            regressions.append(
+                partial(
+                    util.fit_loglinear,
+                    endog=expr.iloc[:, idx].values, 
+                    exog=design_matrix,
+                    offset=np.log(total_umi.flatten()), 
+                    gene=gene, 
+                    t=t))
+    regression_fits = Parallel(n_jobs=num_cpus, verbose=1)(delayed(func)() for func in regressions)
+
+    #Fit global dispersion
+    all_pred = np.array([fit['pred'] for fit in regression_fits]).T
+    all_endog = np.array([fit['endog'] for fit in regression_fits]).T
+    all_resid_variance = ((all_pred-all_endog)**2)
+    num_samples = all_pred.shape[0]
+    slopes = np.zeros(num_samples)
+    intercepts = np.zeros(num_samples)
+    for i in range(all_pred.shape[0]):
+
+        pred = all_pred[i]
+        resid_variance = all_resid_variance[i]
+
+        finite = pred > -5
+        if finite.sum() == 0:
+            global_dispersion = 0
+        else:
+            x = np.log10(pred[finite])
+            y = np.log10(resid_variance[finite])
+
+            x_high = x[x > np.quantile(x, 0.1)]
+            y_high = y[x > np.quantile(x, 0.1)]
+
+            slope, inter, _, _, _ = stats.linregress(x_high,y_high)
+            logging.info(f'Mean vs intersample variance slope for {group_names[i]}: {slopes.mean()}' )
+            slopes[i] = slope
+            intercepts[i] = inter
+
+    
+    result = []
+    error_counter = 0
+    for fit in regression_fits:
+        coef = fit['model'].params[fit['t']]
+        X = fit['design'].values
+        pred = fit['pred']
+        endog = fit['endog']
+
+        # intra_var = quasi_nb_var(pred, intra_var_scale, intra_var_dispersion)
+        intra_var = sampling_variance[fit['gene']].values
+        inter_var = pred**slopes
+        # inter_var = dispersions[fit['gene']]*pred**2
+        total_var = intra_var + inter_var
+
+        try:
+            W = (pred**slopes) / total_var
+            var = np.diag(np.linalg.pinv(X.T@np.diag(W)@X))[-1]
+            se = np.sqrt(var)
+            pv = 2*stats.norm.sf(np.abs(coef/se))
+        except:
+            # logging.error(', '.join([
+            #     f'differential_mean: gene: {fit["gene"]}',
+            #     f'treatment: {fit["t"]}', 
+            #     f'intra: {intra_var}', 
+            #     f'inter_var: {inter_var}',
+            #     f'global_disp: {global_dispersion}',
+            #     ]))
+            se, pv = np.nan, np.nan
+            error_counter+=1
+
+        result.append((fit['gene'], fit['t'], coef, se, pv))
+
+    temp = pd.DataFrame(result, columns=['gene', 'treatment', 'coef', 'se','pval']).set_index('gene')
+    
+    return temp 
+
     # Save the hypothesis test result
-    adata.uns['memento']['1d_ht'] = {}
+    adata.uns['memento']['mean_ht'] = {}
     if treatment_for_gene is not None:
-        adata.uns['memento']['1d_ht']['treatment_for_gene'] = treatment_for_gene
+        adata.uns['memento']['mean_ht']['treatment_for_gene'] = treatment_for_gene
     attrs = ['test_genes','treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
     for attr in attrs:
         adata.uns['memento']['1d_ht'][attr] = eval(attr)
