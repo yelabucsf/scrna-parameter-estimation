@@ -30,6 +30,8 @@ def _get_estimator_1d(estimator_type):
         return _mean_only_1p
     elif estimator_type == 'good_mean_only':
         return _good_mean_only
+    elif estimator_type == 'pseudobulk':
+        return _pseudobulk
     else: # Custom 1D estimator
         return estimator_type[0]
 
@@ -89,14 +91,15 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
         Nrc = X.multiply(mask).sum(axis=1).A1.astype(float)
         if shrinkage > 0:
             Nrc += np.quantile(Nrc, shrinkage) # Shrinkage
-        Nr = Nrc.mean()
+        Nr = np.median(Nrc)
         size_factor = Nrc/Nr
         
-        n_umi = np.array(X.sum(axis=1)).reshape(-1).mean()
+        n_umi = np.median(np.array(X.sum(axis=1)).reshape(-1))
         size_factor = size_factor*n_umi
 
         return size_factor
 
+    
 def _fit_mv_regressor(mean, var):
     """
         Perform regression of the variance against the mean.
@@ -199,6 +202,25 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
     mm_var = (mm_M2 - mm_M1**2)
 
     return [mm_mean, mm_var]
+
+
+def _pseudobulk(data: sparse.csc_matrix, n_obs, q, size_factor: np.array):
+    """ 
+        Computes the pseudobulk mean with pseudocount adjustment. 
+        
+        If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
+    """
+                
+    if type(data) == tuple:
+        size_factor = size_factor if size_factor is not None else (1, 1)
+        unique_expr, bootstrap_freq = data[0], data[1]
+        inverse_size_factor, inverse_size_factor_sq = size_factor[0], size_factor[1]
+        
+        m = ((unique_expr * bootstrap_freq).sum(axis=0)+1) / ((bootstrap_freq/inverse_size_factor).sum(axis=0))
+    else:
+        m = (data.sum(axis=0).A1+1)/(size_factor.sum()+1)
+        
+    return m, np.ones(m.shape)*10
 
 
 def _mean_only_1p(data, n_obs, q, size_factor=None):

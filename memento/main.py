@@ -179,8 +179,11 @@ def get_groups(adata):
         df_list.append(elements)
     df = pd.DataFrame(df_list, index=adata.uns['memento']['groups'], columns=adata.uns['memento']['label_columns'])
     
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='ignore')
+    for col in df.columns: # force all numeric columns to be numeric
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except ValueError:
+            continue
     return df
 
 
@@ -575,7 +578,7 @@ def ht_mean(
             y_high = y[x > np.quantile(x, 0.1)]
 
             slope, inter, _, _, _ = stats.linregress(x_high,y_high)
-            logging.info(f'Mean vs intersample variance slope for {group_names[i]}: {slopes.mean()}' )
+            logging.info(f'Mean vs intersample variance slope for {group_names[i]}: {slope}' )
             slopes[i] = slope
             intercepts[i] = inter
 
@@ -612,17 +615,19 @@ def ht_mean(
 
         result.append((fit['gene'], fit['t'], coef, se, pv))
 
-    temp = pd.DataFrame(result, columns=['gene', 'treatment', 'coef', 'se','pval']).set_index('gene')
+    result_df = pd.DataFrame(result, columns=['gene', 'treatment', 'coef', 'se','pval']).set_index('gene')
     
-    return temp 
-
     # Save the hypothesis test result
+    mean_coef = result_df['coef'].values
+    mean_se = result_df['se'].values
+    mean_asl = result_df['pval'].values
+
     adata.uns['memento']['mean_ht'] = {}
     if treatment_for_gene is not None:
         adata.uns['memento']['mean_ht']['treatment_for_gene'] = treatment_for_gene
-    attrs = ['test_genes','treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
+    attrs = ['test_genes','treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl']
     for attr in attrs:
-        adata.uns['memento']['1d_ht'][attr] = eval(attr)
+        adata.uns['memento']['mean_ht'][attr] = eval(attr)
 
     if not inplace:
         return adata
@@ -865,6 +870,25 @@ def get_1d_ht_result(adata):
     result_df['dv_coef'] = adata.uns['memento']['1d_ht']['var_coef']
     result_df['dv_se'] = adata.uns['memento']['1d_ht']['var_se']
     result_df['dv_pval'] = adata.uns['memento']['1d_ht']['var_asl']
+        
+    return result_df
+
+def get_mean_ht_result(adata):
+    """
+        Getter function for mean HT result. 
+    """
+    
+    
+    if 'treatment_for_gene' in adata.uns['memento']['mean_ht']:
+        result_df = pd.concat([
+            pd.DataFrame(
+                itertools.product([g], adata.uns['memento']['mean_ht']['treatment_for_gene'][g]), 
+                columns=['gene', 'tx']) for g in adata.uns['memento']['mean_ht']['test_genes']])
+    else:
+        result_df = pd.DataFrame(itertools.product(adata.uns['memento']['mean_ht']['test_genes'], adata.uns['memento']['mean_ht']['treatment'].columns), columns=['gene', 'tx'])
+    result_df['de_coef'] = adata.uns['memento']['mean_ht']['mean_coef']
+    result_df['de_se'] = adata.uns['memento']['mean_ht']['mean_se']
+    result_df['de_pval'] = adata.uns['memento']['mean_ht']['mean_asl']
         
     return result_df
 
