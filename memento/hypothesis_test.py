@@ -5,11 +5,16 @@
 """
 
 import numpy as np
+import pandas as pd
 import scipy.stats as stats
 import scipy.sparse as sparse
 from sklearn.linear_model import LinearRegression
 import warnings
+from functools import partial
+from joblib import Parallel, delayed
+import logging
 
+import memento.util as util
 import memento.bootstrap as bootstrap
 import memento.estimator as estimator
 
@@ -217,7 +222,103 @@ def _get_bootstrap_samples(
     
     return good_idxs, boot_mean, boot_var
     
-        
+
+def _ht_mean_quasiML(results, treatment, covariate, total_umi, umi_depth, group_names, gene_names, return_fits=False):
+    """
+    Differential mean expression using quasiML method, most suited for multi-sample data 
+    where there are few samples but significant inter-sample variability. 
+    
+    :results: is a list of aggregate statistics for the mean from bootstrapping. 
+    """
+    
+    results_df = pd.DataFrame(results)
+    
+    mean_df = pd.DataFrame([a[0] for a in results], columns=group_names, index=gene_names).T
+    sem_df = pd.DataFrame([a[1] for a in results], columns=group_names, index=gene_names).T
+    
+    count_multiplier = total_umi#/umi_depth
+    expr = mean_df*count_multiplier
+    sampling_variance =  (sem_df**2)*count_multiplier**2
+    
+    # Fit loglinear models
+    regressions = []
+    for idx, gene in enumerate(expr.columns):
+
+        # if treatment_for_gene is not None:
+        #     if gene in treatment_for_gene: # Get treatments for this gene
+        #         treatment_list = treatment_for_gene[gene]
+        #     else: # Pass this gene
+        #         continue
+        # else: # Default, get all pairwise treatment-gene tests
+        treatment_list = treatment.columns
+
+        for t in treatment_list:
+
+            design_matrix = pd.concat([covariate, treatment[[t]]], axis=1)
+
+            regressions.append(
+                partial(
+                    util.fit_loglinear,
+                    endog=expr.iloc[:, idx].values, 
+                    exog=design_matrix,
+                    offset=np.log(total_umi.flatten()), 
+                    gene=gene, 
+                    t=t))
+    regression_fits = Parallel(n_jobs=14, verbose=1)(delayed(func)() for func in regressions)
+    
+    # For debugging purposes
+    if return_fits:
+        return regression_fits, sampling_variance
+    
+    # Clean up this code
+    all_pred = np.array([fit['pred'] for fit in regression_fits]).T
+    all_endog = np.array([fit['endog'] for fit in regression_fits]).T
+    all_resid_variance = ((all_pred-all_endog)**2)
+    
+    gene_slopes = np.zeros(all_pred.shape[1])
+    gene_intercepts = np.zeros(all_pred.shape[1])
+
+    for idx in range(all_pred.shape[1]):
+
+        e = all_endog[:, idx]
+        m = all_pred[:, idx]
+        v = all_resid_variance[:, idx]
+        slope, inter, _, _, _ = stats.linregress(np.log10(m),np.log10(v))
+
+        gene_slopes[idx] = slope
+        gene_intercepts[idx] = inter
+    
+    mv_slope = np.clip(gene_slopes.mean(), a_min=0, a_max=2)
+    alpha = 0.25 # TODO: pull as hyperparameter
+    mv_slope = alpha*mv_slope + (1-alpha)*2
+    logging.info(f'mv slope: {mv_slope}')
+    
+    result = []
+    error_counter = 0
+    for fit in regression_fits:
+        coef = fit['model'].params[fit['t']]
+        X = fit['design'].values
+        pred = fit['pred']
+        endog = fit['endog']
+
+        intra_var = sampling_variance[fit['gene']].values
+        inter_var = pred**mv_slope # from M-V relationship above
+        total_var = intra_var + inter_var
+
+        try:
+            W = (pred**2) / total_var
+            var = np.diag(np.linalg.pinv(X.T@np.diag(W)@X))[-1]
+            se = np.sqrt(var)
+            pv = 2*stats.norm.sf(np.abs(coef/se))
+        except:
+            se, pv = np.nan, np.nan
+            error_counter+=1
+
+        result.append((fit['gene'], fit['t'], coef, se, pv))
+
+    return pd.DataFrame(result, columns=['gene', 'treatment', 'coef', 'se','pval']).set_index('gene')
+    
+
 def _ht_1d(
     true_mean, # list of means
     true_res_var, # list of residual variances
