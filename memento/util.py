@@ -81,7 +81,7 @@ def fit_loglinear(endog, exog, offset, gene, t):
             endog,
             exog,
             offset=offset,
-            family=sm.families.Gaussian(sm.families.links.log())).fit()
+            family=sm.families.Gaussian(sm.families.links.Log())).fit()
         logging.warn(f'fit_loglinear: {gene}, {t} fitted with OLS')
     
     return {
