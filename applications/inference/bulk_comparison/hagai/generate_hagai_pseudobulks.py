@@ -3,10 +3,10 @@ import scanpy as sc
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
-sys.path.append('/home/ssm-user/Github/scrna-parameter-estimation/dist/memento-0.1.0-py3.10.egg')
+
 import memento
 
-data_path = '/data_volume/memento/hagai/'
+data_path = '/data_volume/bulkrna/hagai/'
 
 files = [
     'Hagai2018_mouse-lps',

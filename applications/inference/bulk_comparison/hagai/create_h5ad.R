@@ -2,7 +2,7 @@ library(Seurat)
 # library(SeuratData)
 library(SeuratDisk)
 
-data_path <- '/data_volume/memento/method_comparison/squair/sc_rnaseq/h5Seurat/'
+data_path <- '/data_volume/bulkrna/hagai/sc_rnaseq/h5Seurat/'
 
 files = c(
     'Hagai2018_mouse-lps',

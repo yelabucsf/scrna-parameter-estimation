@@ -12,10 +12,9 @@ import statsmodels.api as sm
 import os
 
 import sys
-sys.path.append('/home/ssm-user/Github/memento')
+sys.path.append('/home/ubuntu/Github/scrna-parameter-estimation/')
 
-import memento.model.rna as rna
-import memento.estimator.hypergeometric as hg
+import memento
 
 logging.basicConfig(
     format="%(asctime)s %(process)-7s %(levelname)-8s %(message)s",
@@ -24,7 +23,7 @@ logging.basicConfig(
 )
 logging.captureWarnings(True)
 
-data_path = '/data_volume/memento/hagai/sc_rnaseq/'
+data_path = '/data_volume/bulkrna/hagai/sc_rnaseq/'
 
 columns = ['coef', 'pval', 'fdr']
 
@@ -42,10 +41,8 @@ def safe_fdr(x):
     _, fdr[np.isfinite(x)] = fdrcorrection(x[np.isfinite(x)])
     return fdr
 
-def run_t_mwu(num_cells=None):
+def run_t_mwu():
     
-    out_suffix = '_100' if num_cells is not None else ''
-
     for file in files:
 
         print('working on', file)
@@ -75,72 +72,58 @@ def run_t_mwu(num_cells=None):
         mwu_result.to_csv(data_path + f'results/{file}{out_suffix}_MWU.csv')
 
         
-def run_memento(num_cells=None):
-    
-    out_suffix = '_100' if num_cells is not None else ''
-    print('num cells', num_cells)
+def run_memento():
     
     for file in files:
         
         condition = file.split('-')[-1] + '4'
         
-        dispersion = pd.read_csv(data_path + f'results/{file}_dispersions.csv', index_col=0)
-        dispersion = dispersion.set_index('gene')
+        adata = sc.read_h5ad(data_path +'h5Seurat/' + file + '.h5ad')
         
-        adata = sc.read_h5ad(data_path +'h5Seurat/' + file + out_suffix + '.h5ad')
+        gene_list = adata.var.index[adata.X.mean(axis=0).A1 > 0.02].tolist()
+
         adata.obs['q'] = 0.07
-
-        rna.MementoRNA.setup_anndata(
-            adata=adata,
-            q_column='q',
-            label_columns=['replicate', 'label'],
-            num_bins=30)
+        memento.setup_memento(
+            adata, 
+            'q', 
+            filter_mean_thresh=0.00, 
+            estimator_type='pseudobulk')
         
-        adata.var['expr_genes'] = (adata.X.mean(axis=0).A1 > 0.02)
-        adata = adata[:, adata.var['expr_genes']]
-        
-        model = rna.MementoRNA(adata=adata)
+        memento.create_groups(adata, label_columns=['replicate', 'label'])
 
-        model_save_name = f'{file}_estimates'
+        memento.compute_1d_moments(adata, min_perc_group=0, gene_list=gene_list)
 
-        if model_save_name in os.listdir():
-            model.load_estimates(model_save_name)
-        else:
-            model.compute_estimate(
-                estimand='mean',
-                get_se=True,
-                n_jobs=30,
-            )
-            model.save_estimates(model_save_name)
-        
+        condition = 'unst'
         df = pd.DataFrame(index=adata.uns['memento']['groups'])
         df['mouse'] = df.index.str.split('^').str[1]
         df['stim'] = df.index.str.split('^').str[2]
         cov_df = pd.get_dummies(df[['mouse']], drop_first=True).astype(float)
         stim_df = (df[['stim']]==condition).astype(float)
         cov_df = sm.add_constant(cov_df)
+        cov_df = cov_df[['const']]
         
-        result = model.differential_mean(
-            covariates=cov_df, 
-            treatments=stim_df,
-            family='quasiGLM',
-            dispersions=dispersion.iloc[:, 0],
-            verbose=2,
-            n_jobs=10)
+        memento.ht_mean(
+            adata=adata, 
+            treatment=stim_df,
+            covariate=cov_df,
+            treatment_for_gene=None,
+            covariate_for_gene=None,
+            inplace=True, 
+            num_boot=2000, 
+            verbose=1,
+            num_cpus=14)
         
-        _, result['fdr'] = fdrcorrection(result['pval'])
-        result.to_csv(data_path + f'results/{file}{out_suffix}_quasiGLM.csv')                
+        results = memento.get_mean_ht_result(adata)
+        results.columns = ['gene', 'tx', 'coef', 'se', 'pval'] # for standardization purposes
+        results.set_index('gene', inplace=True)
+        results['fdr'] = memento.util._fdrcorrect(results['pval'])
+        results.to_csv(data_path + f'results/{file}_quasiML.csv')            
         
 if __name__ == '__main__':
     
-    logging.info('t, mwu')
-    run_t_mwu()
-    
-    logging.info('t, mwu, sampled')
-    run_t_mwu(num_cells=100)
+    # logging.info('t, mwu')
+    # run_t_mwu()
     
     logging.info('memento')
     run_memento()
     
-    logging.info('memento, sampled')
-    run_memento(num_cells=100)

@@ -3,7 +3,7 @@
 library(edgeR)
 library(DESeq2)
 
-data_path <- '/data_volume/memento/lupus_bulk/'
+data_path <- '/data_volume/bulkrna/lupus/'
 
 for (numcells in c(500)) {
 	

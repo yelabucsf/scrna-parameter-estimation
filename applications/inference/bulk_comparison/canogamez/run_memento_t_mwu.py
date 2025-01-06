@@ -12,16 +12,10 @@ import logging
 import pickle as pkl
 import os
 
-from pydeseq2.dds import DeseqDataSet
-from pydeseq2.ds import DeseqStats
-from pydeseq2.utils import load_example_data
-
 import sys
-sys.path.append('/home/ssm-user/Github/memento')
+sys.path.append('/home/ubuntu/Github/scrna-parameter-estimation/')
 
-import memento.model.rna as rna
-import memento.estimator.hypergeometric as hg
-import memento.util as util
+import memento
 
 logging.basicConfig(
     format="%(asctime)s %(process)-7s %(levelname)-8s %(message)s",
@@ -30,8 +24,7 @@ logging.basicConfig(
 )
 logging.captureWarnings(True)
 
-data_path = '/data_volume/memento/canogamez/'
-
+data_path = '/data_volume/bulkrna/canogamez/'
 
 datasets = [
  'CD4_Memory-Th0',
@@ -53,59 +46,50 @@ def safe_fdr(x):
 
 def run_memento():
     
-    for trial in [1, 100]:
+    for trial in [1]:
         
         for dataset in datasets: 
 
-            print(trial, dataset)
+            logging.info(f'Processing {dataset} dataset')
+            adata = sc.read_h5ad(data_path + 'single_cell/{}_{}.h5ad'.format(dataset, trial))
 
-            ct, stim = dataset.split('-')
-
-            adata = sc.read(data_path + 'single_cell/{}_{}.h5ad'.format(dataset, trial))
+            gene_list = adata.var.index[adata.X.mean(axis=0).A1 > 0.02].tolist()
 
             adata.obs['q'] = 0.07
-            adata.X = adata.X.astype(float)
+            memento.setup_memento(
+                adata, 
+                'q', 
+                filter_mean_thresh=0.02, 
+                estimator_type='pseudobulk')
 
-            rna.MementoRNA.setup_anndata(
-                    adata=adata,
-                    q_column='q',
-                    label_columns=['donor.id', 'cytokine.condition'],
-                    num_bins=30)
+            memento.create_groups(adata, label_columns=['donor.id', 'cytokine.condition'])
 
-            adata = adata[:, adata.X.mean(axis=0).A1 > 0.02]
+            memento.compute_1d_moments(adata, min_perc_group=0, gene_list=gene_list)
 
-            model = rna.MementoRNA(adata=adata)
-
-            model.compute_estimate(
-                estimand='mean',
-                get_se=True,
-                n_jobs=30,
-            )
-
+            condition = 'UNS'
             df = pd.DataFrame(index=adata.uns['memento']['groups'])
             df['mouse'] = df.index.str.split('^').str[1]
             df['stim'] = df.index.str.split('^').str[2]
-
-            expr = (
-                model.estimates['mean']/
-                model.adata.uns['memento']['umi_depth']*
-                model.estimates['total_umi'].values).round()
-
             cov_df = pd.get_dummies(df[['mouse']], drop_first=True).astype(float)
-            stim_df = (df[['stim']]==stim).astype(float)
+            stim_df = (df[['stim']]==condition).astype(float)
             cov_df = sm.add_constant(cov_df)
 
-            glm_result = model.differential_mean(
-                covariates=cov_df, 
-                treatments=stim_df,
-                family='quasiGLM',
-                verbose=2,
-                n_jobs=5)
+            memento.ht_mean(
+                adata=adata, 
+                treatment=stim_df,
+                covariate=cov_df[['const']],
+                treatment_for_gene=None,
+                covariate_for_gene=None,
+                inplace=True, 
+                num_boot=2000, 
+                verbose=1,
+                num_cpus=14)
 
-            _, glm_result['fdr'] = fdrcorrection(glm_result['pval'])
-            glm_result.to_csv(data_path + 'sc_results/{}_{}_quasiGLM.csv'.format(dataset, trial))
-
-            
+            results = memento.get_mean_ht_result(adata)
+            results.columns = ['gene', 'tx', 'coef', 'se', 'pval'] # for standardization purposes
+            results.set_index('gene', inplace=True)
+            results['fdr'] = memento.util._fdrcorrect(results['pval'])
+            results.to_csv(data_path + 'sc_results/{}_{}_quasiML.csv'.format(dataset, trial))
             
 def run_t_mwu():
     
@@ -144,7 +128,8 @@ def run_t_mwu():
     
 if __name__ == '__main__':
     
-    # run_memento()
+    logging.info('Running single cell methods (memento, t-test, MWU) for Cano-Gamez datasets')
+    run_memento()
     
-    run_t_mwu()
+    # run_t_mwu()
         

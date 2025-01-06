@@ -11,7 +11,7 @@ suppressPackageStartupMessages({
 options(mc.cores = 2)
 
 
-data_path <- '/data_volume/memento/method_comparison/lupus/'
+data_path <- '/data_volume/bulkrna/lupus/'
 for (numcell in c(200)) {
 	
 	for (trial in seq(0,49)) {

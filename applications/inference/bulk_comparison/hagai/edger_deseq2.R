@@ -3,7 +3,7 @@
 suppressMessages(library(edgeR))
 suppressMessages(library(DESeq2))
 
-data_path <- '/data_volume/memento/hagai/'
+data_path <- '/data_volume/bulkrna/hagai/'
 
 files = c(
     'Hagai2018_mouse-lps',
