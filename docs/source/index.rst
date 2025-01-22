@@ -21,10 +21,13 @@ To install memento, run:
    :caption: User guide & tutorial:
 
    basic
+
+.. toctree::
+   :maxdepth: 2
+   :caption: About memento:
+
    estimators
    inference
-   examples
-
 
 .. toctree::
    :maxdepth: 1
@@ -32,11 +35,11 @@ To install memento, run:
 
    api_reference
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Detailed API Reference:
+.. .. toctree::
+..    :maxdepth: 1
+..    :caption: Detailed API Reference:
    
-   detailed_api_reference
+..    detailed_api_reference
 
 Indices and tables
 ==================
