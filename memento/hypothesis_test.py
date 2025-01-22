@@ -63,18 +63,11 @@ def _push(val, cond='neg'):
     return val
 
 
-def _compute_asl(perm_diff, approx='boot'):
+def _compute_asl(perm_diff, approx='norm'):
     """ 
         Use the generalized pareto distribution to model the tail of the permutation distribution. 
     """
-    
-#     #### TEST IN CASE OF SKEWED P-VALUE DISTRIBUTIONS ####
-    
-#     extreme_count = min( (perm_diff < 0).sum(), (perm_diff > 0).sum())
-#     return (extreme_count+1) / (perm_diff.shape[0]+1)*2
-    
-#     #### END TEST #####
-    
+
     if np.all(perm_diff == perm_diff.mean()):
         
         return np.nan
@@ -85,9 +78,9 @@ def _compute_asl(perm_diff, approx='boot'):
     
     stat = perm_diff[0]
     
-    if type(approx) != str:
+    if approx == 'norm':
         
-        dist = approx
+        dist = stats.norm
         null_params = dist.fit(null)
         
         abs_stat = np.abs(stat)
@@ -100,11 +93,12 @@ def _compute_asl(perm_diff, approx='boot'):
         extreme_count = (null > -stat).sum() + (null < stat).sum()
 
     if extreme_count > 10 or approx == 'boot': # We do not need to use the GDP approximation. 
-        
+
         return (extreme_count) / (null.shape[0])
         # return (extreme_count+1) / (null.shape[0]+1)
 
-    else: # We use the GDP approximation, approx == 'gdp'
+    if approx == 'gdp': # We use the GDP approximation, approx == 'gdp'
+        
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             try:
@@ -152,6 +146,8 @@ def _compute_asl(perm_diff, approx='boot'):
 
                 # Failed to fit genpareto, return the upper bound
                 return (extreme_count+1) / (null.shape[0]+1)
+    else:
+        raise ValueError('approx must be one of ["boot", "norm", or "gdp"]!')
             
 
 def _get_bootstrap_samples(

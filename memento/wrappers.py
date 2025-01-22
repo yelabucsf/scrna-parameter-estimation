@@ -68,11 +68,10 @@ def run_eqtl(
 			num_boot=num_boot,
 			verbose=1,
 			num_cpus=num_cpu,
-			approx=stats.norm,
+			approx='norm',
 			resample_rep=True)
 		results.append(memento.get_1d_ht_result(adata))
-
-	return pd.concat(results)
+	return pd.concat(results)[['gene', 'tx', 'de_coef', 'de_se', 'de_pval']]
 
 
 def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=[]):

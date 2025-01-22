@@ -203,7 +203,7 @@ def compute_1d_moments(
     gene_list=None,
     separate_rv=False):
     """
-        Compute the mean, variance, and residual variance in each group
+        Compute the mean, variance, and residual variance in each group. Also filters the genes.
     """
     
     assert 'memento' in adata.uns
