@@ -7,7 +7,7 @@
 To install `memento`, pull the package from PyPI:
 
 ```
-pip install memento
+pip install memento-de
 ```
 
 Memento only has one dependency, which is `scanpy`

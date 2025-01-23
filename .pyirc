@@ -1,0 +1,7 @@
+[distutils]
+index-servers =
+    testpypi
+
+[pypi]
+username = mincheoly
+password = 8sQCmxzQEXy_6u.
