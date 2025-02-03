@@ -225,9 +225,7 @@ def _pseudobulk(data: sparse.csc_matrix, n_obs, q, size_factor: np.array):
 
 def _mean_only_1p(data, n_obs, q, size_factor=None):
     """
-        Estimate the variance using the Poisson noise process.
-        
-        If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
+        Estimate the mean with pseudocount with no variance (returns 1)
     """
     if type(data) == tuple:
         size_factor = size_factor if size_factor is not None else (1, 1)
