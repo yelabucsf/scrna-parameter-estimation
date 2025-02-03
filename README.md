@@ -10,6 +10,6 @@ To install `memento`, pull the package from PyPI:
 pip install memento-de
 ```
 
-Memento only has one dependency, which is `scanpy`
+Memento only has one dependency, which is `scanpy`. Any version of python > 3.9 should work.
 
 For more information, please refer to the documentation [here](https://memento.readthedocs.io/en/master/index.html)!
