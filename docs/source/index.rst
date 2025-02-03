@@ -15,7 +15,7 @@ To install memento, run:
 
 .. code-block:: bash
 
-    pip install memento
+    pip install memento-de
 .. toctree::
    :maxdepth: 2
    :caption: User guide & tutorial:
