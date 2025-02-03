@@ -13,3 +13,7 @@ pip install memento-de
 Memento only has one dependency, which is `scanpy`. Any version of python > 3.9 should work.
 
 For more information, please refer to the documentation [here](https://memento.readthedocs.io/en/master/index.html)!
+
+NOTE:
+
+This package is under fairly active development. Please run `pip install --upgrade memento-de` to upgrade to the latest version, which is currently `0.1.2`!
