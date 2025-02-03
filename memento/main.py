@@ -53,6 +53,7 @@ def setup_memento(
     shrinkage=0.5,
     num_bins=30,
     filter_mean_for_cell_size=False,
+    min_cell_count=10,
     estimator_type='hyper_relative'):
     """
         Compute size factors and the overall mean-variance regressor.
@@ -72,6 +73,7 @@ def setup_memento(
     adata.uns['memento']['estimator_type'] = estimator_type
     adata.uns['memento']['filter_mean_thresh'] = filter_mean_thresh
     adata.uns['memento']['num_bins'] = num_bins
+    adata.uns['memento']['min_cell_count'] = min_cell_count
         
     # Compute size factors for all groups
     naive_size_factor = estimator._estimate_size_factor(
@@ -148,8 +150,15 @@ def create_groups(
     adata.uns['memento']['groups'] = adata.obs['memento_group'].drop_duplicates().tolist()
     adata.uns['memento']['q'] = adata.obs[adata.uns['memento']['q_column']].values
     
-    # Create slices of the data based on the group
-    adata.uns['memento']['group_cells'] = {group:util._select_cells(adata, group) for group in adata.uns['memento']['groups']}
+    # Create slices of the data based on the group, filtering for cell counts
+    adata.uns['memento']['group_cells'] = {}
+    filtered_groups = []
+    for group in adata.uns['memento']['groups']:
+        mat = util._select_cells(adata, group)
+        if mat.shape[0] >= adata.uns['memento']['min_cell_count']:
+            adata.uns['memento']['group_cells'][group] = mat
+            filtered_groups.append(group)
+    adata.uns['memento']['groups'] = filtered_groups
     
     # For each slice, get mean q
     adata.uns['memento']['group_q'] = {group:adata.uns['memento']['q'][(adata.obs['memento_group'] == group).values].mean() \
@@ -419,13 +428,17 @@ def ht_1d_moments(
     
     ht_funcs = []
     for idx in range(len(test_genes)):
+
+        # idx is the index of the gene in consideration in test_genes 
+        # data_idx is the index of that gene in consideration in the adata object
+        data_idx = adata.var.index.tolist().index(test_genes[idx])
         
         ht_funcs.append(
             partial(
                 hypothesis_test._ht_1d,
-                true_mean=[adata.uns['memento']['1d_moments'][group][0][idx] for group in adata.uns['memento']['groups']],
-                true_res_var=[adata.uns['memento']['1d_moments'][group][2][idx] for group in adata.uns['memento']['groups']],
-                cells=[adata.uns['memento']['group_cells'][group][:, idx] for group in adata.uns['memento']['groups']],
+                true_mean=[adata.uns['memento']['1d_moments'][group][0][data_idx] for group in adata.uns['memento']['groups']],
+                true_res_var=[adata.uns['memento']['1d_moments'][group][2][data_idx] for group in adata.uns['memento']['groups']],
+                cells=[adata.uns['memento']['group_cells'][group][:, data_idx] for group in adata.uns['memento']['groups']],
                 approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
                 covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_genes[idx]]].values,
                 treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_genes[idx]]].values,
