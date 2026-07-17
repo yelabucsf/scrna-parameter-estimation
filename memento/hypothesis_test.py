@@ -7,7 +7,6 @@
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import scipy.sparse as sparse
 from sklearn.linear_model import LinearRegression
 import warnings
 from functools import partial
@@ -142,7 +141,7 @@ def _compute_asl(perm_diff, approx='norm'):
 
                 return (extreme_count+1) / (null.shape[0]+1)
 
-            except: # catch any numerical errors
+            except Exception: # catch any numerical errors
 
                 # Failed to fit genpareto, return the upper bound
                 return (extreme_count+1) / (null.shape[0]+1)
@@ -173,8 +172,6 @@ def _get_bootstrap_samples(
     boot_mean = np.zeros((treatment.shape[0], num_boot+1))*np.nan
     boot_var = np.zeros((treatment.shape[0], num_boot+1))*np.nan
     
-    boot_means = []
-
     for group_idx in range(len(true_mean)):
 
         # Skip if any of the 1d moments are NaNs
@@ -213,21 +210,28 @@ def _get_bootstrap_samples(
 #         # This replicate is good
         good_idxs[group_idx] = True
         
-    # Validity flag
-    valid = (good_idxs.sum() != 0)
-    
     return good_idxs, boot_mean, boot_var
     
 
-def _ht_mean_quasiML(results, treatment, covariate, total_umi, umi_depth, group_names, gene_names, return_fits=False):
+def _ht_mean_quasiML(
+    results,
+    treatment,
+    covariate,
+    total_umi,
+    umi_depth,
+    group_names,
+    gene_names,
+    return_fits=False,
+    num_cpus=1,
+    treatment_for_gene=None,
+    covariate_for_gene=None,
+):
     """
     Differential mean expression using quasiML method, most suited for multi-sample data 
     where there are few samples but significant inter-sample variability. 
     
     :results: is a list of aggregate statistics for the mean from bootstrapping. 
     """
-    
-    results_df = pd.DataFrame(results)
     
     mean_df = pd.DataFrame([a[0] for a in results], columns=group_names, index=gene_names).T
     sem_df = pd.DataFrame([a[1] for a in results], columns=group_names, index=gene_names).T
@@ -240,17 +244,20 @@ def _ht_mean_quasiML(results, treatment, covariate, total_umi, umi_depth, group_
     regressions = []
     for idx, gene in enumerate(expr.columns):
 
-        # if treatment_for_gene is not None:
-        #     if gene in treatment_for_gene: # Get treatments for this gene
-        #         treatment_list = treatment_for_gene[gene]
-        #     else: # Pass this gene
-        #         continue
-        # else: # Default, get all pairwise treatment-gene tests
-        treatment_list = treatment.columns
+        treatment_list = (
+            treatment.columns
+            if treatment_for_gene is None
+            else treatment_for_gene[gene]
+        )
+        gene_covariate = (
+            covariate
+            if covariate_for_gene is None
+            else covariate[covariate_for_gene[gene]]
+        )
 
         for t in treatment_list:
 
-            design_matrix = pd.concat([covariate, treatment[[t]]], axis=1)
+            design_matrix = pd.concat([gene_covariate, treatment[[t]]], axis=1)
 
             regressions.append(
                 partial(
@@ -260,7 +267,7 @@ def _ht_mean_quasiML(results, treatment, covariate, total_umi, umi_depth, group_
                     offset=np.log(total_umi.flatten()), 
                     gene=gene, 
                     t=t))
-    regression_fits = Parallel(n_jobs=14, verbose=1)(delayed(func)() for func in regressions)
+    regression_fits = Parallel(n_jobs=num_cpus, verbose=1)(delayed(func)() for func in regressions)
     
     # For debugging purposes
     if return_fits:
@@ -276,7 +283,6 @@ def _ht_mean_quasiML(results, treatment, covariate, total_umi, umi_depth, group_
 
     for idx in range(all_pred.shape[1]):
 
-        e = all_endog[:, idx]
         m = all_pred[:, idx]
         v = all_resid_variance[:, idx]
         slope, inter, _, _, _ = stats.linregress(np.log10(m),np.log10(v))
@@ -290,25 +296,22 @@ def _ht_mean_quasiML(results, treatment, covariate, total_umi, umi_depth, group_
     logging.info(f'mv slope: {mv_slope}')
     
     result = []
-    error_counter = 0
     for fit in regression_fits:
         coef = fit['model'].params[fit['t']]
         X = fit['design'].values
         pred = fit['pred']
-        endog = fit['endog']
-
         intra_var = sampling_variance[fit['gene']].values
         inter_var = pred**mv_slope # from M-V relationship above
         total_var = intra_var + inter_var
 
         try:
             W = (pred**2) / total_var
-            var = np.diag(np.linalg.pinv(X.T@np.diag(W)@X))[-1]
+            weighted_information = X.T @ (W[:, np.newaxis] * X)
+            var = np.diag(np.linalg.pinv(weighted_information))[-1]
             se = np.sqrt(var)
             pv = 2*stats.norm.sf(np.abs(coef/se))
-        except:
+        except Exception:
             se, pv = np.nan, np.nan
-            error_counter+=1
 
         result.append((fit['gene'], fit['t'], coef, se, pv))
 
@@ -411,7 +414,8 @@ def _cross_coef(A, B, sample_weight):
     ssA = np.average(A_mA**2, axis=0, weights=sample_weight)
 
     # Finally get corr coeff
-    return A_mA.T.dot(np.diag(sample_weight)).dot(B_mB)/sample_weight.sum() / ssA[:, None]
+    weighted_B = sample_weight[:, np.newaxis] * B_mB
+    return A_mA.T.dot(weighted_B) / sample_weight.sum() / ssA[:, None]
 
 
 def _cross_coef_resampled(A, B, sample_weight):

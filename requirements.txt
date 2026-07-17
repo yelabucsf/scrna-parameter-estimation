@@ -1,1 +1,7 @@
-scanpy
+anndata>=0.8
+joblib
+numpy
+pandas
+scikit-learn
+scipy
+statsmodels

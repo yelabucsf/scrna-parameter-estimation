@@ -7,21 +7,17 @@
 
 import numpy as np
 import pandas as pd
-from patsy import dmatrix
+import anndata as ad
 import scipy.stats as stats
-from scipy.sparse.csr import csr_matrix
-from scipy.sparse import diags
-import sys
+from scipy.sparse import csr_matrix, diags
 from joblib import Parallel, delayed
 from functools import partial
 import itertools
 import logging
 
-import memento.bootstrap as bootstrap
 import memento.estimator as estimator
 import memento.hypothesis_test as hypothesis_test
 import memento.util as util
-import memento.simulate as simulate
 
 
 def reverse_engineer_counts(adata, n_counts_column='n_counts'):
@@ -38,10 +34,25 @@ def reverse_engineer_counts(adata, n_counts_column='n_counts'):
     
     counts = diags(n_counts)*adata.raw.X.expm1()
     
-    return sc.AnnData(
+    return ad.AnnData(
         X=counts,
         obs=adata.obs,
         var=adata.raw.var)
+
+
+def _get_test_genes_and_indices(adata, treatment_for_gene):
+    """Resolve tested genes once instead of repeatedly scanning ``var_names``."""
+
+    if treatment_for_gene is None:
+        test_genes = adata.var.index.tolist()
+        return test_genes, np.arange(len(test_genes), dtype=int)
+
+    test_genes = list(treatment_for_gene)
+    data_indices = adata.var.index.get_indexer(test_genes)
+    if np.any(data_indices < 0):
+        missing = np.asarray(test_genes, dtype=object)[data_indices < 0]
+        raise ValueError(f"Genes not found in adata.var: {missing.tolist()}")
+    return test_genes, data_indices
 
 
 def setup_memento(
@@ -64,7 +75,7 @@ def setup_memento(
         
     assert adata.obs[q_column].max() < 1
     
-    assert type(adata.X) == csr_matrix, 'please make sure that adata.X is a scipy CSR matrix'
+    assert isinstance(adata.X, csr_matrix), 'please make sure that adata.X is a scipy CSR matrix'
     
     # Setup the memento dictionary in uns
     adata.uns['memento'] = {}
@@ -270,16 +281,6 @@ def compute_1d_moments(
         adata.uns['memento']['gene_rv_filter'] = {group:adata.uns['memento']['gene_rv_filter'][group][overall_gene_mask] for group in group_names}
         adata._inplace_subset_var(overall_gene_mask)
     
-    # Estimate the residual variance transformer for all cells
-    mean_list = []
-    var_list = []
-    for group in adata.uns['memento']['groups']:
-        mean_list.append(adata.uns['memento']['1d_moments'][group][0][adata.uns['memento']['gene_rv_filter'][group]])
-        var_list.append(adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]])
-    mean_concat = np.concatenate(mean_list)
-    var_concat = np.concatenate(var_list)
-
-#     adata.uns['memento']['mv_regressor'] = {'all':estimator._fit_mv_regressor(mean_concat, var_concat)}
     adata.uns['memento']['mv_regressor'] = {}
     
     # Estimate the residual variance transformer for each group
@@ -300,7 +301,7 @@ def compute_1d_moments(
         
     # If a gene list is given, use that to further filter the moments
     if gene_list is not None:
-        assert type(gene_list) == list
+        assert isinstance(gene_list, list)
         given_gene_mask = np.in1d(adata.var.index.values, gene_list)
 
         adata.uns['memento']['group_cells'] = \
@@ -410,14 +411,11 @@ def ht_1d_moments(
     Nc_list = np.array(Nc_list)
     
     # Get the number of tests and number of genes for those tests
+    test_genes, test_gene_indices = _get_test_genes_and_indices(adata, treatment_for_gene)
     if treatment_for_gene is None:
-        num_tests = treatment.shape[1]*G
-        test_genes = adata.var.index.tolist()
+        num_tests = treatment.shape[1] * G
     else:
-        num_tests = 0
-        for k,v in treatment_for_gene.items():
-            num_tests += len(v)
-        test_genes = list(treatment_for_gene.keys())
+        num_tests = sum(len(treatments) for treatments in treatment_for_gene.values())
         
     # Create dummy covariate DataFrame if one is not given
     if covariate is None:
@@ -427,12 +425,8 @@ def ht_1d_moments(
     mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(num_tests)*np.nan for i in range(6)]
     
     ht_funcs = []
-    for idx in range(len(test_genes)):
+    for test_gene, data_idx in zip(test_genes, test_gene_indices):
 
-        # idx is the index of the gene in consideration in test_genes 
-        # data_idx is the index of that gene in consideration in the adata object
-        data_idx = adata.var.index.tolist().index(test_genes[idx])
-        
         ht_funcs.append(
             partial(
                 hypothesis_test._ht_1d,
@@ -440,8 +434,8 @@ def ht_1d_moments(
                 true_res_var=[adata.uns['memento']['1d_moments'][group][2][data_idx] for group in adata.uns['memento']['groups']],
                 cells=[adata.uns['memento']['group_cells'][group][:, data_idx] for group in adata.uns['memento']['groups']],
                 approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-                covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_genes[idx]]].values,
-                treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_genes[idx]]].values,
+                covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_gene]].values,
+                treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_gene]].values,
                 Nc_list=Nc_list,
                 num_boot=num_boot,
                 mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
@@ -462,9 +456,17 @@ def ht_1d_moments(
     adata.uns['memento']['1d_ht'] = {}
     if treatment_for_gene is not None:
         adata.uns['memento']['1d_ht']['treatment_for_gene'] = treatment_for_gene
-    attrs = ['test_genes','treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl', 'var_coef', 'var_se','var_asl']
-    for attr in attrs:
-        adata.uns['memento']['1d_ht'][attr] = eval(attr)
+    adata.uns['memento']['1d_ht'].update({
+        'test_genes': test_genes,
+        'treatment': treatment,
+        'covariate': covariate,
+        'mean_coef': mean_coef,
+        'mean_se': mean_se,
+        'mean_asl': mean_asl,
+        'var_coef': var_coef,
+        'var_se': var_se,
+        'var_asl': var_asl,
+    })
 
     if not inplace:
         return adata
@@ -498,14 +500,11 @@ def ht_mean(
     Nc_list = np.array(Nc_list)
     
     # Get the number of tests and number of genes for those tests
+    test_genes, test_gene_indices = _get_test_genes_and_indices(adata, treatment_for_gene)
     if treatment_for_gene is None:
-        num_tests = treatment.shape[1]*G
-        test_genes = adata.var.index.tolist()
+        num_tests = treatment.shape[1] * G
     else:
-        num_tests = 0
-        for k,v in treatment_for_gene.items():
-            num_tests += len(v)
-        test_genes = list(treatment_for_gene.keys())
+        num_tests = sum(len(treatments) for treatments in treatment_for_gene.values())
         
     # Create dummy covariate DataFrame if one is not given
     if covariate is None:
@@ -517,17 +516,17 @@ def ht_mean(
     mean_coef, mean_se, mean_asl = [np.zeros(num_tests)*np.nan for i in range(3)]
     
     get_stats_funcs = []
-    for idx in range(len(test_genes)):
+    for test_gene, data_idx in zip(test_genes, test_gene_indices):
         
         get_stats_funcs.append(
             partial(
                 hypothesis_test._mean_summary_statistics,
-                true_mean=[adata.uns['memento']['1d_moments'][group][0][idx] for group in adata.uns['memento']['groups']],
-                true_res_var=[adata.uns['memento']['1d_moments'][group][2][idx] for group in adata.uns['memento']['groups']],
-                cells=[adata.uns['memento']['group_cells'][group][:, idx] for group in adata.uns['memento']['groups']],
+                true_mean=[adata.uns['memento']['1d_moments'][group][0][data_idx] for group in adata.uns['memento']['groups']],
+                true_res_var=[adata.uns['memento']['1d_moments'][group][2][data_idx] for group in adata.uns['memento']['groups']],
+                cells=[adata.uns['memento']['group_cells'][group][:, data_idx] for group in adata.uns['memento']['groups']],
                 approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-                covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_genes[idx]]].values,
-                treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_genes[idx]]].values,
+                covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_gene]].values,
+                treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_gene]].values,
                 Nc_list=Nc_list,
                 num_boot=num_boot,
                 mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
@@ -549,7 +548,10 @@ def ht_mean(
         total_umi=np.array([adata.uns['memento']['total_umi'][g] for g in adata.uns['memento']['groups']])[:, np.newaxis],
         umi_depth=adata.uns['memento']['umi_depth'],
         group_names=get_groups(adata).index.tolist(), 
-        gene_names=adata.var.index.tolist())
+        gene_names=test_genes,
+        num_cpus=num_cpus,
+        treatment_for_gene=treatment_for_gene,
+        covariate_for_gene=covariate_for_gene)
     
     # Save the hypothesis test result
     mean_coef = result_df['coef'].values
@@ -559,9 +561,14 @@ def ht_mean(
     adata.uns['memento']['mean_ht'] = {}
     if treatment_for_gene is not None:
         adata.uns['memento']['mean_ht']['treatment_for_gene'] = treatment_for_gene
-    attrs = ['test_genes','treatment', 'covariate', 'mean_coef', 'mean_se','mean_asl']
-    for attr in attrs:
-        adata.uns['memento']['mean_ht'][attr] = eval(attr)
+    adata.uns['memento']['mean_ht'].update({
+        'test_genes': test_genes,
+        'treatment': treatment,
+        'covariate': covariate,
+        'mean_coef': mean_coef,
+        'mean_se': mean_se,
+        'mean_asl': mean_asl,
+    })
 
     if not inplace:
         return adata
@@ -589,8 +596,6 @@ def ht_2d_moments(
     G = adata.uns['memento']['2d_moments']['gene_idx_1'].shape[0]
     
     # Create design DF
-    design_df_list, Nc_list = [], []
-    
     # Get cell counts
     Nc_list = []
     for group in adata.uns['memento']['groups']:
@@ -624,8 +629,6 @@ def ht_2d_moments(
         
         idx_1 = gene_idx_1[conv_idx]
         idx_2 = gene_idx_2[conv_idx]
-        idx_set = frozenset({idx_1, idx_2})
-    
         if idx_1 == idx_2: # Skip if its the same gene
             continue
             
@@ -665,9 +668,13 @@ def ht_2d_moments(
     adata.uns['memento']['2d_ht'] = {}
     if treatment_for_gene is not None:
         adata.uns['memento']['2d_ht']['treatment_for_gene'] = treatment_for_gene
-    attrs = ['treatment', 'covariate', 'corr_coef', 'corr_se','corr_asl']
-    for attr in attrs:
-        adata.uns['memento']['2d_ht'][attr] = eval(attr)
+    adata.uns['memento']['2d_ht'].update({
+        'treatment': treatment,
+        'covariate': covariate,
+        'corr_coef': corr_coef,
+        'corr_se': corr_se,
+        'corr_asl': corr_asl,
+    })
 
     if not inplace:
         return adata
