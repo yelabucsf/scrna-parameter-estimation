@@ -55,6 +55,18 @@ def _get_test_genes_and_indices(adata, treatment_for_gene):
     return test_genes, data_indices
 
 
+def _spawn_task_random_states(random_state, n_tasks):
+    """Create reproducible per-task seeds independent of worker scheduling."""
+
+    if random_state is None:
+        return [None] * n_tasks
+    seed_sequence = np.random.SeedSequence(random_state)
+    return [
+        int(child.generate_state(1, dtype=np.uint64)[0])
+        for child in seed_sequence.spawn(n_tasks)
+    ]
+
+
 def setup_memento(
     adata,
     q_column,
@@ -393,6 +405,7 @@ def ht_1d_moments(
     num_boot=10000, 
     verbose=1,
     num_cpus=1,
+    random_state=5,
     **kwargs):
     """
         Performs hypothesis testing for 1D moments.
@@ -425,7 +438,12 @@ def ht_1d_moments(
     mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(num_tests)*np.nan for i in range(6)]
     
     ht_funcs = []
-    for test_gene, data_idx in zip(test_genes, test_gene_indices):
+    task_random_states = _spawn_task_random_states(
+        random_state, len(test_genes)
+    )
+    for test_gene, data_idx, task_random_state in zip(
+        test_genes, test_gene_indices, task_random_states
+    ):
 
         ht_funcs.append(
             partial(
@@ -441,6 +459,7 @@ def ht_1d_moments(
                 mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
                 q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
                 _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
+                random_state=task_random_state,
                 **kwargs))
 
     results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
@@ -466,6 +485,7 @@ def ht_1d_moments(
         'var_coef': var_coef,
         'var_se': var_se,
         'var_asl': var_asl,
+        'random_state': random_state,
     })
 
     if not inplace:
@@ -482,9 +502,18 @@ def ht_mean(
     verbose=1,
     num_cpus=1,
     return_stats=False,
+    random_state=5,
+    target_se_rse=None,
+    min_boot=250,
+    bootstrap_resolution=50,
     **kwargs):
     """
-        Performs hypothesis testing for 1D moments.
+        Performs differential-mean testing.
+
+        Set ``target_se_rse`` to preallocate a gene- and group-specific
+        bootstrap count from the pseudobulk estimator's influence kurtosis.
+        The draw count is chosen before resampling, so it does not introduce
+        optional-stopping bias. ``num_boot`` remains the hard upper bound.
     """
     
     if not inplace:
@@ -516,7 +545,12 @@ def ht_mean(
     mean_coef, mean_se, mean_asl = [np.zeros(num_tests)*np.nan for i in range(3)]
     
     get_stats_funcs = []
-    for test_gene, data_idx in zip(test_genes, test_gene_indices):
+    task_random_states = _spawn_task_random_states(
+        random_state, len(test_genes)
+    )
+    for test_gene, data_idx, task_random_state in zip(
+        test_genes, test_gene_indices, task_random_states
+    ):
         
         get_stats_funcs.append(
             partial(
@@ -532,12 +566,48 @@ def ht_mean(
                 mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
                 q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
                 _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
+                random_state=task_random_state,
+                target_se_rse=target_se_rse,
+                min_boot=min_boot,
+                bootstrap_resolution=bootstrap_resolution,
                 **kwargs))
 
     logging.info('Computing statistics for differential mean')
 
     agg_statistics = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in get_stats_funcs)
     
+    bootstrap_diagnostics = None
+    if target_se_rse is not None:
+        draws_used = np.vstack([result[4] for result in agg_statistics])
+        predicted_rse = np.vstack([result[5] for result in agg_statistics])
+        agg_statistics = [result[:4] for result in agg_statistics]
+        used = draws_used[draws_used > 0]
+        finite_rse = predicted_rse[np.isfinite(predicted_rse)]
+        bootstrap_diagnostics = {
+            'mode': 'adaptive',
+            'target_se_rse': target_se_rse,
+            'min_boot': min_boot,
+            'max_boot': num_boot,
+            'bootstrap_resolution': bootstrap_resolution,
+            'draw_quantiles': (
+                np.quantile(used, [0, 0.5, 0.9, 0.99, 1]).tolist()
+                if used.size
+                else []
+            ),
+            'mean_draws': float(used.mean()) if used.size else np.nan,
+            'fraction_at_max': (
+                float(np.mean(used == num_boot)) if used.size else np.nan
+            ),
+            'draw_reduction_factor': (
+                float(num_boot / used.mean()) if used.size else np.nan
+            ),
+            'predicted_se_rse_quantiles': (
+                np.quantile(finite_rse, [0, 0.5, 0.9, 0.99, 1]).tolist()
+                if finite_rse.size
+                else []
+            ),
+        }
+
     if return_stats:
         return agg_statistics
 
@@ -568,6 +638,8 @@ def ht_mean(
         'mean_coef': mean_coef,
         'mean_se': mean_se,
         'mean_asl': mean_asl,
+        'random_state': random_state,
+        'bootstrap_diagnostics': bootstrap_diagnostics,
     })
 
     if not inplace:
@@ -584,6 +656,7 @@ def ht_2d_moments(
     num_boot=10000, 
     verbose=3,
     num_cpus=1,
+    random_state=5,
     **kwargs):
     """
         Performs hypothesis testing for 1D moments.
@@ -624,6 +697,7 @@ def ht_2d_moments(
     # Create partial functions
     ht_funcs = []
     idx_list = []
+    task_random_states = _spawn_task_random_states(random_state, G)
     
     for conv_idx in range(gene_idx_1.shape[0]):
         
@@ -649,6 +723,7 @@ def ht_2d_moments(
                 q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
                 _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
                 _estimator_cov=estimator._get_estimator_cov(adata.uns['memento']['estimator_type']),
+                random_state=task_random_states[conv_idx],
                 **kwargs))
     
     # Parallel processing
@@ -674,6 +749,7 @@ def ht_2d_moments(
         'corr_coef': corr_coef,
         'corr_se': corr_se,
         'corr_asl': corr_asl,
+        'random_state': random_state,
     })
 
     if not inplace:

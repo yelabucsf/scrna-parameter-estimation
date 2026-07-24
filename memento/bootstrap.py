@@ -135,6 +135,7 @@ def _bootstrap_1d(
     num_boot=1000,
     return_times=False,
     batch_size=None,
+    rng=None,
     **kwargs):
     """
         Perform the bootstrap and CI calculation for mean and variance.
@@ -156,7 +157,9 @@ def _bootstrap_1d(
     
     n_obs = data.shape[0]
         
-    gen = np.random.Generator(np.random.PCG64(5))
+    # Keep the historical stream for direct internal calls. Public hypothesis
+    # tests provide a per-gene generator that advances across biological groups.
+    gen = np.random.Generator(np.random.PCG64(5)) if rng is None else rng
     batch_size = _get_batch_size(counts.size, num_boot, batch_size)
     mean = np.empty(num_boot)
     var = np.empty(num_boot)
@@ -189,7 +192,8 @@ def _bootstrap_2d(
     _estimator_cov,
     num_boot=1000,
     precomputed=None,
-    batch_size=None):
+    batch_size=None,
+    rng=None):
     """
         Perform the bootstrap and CI calculation for covariance and correlation.
     """
@@ -198,7 +202,7 @@ def _bootstrap_2d(
     inv_sf, inv_sf_sq, expr, counts = _unique_expr(data, size_factor) if precomputed is None else precomputed
     
     n_obs = Nc
-    gen = np.random.Generator(np.random.PCG64(5))
+    gen = np.random.Generator(np.random.PCG64(5)) if rng is None else rng
     batch_size = _get_batch_size(counts.size, num_boot, batch_size)
     cov = np.empty(num_boot)
     var_1 = np.empty(num_boot)

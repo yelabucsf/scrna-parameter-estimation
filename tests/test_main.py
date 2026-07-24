@@ -79,6 +79,15 @@ def test_ht_mean_uses_the_requested_gene_index(monkeypatch):
     np.testing.assert_array_equal(captured[0]["cells"][0].toarray().ravel(), [30, 60])
 
 
+def test_parallel_task_seeds_are_reproducible_and_distinct():
+    first = main._spawn_task_random_states(1234, 10)
+    second = main._spawn_task_random_states(1234, 10)
+
+    assert first == second
+    assert len(set(first)) == len(first)
+    assert main._spawn_task_random_states(None, 3) == [None, None, None]
+
+
 def test_moment_pipeline_smoke_test():
     rng = np.random.default_rng(7)
     counts = rng.poisson(rng.uniform(0.5, 4.0, size=(80, 16)))

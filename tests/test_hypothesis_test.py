@@ -1,7 +1,63 @@
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from memento import hypothesis_test
+
+
+def test_influence_kurtosis_allocates_more_draws_to_heavy_tails():
+    rng = np.random.default_rng(4)
+    size_factor = np.ones(200)
+    regular = sparse.csc_matrix(rng.poisson(2, size=(200, 1)))
+    heavy = np.zeros((200, 1))
+    heavy[0] = 100
+    heavy = sparse.csc_matrix(heavy)
+
+    regular_draws, _ = hypothesis_test._plan_bootstrap_draws(
+        regular, size_factor, 0.04, 250, 2_000, 50
+    )
+    heavy_draws, _ = hypothesis_test._plan_bootstrap_draws(
+        heavy, size_factor, 0.04, 250, 2_000, 50
+    )
+
+    assert regular_draws >= 250
+    assert heavy_draws > regular_draws
+
+
+def test_adaptive_mean_bootstrap_uses_preplanned_draw_count(monkeypatch):
+    calls = []
+
+    def stable_bootstrap(num_boot, **kwargs):
+        calls.append(num_boot)
+        values = np.tile(np.array([0.9, 1.0, 1.1, 1.0]), num_boot // 4 + 1)
+        return values[:num_boot], np.full(num_boot, 10.0)
+
+    def pseudobulk(*args, **kwargs):
+        raise AssertionError("the estimator is called only by the bootstrap")
+
+    pseudobulk.__name__ = "_pseudobulk"
+    monkeypatch.setattr(
+        hypothesis_test,
+        "_plan_bootstrap_draws",
+        lambda **kwargs: (250, 0.04),
+    )
+    monkeypatch.setattr(hypothesis_test.bootstrap, "_bootstrap_1d", stable_bootstrap)
+    result = hypothesis_test._adaptive_mean_summary_statistics(
+        true_mean=[1.0],
+        true_res_var=[1.0],
+        cells=[None],
+        approx_sf=[None],
+        num_boot=2_000,
+        q=[0.1],
+        _estimator_1d=pseudobulk,
+        rng=np.random.default_rng(1),
+        target_se_rse=0.05,
+        min_boot=250,
+        bootstrap_resolution=250,
+    )
+
+    assert calls == [250]
+    np.testing.assert_array_equal(result[4], [250])
 
 
 def test_cross_coef_matches_weighted_diagonal_reference():

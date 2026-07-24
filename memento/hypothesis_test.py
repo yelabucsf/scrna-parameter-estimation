@@ -24,7 +24,15 @@ def _robust_log(val):
     return np.log(val)
 
 
-def _fill(val):
+def _choice(rng, values, size):
+    return (
+        np.random.choice(values, size)
+        if rng is None
+        else rng.choice(values, size)
+    )
+
+
+def _fill(val, rng=None):
     
     condition = np.less_equal(val, 0., where=~np.isnan(val)) | np.isnan(val)
     num_invalid = condition.sum()
@@ -32,18 +40,18 @@ def _fill(val):
     if num_invalid == val.shape[0]:
         return None
     
-    val[condition] = np.random.choice(val[~condition], num_invalid)
+    val[condition] = _choice(rng, val[~condition], num_invalid)
     
     return val
 
-def _fill_corr(val):
+def _fill_corr(val, rng=None):
     
     condition = np.less_equal(val, -1.0, where=~np.isnan(val)) | np.greater_equal(val, 1.0, where=~np.isnan(val)) | np.isnan(val)
         
     if val[~condition].shape[0] == 0:
         return None
     
-    val[condition] = np.random.choice(val[~condition], condition.sum())
+    val[condition] = _choice(rng, val[~condition], condition.sum())
     
     return val
 
@@ -161,6 +169,7 @@ def _get_bootstrap_samples(
     mv_fit, # list of tuples
     q, # list of numbers
     _estimator_1d,
+    rng=None,
     **kwargs):
     """
         Returns a tuple of ( <indices of good samples>, <bootstrap sample means>, <
@@ -191,14 +200,15 @@ def _get_bootstrap_samples(
             num_boot=num_boot,
             q=q[group_idx],
             _estimator_1d=_estimator_1d,
+            rng=rng,
             **kwargs)
 
         # Compute the residual variance
         res_var = estimator._residual_variance(mean, var, mv_fit[group_idx])
 
         # Minimize invalid values
-        filled_mean = _fill(mean)#_push_nan(mean)#[:num_boot]
-        filled_var = _fill(res_var)#_push_nan(res_var)#[:num_boot]
+        filled_mean = _fill(mean, rng=rng)#_push_nan(mean)#[:num_boot]
+        filled_var = _fill(res_var, rng=rng)#_push_nan(res_var)#[:num_boot]
 
         # Make sure its a valid replicate
         if filled_mean is None or filled_var is None:
@@ -330,12 +340,13 @@ def _ht_1d(
     mv_fit, # list of tuples
     q, # list of numbers
     _estimator_1d,
+    random_state=None,
     **kwargs):
     """
         Performs hypothesis testing of the mean and variance using bootstrap.
     """
     
-    # Get the bootstrap sample statistics for each replicate
+    rng = None if random_state is None else np.random.default_rng(random_state)
     good_idxs, boot_mean, boot_var = _get_bootstrap_samples(
         true_mean,
         true_res_var,
@@ -347,7 +358,8 @@ def _ht_1d(
         num_boot,
         mv_fit,
         q,
-        _estimator_1d)
+        _estimator_1d,
+        rng=rng)
     
     vals = _regress_1d(
             covariate=covariate[good_idxs, :],
@@ -355,6 +367,7 @@ def _ht_1d(
             boot_mean=np.log(boot_mean[good_idxs, :]), 
             boot_var=np.log(boot_var[good_idxs, :]),
             Nc_list=Nc_list[good_idxs],
+            rng=rng,
             **kwargs)
     return vals
 
@@ -371,6 +384,10 @@ def _mean_summary_statistics(
     mv_fit, # list of tuples
     q, # list of numbers
     _estimator_1d,
+    random_state=None,
+    target_se_rse=None,
+    min_boot=250,
+    bootstrap_resolution=50,
     **kwargs):
     """
         Performs hypothesis testing of the mean.
@@ -380,7 +397,23 @@ def _mean_summary_statistics(
         - `wls`: WLS regression based on bootstrap-estimated standard errors
         - `quasi-GLM`: Applies a global variance estimation and correction
     """
-    # Get the bootstrap sample statistics for each replicate
+    rng = None if random_state is None else np.random.default_rng(random_state)
+    if target_se_rse is not None:
+        return _adaptive_mean_summary_statistics(
+            true_mean=true_mean,
+            true_res_var=true_res_var,
+            cells=cells,
+            approx_sf=approx_sf,
+            num_boot=num_boot,
+            q=q,
+            _estimator_1d=_estimator_1d,
+            rng=rng,
+            target_se_rse=target_se_rse,
+            min_boot=min_boot,
+            bootstrap_resolution=bootstrap_resolution,
+            **kwargs,
+        )
+
     good_idxs, boot_mean, boot_var = _get_bootstrap_samples(
         true_mean,
         true_res_var,
@@ -392,7 +425,8 @@ def _mean_summary_statistics(
         num_boot,
         mv_fit,
         q,
-        _estimator_1d)
+        _estimator_1d,
+        rng=rng)
     
     sem = np.nanstd(boot_mean, axis=1)
     pos_boot_mean = boot_mean.copy()
@@ -402,6 +436,130 @@ def _mean_summary_statistics(
     
     return np.nanmean(boot_mean, axis=1), sem, selm, sel1pm
     return np.array(true_mean), sem, selm, sel1pm 
+
+
+def _plan_bootstrap_draws(
+    data,
+    size_factor,
+    target_se_rse,
+    min_boot,
+    max_boot,
+    resolution,
+):
+    """Plan pseudobulk draws from the ratio estimator's influence kurtosis."""
+
+    expression = np.asarray(data.toarray()).ravel().astype(float, copy=False)
+    size_factor = np.asarray(size_factor, dtype=float)
+    denominator = size_factor.sum()
+    if denominator <= 0 or not np.isfinite(denominator):
+        return max_boot, np.inf
+
+    ratio = (expression.sum() + 1) / denominator
+    influence = expression - ratio * size_factor
+    centered = influence - influence.mean()
+    variance = np.mean(centered**2)
+    if not np.isfinite(variance) or variance <= 0:
+        return min_boot, 0.0
+
+    influence_kurtosis = np.mean(centered**4) / variance**2
+    statistic_kurtosis = 3 + (influence_kurtosis - 3) / expression.size
+    statistic_kurtosis = max(float(statistic_kurtosis), 1.0)
+    required = int(
+        np.ceil((statistic_kurtosis - 1) / (4 * target_se_rse**2))
+    )
+    planned = max(min_boot, required)
+    planned = int(np.ceil(planned / resolution) * resolution)
+    planned = min(planned, max_boot)
+    predicted_rse = (
+        np.sqrt(max(statistic_kurtosis - 1, 0)) / (2 * np.sqrt(planned))
+        if planned > 0
+        else np.inf
+    )
+    return planned, predicted_rse
+
+
+def _adaptive_mean_summary_statistics(
+    true_mean,
+    true_res_var,
+    cells,
+    approx_sf,
+    num_boot,
+    q,
+    _estimator_1d,
+    rng,
+    target_se_rse,
+    min_boot,
+    bootstrap_resolution,
+    **kwargs,
+):
+    """Preallocate ordinary bootstrap draws to target group SE precision."""
+
+    if not np.isfinite(target_se_rse) or target_se_rse <= 0:
+        raise ValueError("target_se_rse must be a positive finite number")
+    if min_boot < 4 or min_boot > num_boot:
+        raise ValueError("min_boot must be between 4 and num_boot")
+    if bootstrap_resolution < 1:
+        raise ValueError("bootstrap_resolution must be a positive integer")
+    if getattr(_estimator_1d, "__name__", None) != "_pseudobulk":
+        raise ValueError(
+            "target_se_rse currently supports only estimator_type='pseudobulk'"
+        )
+
+    num_groups = len(true_mean)
+    summary_mean = np.full(num_groups, np.nan)
+    summary_sem = np.full(num_groups, np.nan)
+    summary_selm = np.full(num_groups, np.nan)
+    summary_sel1pm = np.full(num_groups, np.nan)
+    draws_used = np.zeros(num_groups, dtype=int)
+    predicted_rse = np.full(num_groups, np.nan)
+
+    for group_idx in range(num_groups):
+        if (
+            np.isnan(true_mean[group_idx])
+            or np.isnan(true_res_var[group_idx])
+            or true_mean[group_idx] == 0
+            or true_res_var[group_idx] < 0
+        ):
+            continue
+
+        planned_draws, group_predicted_rse = _plan_bootstrap_draws(
+            data=cells[group_idx],
+            size_factor=approx_sf[group_idx],
+            target_se_rse=target_se_rse,
+            min_boot=min_boot,
+            max_boot=num_boot,
+            resolution=bootstrap_resolution,
+        )
+        mean, _ = bootstrap._bootstrap_1d(
+            data=cells[group_idx],
+            size_factor=approx_sf[group_idx],
+            num_boot=planned_draws,
+            q=q[group_idx],
+            _estimator_1d=_estimator_1d,
+            rng=rng,
+            **kwargs,
+        )
+        draws = _fill(mean, rng=rng)
+        if draws is None:
+            continue
+        values = np.concatenate(([true_mean[group_idx]], draws))
+        positive = values.copy()
+        positive[positive < 0] = np.nan
+        summary_mean[group_idx] = np.nanmean(values)
+        summary_sem[group_idx] = np.nanstd(values)
+        summary_selm[group_idx] = np.nanstd(np.log(positive))
+        summary_sel1pm[group_idx] = np.nanstd(np.log(positive + 1))
+        draws_used[group_idx] = planned_draws
+        predicted_rse[group_idx] = group_predicted_rse
+
+    return (
+        summary_mean,
+        summary_sem,
+        summary_selm,
+        summary_sel1pm,
+        draws_used,
+        predicted_rse,
+    )
 
 
 def _cross_coef(A, B, sample_weight):
@@ -436,7 +594,16 @@ def _cross_coef_resampled(A, B, sample_weight):
     return beta
 
 
-def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep=False,**kwargs):
+def _regress_1d(
+    covariate,
+    treatment,
+    boot_mean,
+    boot_var,
+    Nc_list,
+    resample_rep=False,
+    rng=None,
+    **kwargs,
+):
     """
         Performs hypothesis testing for a single gene for many bootstrap iterations.
         
@@ -469,9 +636,13 @@ def _regress_1d(covariate, treatment, boot_mean, boot_var, Nc_list, resample_rep
 
         if resample_rep:            
 
-            replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
+            replicate_assignment = _choice(
+                rng, num_rep, size=(num_rep, num_boot)
+            )
             replicate_assignment[:, 0] = np.arange(num_rep)
-            b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))+1
+            b_iter_assignment = _choice(
+                rng, num_boot, size=(num_rep, num_boot)
+            ) + 1
             b_iter_assignment[:, 0] = 0
 
             boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
@@ -510,9 +681,11 @@ def _ht_2d(
     q,
     _estimator_1d,
     _estimator_cov,
+    random_state=None,
     **kwargs):
     
         
+    rng = None if random_state is None else np.random.default_rng(random_state)
     good_idxs = np.zeros(treatment.shape[0], dtype=bool)
     
     # the bootstrap arrays
@@ -535,12 +708,13 @@ def _ht_2d(
             q=q[group_idx],
             _estimator_1d=_estimator_1d,
             _estimator_cov=_estimator_cov,
-            precomputed=None)
+            precomputed=None,
+            rng=rng)
 
         corr = estimator._corr_from_cov(cov, var_1, var_2, boot=True)
 
         # This replicate is good
-        vals = _fill_corr(corr)
+        vals = _fill_corr(corr, rng=rng)
 
         # Skip if all NaNs
         if vals is None:
@@ -560,12 +734,21 @@ def _ht_2d(
             treatment=treatment[good_idxs, :],
             boot_corr=boot_corr[good_idxs, :],
             Nc_list=Nc_list[good_idxs],
+            rng=rng,
             **kwargs)
     
     return vals
 
 
-def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **kwargs):
+def _regress_2d(
+    covariate,
+    treatment,
+    boot_corr,
+    Nc_list,
+    resample_rep=False,
+    rng=None,
+    **kwargs,
+):
     """
         Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
     """    
@@ -593,9 +776,13 @@ def _regress_2d(covariate, treatment, boot_corr, Nc_list, resample_rep=False, **
 
         if resample_rep:
 
-            replicate_assignment = np.random.choice(num_rep, size=(num_rep, num_boot))
+            replicate_assignment = _choice(
+                rng, num_rep, size=(num_rep, num_boot)
+            )
             replicate_assignment[:, 0] = np.arange(num_rep)
-            b_iter_assignment = np.random.choice(num_boot, (num_rep, num_boot))+1
+            b_iter_assignment = _choice(
+                rng, num_boot, size=(num_rep, num_boot)
+            ) + 1
             b_iter_assignment[:, 0] = 0
 
             boot_corr_resampled = boot_corr_tilde[(replicate_assignment, b_iter_assignment)]

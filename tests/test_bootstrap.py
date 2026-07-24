@@ -76,6 +76,60 @@ def test_bootstrap_batching_preserves_seeded_results():
     np.testing.assert_allclose(batched[1], unbatched[1], rtol=0, atol=0)
 
 
+def test_explicit_stream_advances_between_groups():
+    expression = sparse.csc_matrix(
+        np.tile(np.arange(5, dtype=np.int64), 100).reshape(-1, 1)
+    )
+    size_factor = np.ones(expression.shape[0])
+    rng = np.random.default_rng(17)
+
+    first = bootstrap._bootstrap_1d(
+        expression,
+        size_factor,
+        q=0.1,
+        _estimator_1d=estimator._pseudobulk,
+        num_boot=20,
+        rng=rng,
+    )
+    second = bootstrap._bootstrap_1d(
+        expression,
+        size_factor,
+        q=0.1,
+        _estimator_1d=estimator._pseudobulk,
+        num_boot=20,
+        rng=rng,
+    )
+
+    assert not np.array_equal(first[0], second[0])
+
+
+def test_explicit_stream_is_reproducible():
+    expression = sparse.csc_matrix(
+        np.tile(np.arange(5, dtype=np.int64), 100).reshape(-1, 1)
+    )
+    size_factor = np.ones(expression.shape[0])
+
+    first = bootstrap._bootstrap_1d(
+        expression,
+        size_factor,
+        q=0.1,
+        _estimator_1d=estimator._pseudobulk,
+        num_boot=20,
+        rng=np.random.default_rng(17),
+    )
+    second = bootstrap._bootstrap_1d(
+        expression,
+        size_factor,
+        q=0.1,
+        _estimator_1d=estimator._pseudobulk,
+        num_boot=20,
+        rng=np.random.default_rng(17),
+    )
+
+    np.testing.assert_array_equal(first[0], second[0])
+    np.testing.assert_array_equal(first[1], second[1])
+
+
 def test_two_dimensional_bootstrap_batching_preserves_seeded_results():
     rng = np.random.default_rng(321)
     expression = sparse.csc_matrix(rng.poisson(1.5, size=(500, 2)))
