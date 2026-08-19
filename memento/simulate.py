@@ -1,11 +1,5 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import scanpy as sc
-import scipy as sp
-import itertools
 import numpy as np
 import scipy.stats as stats
-from sklearn.datasets import make_spd_matrix
 
 import memento.estimator as estimator
 
@@ -63,7 +57,7 @@ def simulate_transcriptomes(
 	dispersions[dispersions < 0] = 1e-5
 	thetas = 1/dispersions
 	
-	if type(norm_cov) == str:
+	if isinstance(norm_cov, str):
 		return stats.nbinom.rvs(*convert_params_nb(means, thetas), size=(n_cells, n_genes))
 		
 	# Generate the copula
@@ -112,15 +106,23 @@ def capture_sampling(transcriptomes, q, q_sq=None, process='hyper', gen=None):
 	return qs, captured_transcriptomes
 
 
-def sequencing_sampling(transcriptomes):
-	
-	observed_transcriptomes = np.zeros(transcriptomes.shape)
+def sequencing_sampling(transcriptomes, num_reads, gen=None):
+	"""Simulate unique molecules observed after sequencing with replacement."""
+
+	transcriptomes = np.asarray(transcriptomes)
+	if np.any(transcriptomes < 0):
+		raise ValueError('transcriptomes must contain non-negative molecule counts')
+	if num_reads < 0:
+		raise ValueError('num_reads must be non-negative')
+
 	num_molecules = transcriptomes.sum()
-	print(num_molecules)
-	
-	for i in range(n_cells):
-		for j in range(n_genes):
-			
-			observed_transcriptomes[i, j] = (stats.binom.rvs(n=int(num_reads), p=1/num_molecules, size=transcriptomes[i, j]) > 0).sum()
-			
-	return observed_transcriptomes
+	if num_molecules == 0 or num_reads == 0:
+		return np.zeros_like(transcriptomes)
+
+	# The old nested loops simulated whether each molecule received at least one
+	# read. Each indicator has this probability, so the sum is binomial and can
+	# be generated for the entire matrix at once.
+	observation_probability = -np.expm1(num_reads * np.log1p(-1 / num_molecules))
+	if gen is None:
+		gen = np.random.default_rng()
+	return gen.binomial(transcriptomes.astype(np.int64), observation_probability)

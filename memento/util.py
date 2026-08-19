@@ -1,8 +1,5 @@
 import scipy.stats as stats
 import numpy as np
-import time
-import itertools
-import scipy as sp
 import statsmodels.api as sm
 import logging
 from statsmodels.stats.multitest import fdrcorrection
@@ -32,6 +29,8 @@ def _fdrcorrect(pvals):
 
 
 def density_scatterplot(a,b, s=1, cmap='Reds', kde=None):
+    import matplotlib.pyplot as plt
+
     # Calculate the point density
     condition = np.isfinite(a) & np.isfinite(b)
     x = a[condition]
@@ -61,6 +60,8 @@ def robust_linregress(a, b):
     return stats.linregress(x,y)
 
 def robust_hist(x, **kwargs):
+    import matplotlib.pyplot as plt
+
     
     condition = np.isfinite(x)
     plt.hist(x[condition], **kwargs)
@@ -76,13 +77,13 @@ def fit_loglinear(endog, exog, offset, gene, t):
             endog, 
             exog, 
             offset=offset).fit(disp=0)
-    except:
+    except Exception:
         fit = sm.GLM(
             endog,
             exog,
             offset=offset,
             family=sm.families.Gaussian(sm.families.links.Log())).fit()
-        logging.warn(f'fit_loglinear: {gene}, {t} fitted with OLS')
+        logging.warning(f'fit_loglinear: {gene}, {t} fitted with OLS')
     
     return {
         'gene':gene, 

@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 
 setup(
     name='memento-de',
@@ -6,4 +6,15 @@ setup(
     description='Hypothesis testing for scRNA-seq',
     url='https://github.com/yelabucsf/scrna-parameter-estimation.git',
     author='Min Cheol Kim',
-    packages=['memento'])
+    packages=find_packages(),
+    python_requires='>=3.9',
+    install_requires=[
+        'anndata>=0.8',
+        'joblib',
+        'numpy',
+        'pandas',
+        'scikit-learn',
+        'scipy',
+        'statsmodels',
+    ],
+)

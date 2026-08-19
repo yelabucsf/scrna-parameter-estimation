@@ -10,44 +10,45 @@
 """
 
 import scipy.sparse as sparse
-import scipy.stats as stats
-import scipy.interpolate as inter
 import numpy as np
-import pickle as pkl
 
 
 def _get_estimator_1d(estimator_type):
-    
-    if estimator_type == 'hyper_absolute':
-        return _hyper_1d_absolute
-    elif estimator_type == 'hyper_relative':
-        return _hyper_1d_relative
-    elif estimator_type == 'poi_absolute':
-        return _poi_1d_absolute
-    elif estimator_type == 'poi_relative':
-        return _poi_1d_relative
-    elif estimator_type == 'mean_only':
-        return _mean_only_1p
-    elif estimator_type == 'good_mean_only':
-        return _good_mean_only
-    elif estimator_type == 'pseudobulk':
-        return _pseudobulk
-    else: # Custom 1D estimator
-        return estimator_type[0]
+
+    estimators = {
+        'hyper_relative': _hyper_1d_relative,
+        'poi_relative': _poisson_1d_relative,
+        'mean_only': _mean_only_1p,
+        'good_mean_only': _good_mean_only,
+        'pseudobulk': _pseudobulk,
+    }
+    if isinstance(estimator_type, str):
+        try:
+            return estimators[estimator_type]
+        except KeyError as exc:
+            supported = ', '.join(sorted(estimators))
+            raise ValueError(
+                f"Unknown estimator_type {estimator_type!r}; expected one of: {supported}"
+            ) from exc
+    return estimator_type[0]
 
     
 def _get_estimator_cov(estimator_type):
-    
-    if estimator_type == 'hyper_absolute':
-        return _hyper_cov_absolute
-    elif estimator_type == 'hyper_relative':
-        return _hyper_cov_relative
-    elif estimator_type == 'poi_absolute':
-        return _poi_cov_absolute
-    elif estimator_type == 'poi_relative':
-        return _poi_cov_relative
-    else: # Custom covariance estimator
-        return estimator_type[1]
+
+    estimators = {
+        'hyper_relative': _hyper_cov_relative,
+        'poi_relative': _poisson_cov_relative,
+    }
+    if isinstance(estimator_type, str):
+        try:
+            return estimators[estimator_type]
+        except KeyError as exc:
+            supported = ', '.join(sorted(estimators))
+            raise ValueError(
+                f"Unknown covariance estimator_type {estimator_type!r}; "
+                f"expected one of: {supported}"
+            ) from exc
+    return estimator_type[1]
     
     
 def bincount2d_sparse(sparse_arr, bins=None):
@@ -110,13 +111,6 @@ def _fit_mv_regressor(mean, var):
     
     poly = np.polyfit(m, v, 2)
     return poly
-    f = np.poly1d(z)
-    
-#     spline = inter.UnivariateSpline(m[np.argsort(m)], v[np.argsort(m)])
-#     return spline
-
-#     slope, inter, _, _, _ = stats.linregress(m, v)
-#     return slope, inter
 
 
 def _residual_variance(mean, var, mv_fit):
@@ -136,7 +130,7 @@ def _poisson_1d_relative(data, n_obs, size_factor=None):
         
         If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
     """
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         size_factor = size_factor if size_factor is not None else (1, 1)
         mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
         mm_M2 = (data[0]**2*data[1]*size_factor[1] - data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
@@ -159,7 +153,7 @@ def _poisson_cov_relative(data, n_obs, size_factor, idx1, idx2):
         If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
     """
     
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         obs_M1 = (data[0]*data[2]*size_factor[0]).sum(axis=0)/n_obs
         obs_M2 = (data[1]*data[2]*size_factor[0]).sum(axis=0)/n_obs
         obs_MX = (data[0]*data[1]*data[2]*size_factor[1]).sum(axis=0)/n_obs
@@ -187,7 +181,7 @@ def _hyper_1d_relative(data, n_obs, q, size_factor=None):
         
         If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
     """
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         size_factor = size_factor if size_factor is not None else (1, 1)
         mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
         mm_M2 = (data[0]**2*data[1]*size_factor[1] - (1-q)*data[0]*data[1]*size_factor[1]).sum(axis=0)/n_obs
@@ -211,10 +205,10 @@ def _pseudobulk(data: sparse.csc_matrix, n_obs, q, size_factor: np.array):
         If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
     """
                 
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         size_factor = size_factor if size_factor is not None else (1, 1)
         unique_expr, bootstrap_freq = data[0], data[1]
-        inverse_size_factor, inverse_size_factor_sq = size_factor[0], size_factor[1]
+        inverse_size_factor = size_factor[0]
         
         m = ((unique_expr * bootstrap_freq).sum(axis=0)+1) / ((bootstrap_freq/inverse_size_factor).sum(axis=0))
     else:
@@ -227,7 +221,7 @@ def _mean_only_1p(data, n_obs, q, size_factor=None):
     """
         Estimate the mean with pseudocount with no variance (returns 1)
     """
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         size_factor = size_factor if size_factor is not None else (1, 1)
         mm_M1 = (data[0]*data[1]*size_factor[0]).sum(axis=0)/n_obs
     else:
@@ -245,16 +239,12 @@ def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0, max_to_replace=13
         Hypergeometric mean estimator based on Good's estimator.
     """
 
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         return
     else:
 
         arr = data
         n_genes = data.shape[1]
-        pb = (arr.sum(axis=0).A1+1)
-        total_umi = pb.sum()
-        denom = np.array([total_umi - pb[sparse.find(arr[i])[1]].sum() for i in range(n_obs)]).mean()
-
         freqs = bincount2d_sparse(arr)
         expected_freqs = freqs.mean(axis=0).A1
         initial_values = np.tile(np.arange(max_to_replace)[:,np.newaxis], (1,n_genes))
@@ -267,7 +257,6 @@ def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0, max_to_replace=13
 
         corrected_counts = sparse.diags(1/size_factor) @ corrected_counts # normalize for size_factor
         nonzero_sum = corrected_counts.sum(axis=0).A1
-        num_zeros_per_column = arr.shape[0] - arr.getnnz(axis=0)
         zero_sum = np.array([(final_values[0, idx]/size_factor[~np.in1d(range(size_factor.shape[0]), sparse.find(arr[:, idx])[0])]).sum() for idx in range(n_genes)])
         m = (nonzero_sum + zero_sum)/arr.shape[0]
         
@@ -281,7 +270,7 @@ def _hyper_cov_relative(data, n_obs, size_factor, q, idx1=None, idx2=None):
         If :data: is a tuple, :cell_size: should be a tuple of (inv_sf, inv_sf_sq). Otherwise, it should be an array of length data.shape[0].
     """
     
-    if type(data) == tuple:
+    if isinstance(data, tuple):
         obs_M1 = (data[0]*data[2]*size_factor[0]).sum(axis=0)/n_obs
         obs_M2 = (data[1]*data[2]*size_factor[0]).sum(axis=0)/n_obs
         obs_MX = (data[0]*data[1]*data[2]*size_factor[1]).sum(axis=0)/n_obs
@@ -345,7 +334,7 @@ def _corr_from_cov(cov, var_1, var_2, boot=False):
         Convert the estimation of the covariance to the estimation of correlation.
     """
     
-    if type(cov) != np.ndarray:
+    if not isinstance(cov, np.ndarray):
         return cov/np.sqrt(var_1*var_2)
         
     corr = np.full(cov.shape, 5.0)
