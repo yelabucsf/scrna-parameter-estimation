@@ -116,3 +116,79 @@ def test_moment_pipeline_smoke_test():
     assert means.shape == variances.shape
     assert means.shape[0] == adata.n_vars
     assert set(cell_counts.values()) == {40}
+
+
+def test_get_groups_encodes_non_numeric_two_level_column():
+    # Regression test for issue #61: a non-numeric, two-level label column
+    # (e.g. 'control'/'stim') was previously left as raw strings by get_groups,
+    # which downstream regression code (used by binary_test_1d/binary_test_2d)
+    # cannot cast to float. It should now be auto-encoded as 0/1.
+    adata = ad.AnnData(X=sparse.csr_matrix(np.zeros((1, 1))))
+    adata.uns["memento"] = {
+        "groups": ["sg^control", "sg^stim"],
+        "label_delimiter": "^",
+        "label_columns": ["treatment"],
+    }
+
+    result = main.get_groups(adata)
+
+    assert pd.api.types.is_numeric_dtype(result["treatment"])
+    assert result["treatment"].tolist() == [0.0, 1.0]
+
+
+def test_get_groups_leaves_multi_level_non_numeric_column_unencoded():
+    # A categorical column with more than two levels can't be meaningfully
+    # collapsed into a single 0/1 treatment indicator, so get_groups should
+    # leave it as-is rather than guessing an encoding.
+    adata = ad.AnnData(X=sparse.csr_matrix(np.zeros((1, 1))))
+    adata.uns["memento"] = {
+        "groups": ["sg^a", "sg^b", "sg^c"],
+        "label_delimiter": "^",
+        "label_columns": ["treatment"],
+    }
+
+    result = main.get_groups(adata)
+
+    assert result["treatment"].tolist() == ["a", "b", "c"]
+    assert not pd.api.types.is_numeric_dtype(result["treatment"])
+
+
+def test_get_groups_still_coerces_purely_numeric_column():
+    # Existing behavior (columns that already look numeric, e.g. '0'/'1')
+    # should be unaffected by the new binary-encoding fallback.
+    adata = ad.AnnData(X=sparse.csr_matrix(np.zeros((1, 1))))
+    adata.uns["memento"] = {
+        "groups": ["sg^0", "sg^1"],
+        "label_delimiter": "^",
+        "label_columns": ["treatment"],
+    }
+
+    result = main.get_groups(adata)
+
+    assert pd.api.types.is_numeric_dtype(result["treatment"])
+    assert result["treatment"].tolist() == [0, 1]
+
+
+def test_binary_test_1d_treatment_col_is_numeric_end_to_end():
+    # End-to-end regression test for issue #61, reproducing the reported
+    # usage: setup_memento -> create_groups -> get_groups with a non-numeric
+    # treatment_col, exactly as binary_test_1d assembles its design matrix.
+    rng = np.random.default_rng(0)
+    counts = rng.poisson(2.0, size=(20, 4))
+    obs = pd.DataFrame(
+        {
+            "capture_rate": np.full(20, 0.1),
+            "condition": np.repeat(["control", "stim"], 10),
+        },
+        index=[f"cell_{idx}" for idx in range(20)],
+    )
+    var = pd.DataFrame(index=[f"gene_{idx}" for idx in range(4)])
+    adata = ad.AnnData(X=sparse.csr_matrix(counts), obs=obs, var=var)
+
+    main.setup_memento(adata, q_column="capture_rate", filter_mean_thresh=0.0)
+    main.create_groups(adata, ["condition"])
+
+    sample_meta = main.get_groups(adata)[["condition"]]
+
+    assert pd.api.types.is_numeric_dtype(sample_meta["condition"])
+    assert set(sample_meta["condition"].unique()) == {0.0, 1.0}
