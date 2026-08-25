@@ -223,6 +223,13 @@ def get_groups(adata):
         try:
             df[col] = pd.to_numeric(df[col])
         except ValueError:
+            # Non-numeric column (e.g. 'stim'/'control'). If it has exactly two
+            # levels, encode it as 0/1 automatically so that downstream regression
+            # (e.g. binary_test_1d, binary_test_2d) receives a numeric design
+            # matrix, matching the two-level treatment_col support described in
+            # the tutorials.
+            if df[col].nunique() == 2:
+                df[col] = df[col].astype('category').cat.codes.astype(float)
             continue
     return df
 
