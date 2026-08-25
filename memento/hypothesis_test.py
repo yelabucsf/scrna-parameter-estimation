@@ -572,7 +572,6 @@ def _cross_coef(A, B, sample_weight):
     ssA = np.average(A_mA**2, axis=0, weights=sample_weight)
 
     # Finally get corr coeff
-    # Finally get corr coeff
     weighted_B = sample_weight[:, np.newaxis] * B_mB
     numerator = A_mA.T.dot(weighted_B) / sample_weight.sum()
 

@@ -118,3 +118,51 @@ def test_quasiml_honors_per_gene_treatments_and_covariates(monkeypatch):
     ]
     assert fits[0]["exog"].columns.tolist() == ["intercept", "tx_0"]
     assert fits[1]["exog"].columns.tolist() == ["intercept", "batch", "tx_1"]
+
+
+def test_cross_coef_handles_zero_variance_column_without_nan_or_inf():
+    # Regression test for PR #16 (nkschaefer): a constant column in A (e.g. a
+    # treatment/covariate with no variation across samples) previously caused
+    # a division-by-zero in _cross_coef, propagating inf/nan into results.
+    rng = np.random.default_rng(0)
+    n = 50
+
+    A = np.column_stack(
+        [
+            np.ones(n),  # constant column -> zero variance
+            rng.normal(size=n),
+        ]
+    )
+    B = rng.normal(size=(n, 3))
+    weights = np.ones(n)
+
+    with np.errstate(divide="raise", invalid="raise"):
+        result = hypothesis_test._cross_coef(A, B, weights)
+
+    assert result.shape == (2, 3)
+    assert not np.isnan(result).any()
+    assert not np.isinf(result).any()
+    # The constant column's row should be zeroed out rather than blown up.
+    np.testing.assert_array_equal(result[0], np.zeros(3))
+    # The non-constant column should still produce a real (nonzero) estimate.
+    assert not np.allclose(result[1], 0)
+
+
+def test_cross_coef_matches_manual_calculation_when_no_zero_variance():
+    # Sanity check that the zero-variance guard doesn't change results when
+    # it isn't needed.
+    rng = np.random.default_rng(1)
+    n = 40
+
+    A = rng.normal(size=(n, 2))
+    B = rng.normal(size=(n, 2))
+    weights = np.ones(n)
+
+    result = hypothesis_test._cross_coef(A, B, weights)
+
+    A_mA = A - A.mean(axis=0)
+    B_mB = B - B.mean(axis=0)
+    ssA = (A_mA**2).mean(axis=0)
+    expected = (A_mA.T @ B_mB) / n / ssA[:, None]
+
+    np.testing.assert_allclose(result, expected)
