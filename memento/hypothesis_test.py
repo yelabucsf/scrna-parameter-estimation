@@ -75,7 +75,7 @@ def _compute_asl(perm_diff, approx='norm'):
         Use the generalized pareto distribution to model the tail of the permutation distribution. 
     """
 
-    if np.all(perm_diff == perm_diff.mean()):
+    if np.all(np.isnan(perm_diff)) or np.all(perm_diff == np.nanmean(perm_diff)):
         
         return np.nan
     
@@ -573,7 +573,20 @@ def _cross_coef(A, B, sample_weight):
 
     # Finally get corr coeff
     weighted_B = sample_weight[:, np.newaxis] * B_mB
-    return A_mA.T.dot(weighted_B) / sample_weight.sum() / ssA[:, None]
+    numerator = A_mA.T.dot(weighted_B) / sample_weight.sum()
+
+    # Guard against division by zero when a column of A has zero variance
+    # (e.g. a constant treatment/covariate column). Checked per-column, since
+    # A may have some constant columns and some non-constant ones. Rows of
+    # the result corresponding to a constant column of A are set to NaN
+    # (rather than 0) since the coefficient is genuinely undefined there;
+    # this keeps coef/se/pval consistent downstream in _regress_2d, since
+    # _compute_asl already returns NaN for a degenerate (all-equal) row.
+    # See PR #16 (nkschaefer).
+    safe_ssA = np.where(ssA > 0, ssA, 1.0)
+    result = numerator / safe_ssA[:, None]
+    result[ssA == 0, :] = np.nan
+    return result
 
 
 def _cross_coef_resampled(A, B, sample_weight):
