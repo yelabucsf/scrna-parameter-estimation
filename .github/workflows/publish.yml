@@ -1,0 +1,59 @@
+name: Publish to PyPI
+
+# Runs automatically when a version tag (e.g. v0.1.3) is pushed, and can
+# also be triggered manually from the Actions tab for a tag that already
+# exists (e.g. one created before this workflow was added).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install build tool
+        run: python -m pip install --upgrade build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Requires a GitHub Environment named "pypi" (Settings > Environments)
+    # and a matching Trusted Publisher configured on the memento-de project
+    # page on pypi.org (pointing at this repo, this workflow file name, and
+    # this environment name). No PyPI API token/secret is needed with
+    # Trusted Publishing -- PyPI verifies the workflow's identity directly
+    # via OIDC.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/memento-de/
+    permissions:
+      id-token: write  # required for OIDC trusted publishing
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
