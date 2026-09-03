@@ -114,7 +114,7 @@ def setup_memento(
         q=adata.uns['memento']['all_q'],
         size_factor=naive_size_factor)
     all_m[adata.X.mean(axis=0).A1 < filter_mean_thresh] = 0 # mean filter
-    all_res_var = estimator._residual_variance(all_m, all_v, estimator._fit_mv_regressor(all_m, all_v))
+    all_res_var = estimator._residual_variance(all_m, all_v, estimator._fit_mv_regressor(all_m, all_v, group='all cells'))
     
     # Select genes for normalization
     rv_ulim = np.quantile(all_res_var[np.isfinite(all_res_var)], trim_percent)
@@ -306,7 +306,7 @@ def compute_1d_moments(
     for group in adata.uns['memento']['groups']:
         m = adata.uns['memento']['1d_moments'][group][0][adata.uns['memento']['gene_rv_filter'][group]]
         v = adata.uns['memento']['1d_moments'][group][1][adata.uns['memento']['gene_rv_filter'][group]]
-        adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(m, v) if adata.uns['memento']['estimator_type'] != 'mean_only' else np.array([0,0,0])
+        adata.uns['memento']['mv_regressor'][group] = estimator._fit_mv_regressor(m, v, group=group) if adata.uns['memento']['estimator_type'] != 'mean_only' else np.array([0,0,0])
     
     # Compute the residual variance
     for group in adata.uns['memento']['groups']:

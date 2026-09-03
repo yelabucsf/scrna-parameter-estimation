@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 project = 'memento'
 copyright = '2025, Min Cheol Kim'
 author = 'YMin Cheol Kim'
-release = '0.1.2'
+release = '0.1.3'
 
 # -- General configuration ---------------------------------------------------
 extensions = [

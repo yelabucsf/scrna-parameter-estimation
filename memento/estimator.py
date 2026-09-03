@@ -101,13 +101,35 @@ def _estimate_size_factor(data, estimator_type, shrinkage, mask=None, total=Fals
         return size_factor
 
     
-def _fit_mv_regressor(mean, var):
+def _fit_mv_regressor(mean, var, group=None):
     """
         Perform regression of the variance against the mean.
     """
     
     cond = (mean > 0) & (var > 0)
     m, v = np.log(mean[cond]), np.log(var[cond])
+    
+    # np.polyfit only actually raises when given a completely empty input
+    # (m.size == 0) -- it tolerates 1 or 2 points for a degree-2 fit,
+    # producing an underdetermined-but-numeric result rather than an error.
+    # An empty result here usually means this group has too few cells or too
+    # sparse expression for any gene to have both a positive mean and a
+    # positive variance. Raise an informative error in that case rather than
+    # letting np.polyfit fail with an opaque TypeError -- how to handle the
+    # offending group (exclude it, increase min_cell_count, pool it with
+    # another group, etc.) is left to the caller, since that's a modeling
+    # decision specific to their analysis.
+    if m.size == 0:
+        group_desc = f" for group {group!r}" if group is not None else ""
+        raise ValueError(
+            f"No genes with a positive mean and positive variance found "
+            f"to fit the mean-variance regressor{group_desc}. This usually "
+            f"means this group has too few cells or too sparse expression "
+            f"for the current filtering settings. Consider excluding this "
+            f"group, increasing min_cell_count, adjusting "
+            f"filter_mean_thresh, or pooling it with other groups before "
+            f"calling this function."
+        )
     
     poly = np.polyfit(m, v, 2)
     return poly
