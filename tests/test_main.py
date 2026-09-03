@@ -192,3 +192,48 @@ def test_binary_test_1d_treatment_col_is_numeric_end_to_end():
 
     assert pd.api.types.is_numeric_dtype(sample_meta["condition"])
     assert set(sample_meta["condition"].unique()) == {0.0, 1.0}
+
+
+def test_compute_1d_moments_raises_informative_error_for_sparse_group():
+    # End-to-end regression test for issue #29: a many-donor covariate
+    # setup where one donor/group has too few genes with a positive mean
+    # and positive variance (e.g. very low sequencing depth for that
+    # sample) previously crashed the entire compute_1d_moments call with an
+    # opaque "TypeError: expected non-empty vector for x" from deep inside
+    # np.polyfit. It should now raise a clear ValueError naming the
+    # offending group instead.
+    rng = np.random.default_rng(0)
+    n_genes = 20
+
+    def make_block(n_cells, lam):
+        return rng.poisson(lam, size=(n_cells, n_genes))
+
+    # Two healthy donors, and one donor that clears the min_cell_count
+    # filter (15 >= default 10) but has all-zero counts, so no gene has a
+    # positive mean/variance within that group.
+    counts = np.vstack(
+        [
+            make_block(30, 3.0),
+            make_block(30, 3.0),
+            np.zeros((15, n_genes), dtype=int),
+        ]
+    )
+    obs = pd.DataFrame(
+        {
+            "capture_rate": np.full(75, 0.1),
+            "donor": ["A"] * 30 + ["B"] * 30 + ["C"] * 15,
+        },
+        index=[f"cell_{idx}" for idx in range(75)],
+    )
+    var = pd.DataFrame(index=[f"gene_{idx}" for idx in range(n_genes)])
+    adata = ad.AnnData(X=sparse.csr_matrix(counts), obs=obs, var=var)
+
+    main.setup_memento(adata, q_column="capture_rate", filter_mean_thresh=0.0)
+    main.create_groups(adata, ["donor"])
+
+    # Donor C survives create_groups' min_cell_count filter, so the crash
+    # site is compute_1d_moments' per-group mean-variance regressor fit.
+    assert "sg^C" in adata.uns["memento"]["groups"]
+
+    with pytest.raises(ValueError, match="sg\\^C"):
+        main.compute_1d_moments(adata, min_perc_group=0.3)
