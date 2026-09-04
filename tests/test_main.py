@@ -631,3 +631,60 @@ def test_ht_1d_moments_still_drops_real_gene_with_constant_only_column():
 
     result = main.get_1d_ht_result(adata)
     assert result.shape == (0, 8)
+
+
+def test_ht_2d_moments_errors_on_nonexistent_gene_pair_with_constant_only_column():
+    # Regression test mirroring the 1D fix: a gene pair that was never
+    # computed via compute_2d_moments should always raise a clear error,
+    # even if its only assigned treatment column happens to be constant.
+    rng = np.random.default_rng(8)
+    adata = _build_donor_adata(rng, n_genes=20)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving = adata.uns["memento"]["gene_list"]
+    g0, g1 = surviving[0], surviving[1]
+    main.compute_2d_moments(adata, [(g0, g1)])
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {("fake_gene_x", "fake_gene_y"): ["constant_col"]}
+
+    with pytest.raises(ValueError, match="Gene pairs not found"):
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+
+def test_ht_2d_moments_still_drops_real_pair_with_constant_only_column():
+    # Sanity check that the fix above doesn't overcorrect: a real,
+    # previously-computed pair with only a constant column assigned should
+    # still be silently dropped (no error), same as before.
+    rng = np.random.default_rng(9)
+    adata = _build_donor_adata(rng, n_genes=20)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving = adata.uns["memento"]["gene_list"]
+    g0, g1 = surviving[0], surviving[1]
+    main.compute_2d_moments(adata, [(g0, g1)])
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {(g0, g1): ["constant_col"]}
+
+    with pytest.warns(UserWarning, match="Dropping"):
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+    result = main.get_2d_ht_result(adata)
+    assert result.shape == (0, 6)

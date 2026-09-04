@@ -131,6 +131,23 @@ def _prefilter_constant_treatment(treatment, treatment_for_gene):
 
 
 
+def _validate_gene_pairs_exist(adata, treatment_for_gene):
+    """
+    Raise a clear error if `treatment_for_gene` references a gene pair
+    that wasn't computed via `compute_2d_moments`, rather than letting it
+    be silently ignored (e.g. by the task-building loop simply never
+    looking it up) -- mirroring `_get_test_genes_and_indices`'s existence
+    check for the 1D case.
+    """
+    valid_pairs = set(adata.uns['memento']['2d_moments']['gene_pairs'])
+    missing = [pair for pair in treatment_for_gene if pair not in valid_pairs]
+    if missing:
+        raise ValueError(
+            f"Gene pairs not found in computed 2d moments (did you call "
+            f"compute_2d_moments with these pairs first?): {missing}"
+        )
+
+
 def _spawn_task_random_states(random_state, n_tasks):
     """Create reproducible per-task seeds independent of worker scheduling."""
 
@@ -773,6 +790,14 @@ def ht_2d_moments(
         Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
     Nc_list = np.array(Nc_list)
         
+    # Validate that every requested gene pair was actually computed BEFORE
+    # filtering out constant treatment columns below, for the same reason
+    # as ht_1d_moments: otherwise a nonexistent/mistyped pair could get
+    # silently dropped by the constant-treatment filter first if its
+    # columns happen to all be constant, masking the real problem.
+    if treatment_for_gene is not None:
+        _validate_gene_pairs_exist(adata, treatment_for_gene)
+    
     # Drop treatment columns with zero variance across groups (e.g. a
     # monomorphic SNP genotype) before any bootstrap computation runs --
     # there is nothing to test for a treatment that never varies.
