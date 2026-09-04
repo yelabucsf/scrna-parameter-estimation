@@ -506,6 +506,16 @@ def ht_1d_moments(
         Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
     Nc_list = np.array(Nc_list)
     
+    # Validate that every requested gene actually exists BEFORE filtering
+    # out constant treatment columns below. Otherwise a gene that doesn't
+    # exist in adata.var (e.g. a typo, or a gene already excluded upstream
+    # by the expression filter) could get silently dropped by the
+    # constant-treatment filter first -- if its assigned columns happen to
+    # all be constant -- masking the real problem with a misleading
+    # "nothing to test" warning instead of a clear "gene not found" error.
+    if treatment_for_gene is not None:
+        _get_test_genes_and_indices(adata, treatment_for_gene)
+    
     # Drop treatment columns with zero variance across groups (e.g. a
     # monomorphic SNP genotype) before any bootstrap computation runs --
     # there is nothing to test for a treatment that never varies.

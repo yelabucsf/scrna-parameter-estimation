@@ -578,3 +578,56 @@ def test_ht_1d_moments_result_alignment_is_reproducible_with_mixed_dropouts():
     assert (result1.index.get_level_values("tx") == "snp_monomorphic").sum() == 0
     assert result1.index.equals(result2.index)
     pd.testing.assert_frame_equal(result1, result2)
+
+
+def test_ht_1d_moments_still_errors_on_nonexistent_gene_with_constant_only_column():
+    # Regression test: a gene that doesn't exist in adata.var should always
+    # raise a clear "gene not found" error, even if its only assigned
+    # treatment column happens to be constant (which would otherwise cause
+    # the zero-variance pre-filter to silently drop it first, masking the
+    # real problem -- a typo or a stale gene name -- behind a misleading
+    # "nothing to test" warning instead).
+    rng = np.random.default_rng(5)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {"totally_fake_gene": ["constant_col"]}
+
+    with pytest.raises(ValueError, match="Genes not found"):
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+
+def test_ht_1d_moments_still_drops_real_gene_with_constant_only_column():
+    # Sanity check that the fix above doesn't overcorrect: a gene that
+    # genuinely exists, with only a constant column assigned, should still
+    # be silently dropped (no error), same as before.
+    rng = np.random.default_rng(6)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    real_gene = adata.var.index[0]
+    treatment_for_gene = {real_gene: ["constant_col"]}
+
+    with pytest.warns(UserWarning, match="Dropping"):
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+    result = main.get_1d_ht_result(adata)
+    assert result.shape == (0, 8)
