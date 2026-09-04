@@ -2,6 +2,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+import warnings
 from scipy import sparse
 
 from memento import main
@@ -237,3 +238,453 @@ def test_compute_1d_moments_raises_informative_error_for_sparse_group():
 
     with pytest.raises(ValueError, match="sg\\^C"):
         main.compute_1d_moments(adata, min_perc_group=0.3)
+
+
+def _build_donor_adata(rng, n_genes=50, n_donors=20, cells_per_donor=10, lam=3.0):
+    """Shared fixture-style helper: a donor-structured AnnData with enough
+    genes for setup_memento's internal binning to behave sensibly."""
+    counts = rng.poisson(lam, size=(n_donors * cells_per_donor, n_genes))
+    obs = pd.DataFrame(
+        {
+            "capture_rate": np.full(n_donors * cells_per_donor, 0.1),
+            "donor": np.repeat([f"d{i}" for i in range(n_donors)], cells_per_donor),
+        },
+        index=[f"c{i}" for i in range(n_donors * cells_per_donor)],
+    )
+    var = pd.DataFrame(index=[f"gene_{i}" for i in range(n_genes)])
+    adata = ad.AnnData(X=sparse.csr_matrix(counts.astype(float)), obs=obs, var=var)
+    main.setup_memento(adata, q_column="capture_rate", filter_mean_thresh=0.0)
+    main.create_groups(adata, ["donor"])
+    main.compute_1d_moments(adata, min_perc_group=0.3)
+    return adata
+
+
+def test_drop_constant_treatment_columns_global_case():
+    # treatment_for_gene=None: constant columns apply to every gene, so the
+    # function should just report which columns of `treatment` are constant.
+    treatment = pd.DataFrame(
+        {
+            "varies": [0.0, 1.0, 0.0, 1.0],
+            "constant": [5.0, 5.0, 5.0, 5.0],
+        }
+    )
+
+    filtered_tfg, constant_cols = main._drop_constant_treatment_columns(treatment, None)
+
+    assert filtered_tfg is None
+    assert constant_cols == ["constant"]
+
+
+def test_drop_constant_treatment_columns_per_gene_case():
+    # treatment_for_gene provided: constant columns should be removed from
+    # each gene's own list; a gene whose only column is constant should be
+    # dropped entirely; a gene with no constant columns is untouched.
+    treatment = pd.DataFrame(
+        {
+            "snp_a": [0.0, 1.0, 2.0, 1.0],
+            "snp_b": [1.0, 1.0, 1.0, 1.0],  # constant
+        }
+    )
+    treatment_for_gene = {
+        "gene_1": ["snp_a", "snp_b"],  # mixed -> keep only snp_a
+        "gene_2": ["snp_b"],  # only constant -> dropped entirely
+        "gene_3": ["snp_a"],  # unaffected
+    }
+
+    filtered_tfg, dropped = main._drop_constant_treatment_columns(treatment, treatment_for_gene)
+
+    assert filtered_tfg == {"gene_1": ["snp_a"], "gene_3": ["snp_a"]}
+    assert set(dropped) == {("gene_1", "snp_b"), ("gene_2", "snp_b")}
+    assert "gene_2" not in filtered_tfg
+
+
+def test_prefilter_constant_treatment_warns_and_drops_global():
+    treatment = pd.DataFrame(
+        {
+            "varies": [0.0, 1.0, 0.0, 1.0],
+            "constant": [5.0, 5.0, 5.0, 5.0],
+        }
+    )
+
+    with pytest.warns(UserWarning, match="Dropping treatment column"):
+        filtered_treatment, treatment_for_gene = main._prefilter_constant_treatment(treatment, None)
+
+    assert list(filtered_treatment.columns) == ["varies"]
+    assert treatment_for_gene is None
+
+
+def test_prefilter_constant_treatment_warns_and_drops_per_gene():
+    treatment = pd.DataFrame(
+        {
+            "snp_a": [0.0, 1.0, 2.0, 1.0],
+            "snp_b": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+    treatment_for_gene = {"gene_1": ["snp_a", "snp_b"], "gene_2": ["snp_b"]}
+
+    with pytest.warns(UserWarning, match="Dropping 2 gene/treatment-column pair"):
+        _, filtered_tfg = main._prefilter_constant_treatment(treatment, treatment_for_gene)
+
+    assert filtered_tfg == {"gene_1": ["snp_a"]}
+
+
+def test_prefilter_constant_treatment_no_warning_when_nothing_constant():
+    treatment = pd.DataFrame({"snp_a": [0.0, 1.0, 2.0, 1.0]})
+    treatment_for_gene = {"gene_1": ["snp_a"]}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning becomes a test failure
+        result_treatment, result_tfg = main._prefilter_constant_treatment(treatment, treatment_for_gene)
+
+    assert list(result_treatment.columns) == ["snp_a"]
+    assert result_tfg == treatment_for_gene
+
+
+def test_ht_1d_moments_drops_monomorphic_snp_per_gene():
+    # End-to-end regression test for issue #38: an eQTL-style scan with a
+    # monomorphic SNP mixed in with a normal one. Previously this produced
+    # divide-by-zero/degrees-of-freedom warnings and unreliable output for
+    # the monomorphic SNP; it should now be silently excluded from the
+    # results (with a single informative warning), leaving only the valid
+    # SNP's results.
+    rng = np.random.default_rng(0)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame(
+        {
+            "snp_normal": rng.integers(0, 3, size=n_donors).astype(float),
+            "snp_monomorphic": np.zeros(n_donors),
+        },
+        index=groups,
+    )
+    treatment_for_gene = {
+        gene: ["snp_normal", "snp_monomorphic"] for gene in adata.var.index[:3]
+    }
+
+    with pytest.warns(UserWarning, match="Dropping"):
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=100,
+            verbose=0,
+            num_cpus=1,
+            resample_rep=True,
+        )
+
+    result = main.get_1d_ht_result(adata)
+
+    assert (result["tx"] == "snp_monomorphic").sum() == 0
+    assert set(result["tx"].unique()) == {"snp_normal"}
+    assert not result["de_coef"].isna().any()
+
+
+def test_ht_1d_moments_drops_constant_column_global_case():
+    rng = np.random.default_rng(1)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame(
+        {
+            "condition": rng.integers(0, 2, size=n_donors).astype(float),
+            "constant_col": np.full(n_donors, 5.0),
+        },
+        index=groups,
+    )
+
+    with pytest.warns(UserWarning, match="Dropping treatment column"):
+        main.ht_1d_moments(adata, treatment=treatment, num_boot=100, verbose=0, num_cpus=1)
+
+    result = main.get_1d_ht_result(adata)
+
+    assert set(result["tx"].unique()) == {"condition"}
+
+
+def test_ht_2d_moments_drops_pair_when_all_treatment_columns_constant():
+    # End-to-end regression test for issue #38 in the 2D/coexpression path:
+    # a gene pair whose only assigned treatment column is constant should
+    # be dropped entirely from the results, not just have its coefficient
+    # set to something invalid.
+    rng = np.random.default_rng(2)
+    adata = _build_donor_adata(rng, n_genes=30)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving_genes = adata.uns["memento"]["gene_list"]
+    g0, g1, g2, g3, g4, g5 = surviving_genes[:6]
+    gene_pairs = [(g0, g1), (g2, g3), (g4, g5)]
+    main.compute_2d_moments(adata, gene_pairs)
+
+    treatment = pd.DataFrame(
+        {
+            "snp_normal": rng.integers(0, 3, size=n_donors).astype(float),
+            "snp_monomorphic": np.zeros(n_donors),
+        },
+        index=groups,
+    )
+    treatment_for_gene = {
+        (g0, g1): ["snp_normal", "snp_monomorphic"],  # mixed -> keep snp_normal only
+        (g2, g3): ["snp_monomorphic"],  # only constant -> pair vanishes entirely
+        (g4, g5): ["snp_normal"],  # unaffected
+    }
+
+    with pytest.warns(UserWarning, match="Dropping"):
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=100,
+            verbose=0,
+            num_cpus=1,
+            resample_rep=True,
+        )
+
+    result = main.get_2d_ht_result(adata)
+
+    pair_23_present = (
+        ((result["gene_1"] == g2) & (result["gene_2"] == g3))
+        | ((result["gene_1"] == g3) & (result["gene_2"] == g2))
+    ).any()
+    assert not pair_23_present
+
+    pair_01_mask = ((result["gene_1"] == g0) & (result["gene_2"] == g1)) | (
+        (result["gene_1"] == g1) & (result["gene_2"] == g0)
+    )
+    assert set(result.loc[pair_01_mask, "tx"]) == {"snp_normal"}
+
+
+def test_get_1d_ht_result_returns_empty_frame_when_all_genes_dropped():
+    # If every gene passed to ht_1d_moments ends up with zero surviving
+    # treatment columns (e.g. an eQTL scan where every SNP happens to be
+    # monomorphic in this cohort), get_1d_ht_result should return a clean,
+    # well-formed empty DataFrame rather than crashing on pd.concat([]).
+    rng = np.random.default_rng(3)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame({"snp_monomorphic": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {adata.var.index[0]: ["snp_monomorphic"]}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=100,
+            verbose=0,
+            num_cpus=1,
+        )
+
+    result = main.get_1d_ht_result(adata)
+
+    assert result.shape == (0, 8)
+    assert list(result.columns) == [
+        "gene", "tx", "de_coef", "de_se", "de_pval", "dv_coef", "dv_se", "dv_pval",
+    ]
+
+
+def test_get_2d_ht_result_returns_empty_frame_when_only_pair_dropped():
+    rng = np.random.default_rng(4)
+    adata = _build_donor_adata(rng, n_genes=20)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving = adata.uns["memento"]["gene_list"]
+    g0, g1 = surviving[0], surviving[1]
+    main.compute_2d_moments(adata, [(g0, g1)])
+
+    treatment = pd.DataFrame({"snp_monomorphic": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {(g0, g1): ["snp_monomorphic"]}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=100,
+            verbose=0,
+            num_cpus=1,
+            resample_rep=True,
+        )
+
+    result = main.get_2d_ht_result(adata)
+
+    assert result.shape == (0, 6)
+    assert list(result.columns) == ["gene_1", "gene_2", "tx", "corr_coef", "corr_se", "corr_pval"]
+
+
+def test_ht_1d_moments_result_alignment_is_reproducible_with_mixed_dropouts():
+    # Regression test for the concern that per-gene treatment-column
+    # filtering could misalign get_1d_ht_result's (gene, tx) rows against
+    # the underlying flat coefficient arrays. Builds a scenario with
+    # several genes, each with a DIFFERENT number of treatment columns
+    # dropped (0, 1, all), and confirms that re-running the exact same
+    # call is bit-for-bit reproducible -- which would not hold if rows
+    # were misaligned relative to the coefficient arrays, since a shift
+    # would pull in a different (still plausible-looking, but wrong)
+    # value each run only if randomness differed, but here the random
+    # seeding is fully determined by call structure, so any misalignment
+    # bug would show up as a structural (index) mismatch, not just noise.
+    def run():
+        rng = np.random.default_rng(7)
+        adata = _build_donor_adata(rng, n_genes=50, n_donors=25)
+        groups = adata.uns["memento"]["groups"]
+        n_donors = len(groups)
+
+        treatment = pd.DataFrame(
+            {
+                "snp_A": rng.integers(0, 3, size=n_donors).astype(float),
+                "snp_B": rng.integers(0, 3, size=n_donors).astype(float),
+                "snp_C": rng.integers(0, 3, size=n_donors).astype(float),
+                "snp_monomorphic": np.zeros(n_donors),
+            },
+            index=groups,
+        )
+        genes = list(adata.var.index[:6])
+        treatment_for_gene = {
+            genes[0]: ["snp_A", "snp_monomorphic"],
+            genes[1]: ["snp_B", "snp_C"],
+            genes[2]: ["snp_monomorphic"],  # fully dropped
+            genes[3]: ["snp_A", "snp_B", "snp_C", "snp_monomorphic"],
+            genes[4]: ["snp_C"],
+            genes[5]: ["snp_A", "snp_monomorphic", "snp_B"],
+        }
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            main.ht_1d_moments(
+                adata,
+                treatment=treatment,
+                treatment_for_gene=treatment_for_gene,
+                num_boot=200,
+                verbose=0,
+                num_cpus=1,
+                resample_rep=True,
+                random_state=42,
+            )
+        return main.get_1d_ht_result(adata).set_index(["gene", "tx"]).sort_index()
+
+    result1 = run()
+    result2 = run()
+
+    # Fully-dropped gene never appears; every other gene keeps exactly its
+    # surviving (non-constant) columns.
+    assert (result1.index.get_level_values("tx") == "snp_monomorphic").sum() == 0
+    assert result1.index.equals(result2.index)
+    pd.testing.assert_frame_equal(result1, result2)
+
+
+def test_ht_1d_moments_still_errors_on_nonexistent_gene_with_constant_only_column():
+    # Regression test: a gene that doesn't exist in adata.var should always
+    # raise a clear "gene not found" error, even if its only assigned
+    # treatment column happens to be constant (which would otherwise cause
+    # the zero-variance pre-filter to silently drop it first, masking the
+    # real problem -- a typo or a stale gene name -- behind a misleading
+    # "nothing to test" warning instead).
+    rng = np.random.default_rng(5)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {"totally_fake_gene": ["constant_col"]}
+
+    with pytest.raises(ValueError, match="Genes not found"):
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+
+def test_ht_1d_moments_still_drops_real_gene_with_constant_only_column():
+    # Sanity check that the fix above doesn't overcorrect: a gene that
+    # genuinely exists, with only a constant column assigned, should still
+    # be silently dropped (no error), same as before.
+    rng = np.random.default_rng(6)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    real_gene = adata.var.index[0]
+    treatment_for_gene = {real_gene: ["constant_col"]}
+
+    with pytest.warns(UserWarning, match="Dropping"):
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+    result = main.get_1d_ht_result(adata)
+    assert result.shape == (0, 8)
+
+
+def test_ht_2d_moments_errors_on_nonexistent_gene_pair_with_constant_only_column():
+    # Regression test mirroring the 1D fix: a gene pair that was never
+    # computed via compute_2d_moments should always raise a clear error,
+    # even if its only assigned treatment column happens to be constant.
+    rng = np.random.default_rng(8)
+    adata = _build_donor_adata(rng, n_genes=20)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving = adata.uns["memento"]["gene_list"]
+    g0, g1 = surviving[0], surviving[1]
+    main.compute_2d_moments(adata, [(g0, g1)])
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {("fake_gene_x", "fake_gene_y"): ["constant_col"]}
+
+    with pytest.raises(ValueError, match="Gene pairs not found"):
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+
+def test_ht_2d_moments_still_drops_real_pair_with_constant_only_column():
+    # Sanity check that the fix above doesn't overcorrect: a real,
+    # previously-computed pair with only a constant column assigned should
+    # still be silently dropped (no error), same as before.
+    rng = np.random.default_rng(9)
+    adata = _build_donor_adata(rng, n_genes=20)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving = adata.uns["memento"]["gene_list"]
+    g0, g1 = surviving[0], surviving[1]
+    main.compute_2d_moments(adata, [(g0, g1)])
+
+    treatment = pd.DataFrame({"constant_col": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {(g0, g1): ["constant_col"]}
+
+    with pytest.warns(UserWarning, match="Dropping"):
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=50,
+            verbose=0,
+            num_cpus=1,
+        )
+
+    result = main.get_2d_ht_result(adata)
+    assert result.shape == (0, 6)
