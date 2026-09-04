@@ -972,10 +972,11 @@ def get_1d_ht_result(adata):
     
     
     if 'treatment_for_gene' in adata.uns['memento']['1d_ht']:
-        result_df = pd.concat([
+        frames = [
             pd.DataFrame(
                 itertools.product([g], adata.uns['memento']['1d_ht']['treatment_for_gene'][g]), 
-                columns=['gene', 'tx']) for g in adata.uns['memento']['1d_ht']['test_genes']])
+                columns=['gene', 'tx']) for g in adata.uns['memento']['1d_ht']['test_genes']]
+        result_df = pd.concat(frames) if frames else pd.DataFrame(columns=['gene', 'tx'])
     else:
         result_df = pd.DataFrame(itertools.product(adata.uns['memento']['1d_ht']['test_genes'], adata.uns['memento']['1d_ht']['treatment'].columns), columns=['gene', 'tx'])
     result_df['de_coef'] = adata.uns['memento']['1d_ht']['mean_coef']
@@ -1012,9 +1013,10 @@ def get_2d_ht_result(adata):
         Getter function for 2d HT result
     """
     if 'treatment_for_gene' in adata.uns['memento']['2d_ht']:
-        result_df = pd.concat([
+        frames = [
             pd.DataFrame(itertools.product([pair], adata.uns['memento']['2d_ht']['treatment_for_gene'].get(pair, [])), 
-                columns=['pair', 'tx']) for pair in adata.uns['memento']['2d_moments']['gene_pairs']])
+                columns=['pair', 'tx']) for pair in adata.uns['memento']['2d_moments']['gene_pairs']]
+        result_df = pd.concat(frames) if frames else pd.DataFrame(columns=['pair', 'tx'])
         result_df = pd.concat([  pd.DataFrame(result_df['pair'].tolist(), columns=['gene_1', 'gene_2']), result_df[['tx']].reset_index(drop=True)  ], axis=1)
     else:
         result_df = pd.DataFrame(itertools.product(adata.uns['memento']['2d_moments']['gene_pairs'], adata.uns['memento']['2d_ht']['treatment'].columns), 

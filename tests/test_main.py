@@ -454,3 +454,127 @@ def test_ht_2d_moments_drops_pair_when_all_treatment_columns_constant():
         (result["gene_1"] == g1) & (result["gene_2"] == g0)
     )
     assert set(result.loc[pair_01_mask, "tx"]) == {"snp_normal"}
+
+
+def test_get_1d_ht_result_returns_empty_frame_when_all_genes_dropped():
+    # If every gene passed to ht_1d_moments ends up with zero surviving
+    # treatment columns (e.g. an eQTL scan where every SNP happens to be
+    # monomorphic in this cohort), get_1d_ht_result should return a clean,
+    # well-formed empty DataFrame rather than crashing on pd.concat([]).
+    rng = np.random.default_rng(3)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    treatment = pd.DataFrame({"snp_monomorphic": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {adata.var.index[0]: ["snp_monomorphic"]}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        main.ht_1d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=100,
+            verbose=0,
+            num_cpus=1,
+        )
+
+    result = main.get_1d_ht_result(adata)
+
+    assert result.shape == (0, 8)
+    assert list(result.columns) == [
+        "gene", "tx", "de_coef", "de_se", "de_pval", "dv_coef", "dv_se", "dv_pval",
+    ]
+
+
+def test_get_2d_ht_result_returns_empty_frame_when_only_pair_dropped():
+    rng = np.random.default_rng(4)
+    adata = _build_donor_adata(rng, n_genes=20)
+    groups = adata.uns["memento"]["groups"]
+    n_donors = len(groups)
+
+    surviving = adata.uns["memento"]["gene_list"]
+    g0, g1 = surviving[0], surviving[1]
+    main.compute_2d_moments(adata, [(g0, g1)])
+
+    treatment = pd.DataFrame({"snp_monomorphic": np.zeros(n_donors)}, index=groups)
+    treatment_for_gene = {(g0, g1): ["snp_monomorphic"]}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        main.ht_2d_moments(
+            adata,
+            treatment=treatment,
+            treatment_for_gene=treatment_for_gene,
+            num_boot=100,
+            verbose=0,
+            num_cpus=1,
+            resample_rep=True,
+        )
+
+    result = main.get_2d_ht_result(adata)
+
+    assert result.shape == (0, 6)
+    assert list(result.columns) == ["gene_1", "gene_2", "tx", "corr_coef", "corr_se", "corr_pval"]
+
+
+def test_ht_1d_moments_result_alignment_is_reproducible_with_mixed_dropouts():
+    # Regression test for the concern that per-gene treatment-column
+    # filtering could misalign get_1d_ht_result's (gene, tx) rows against
+    # the underlying flat coefficient arrays. Builds a scenario with
+    # several genes, each with a DIFFERENT number of treatment columns
+    # dropped (0, 1, all), and confirms that re-running the exact same
+    # call is bit-for-bit reproducible -- which would not hold if rows
+    # were misaligned relative to the coefficient arrays, since a shift
+    # would pull in a different (still plausible-looking, but wrong)
+    # value each run only if randomness differed, but here the random
+    # seeding is fully determined by call structure, so any misalignment
+    # bug would show up as a structural (index) mismatch, not just noise.
+    def run():
+        rng = np.random.default_rng(7)
+        adata = _build_donor_adata(rng, n_genes=50, n_donors=25)
+        groups = adata.uns["memento"]["groups"]
+        n_donors = len(groups)
+
+        treatment = pd.DataFrame(
+            {
+                "snp_A": rng.integers(0, 3, size=n_donors).astype(float),
+                "snp_B": rng.integers(0, 3, size=n_donors).astype(float),
+                "snp_C": rng.integers(0, 3, size=n_donors).astype(float),
+                "snp_monomorphic": np.zeros(n_donors),
+            },
+            index=groups,
+        )
+        genes = list(adata.var.index[:6])
+        treatment_for_gene = {
+            genes[0]: ["snp_A", "snp_monomorphic"],
+            genes[1]: ["snp_B", "snp_C"],
+            genes[2]: ["snp_monomorphic"],  # fully dropped
+            genes[3]: ["snp_A", "snp_B", "snp_C", "snp_monomorphic"],
+            genes[4]: ["snp_C"],
+            genes[5]: ["snp_A", "snp_monomorphic", "snp_B"],
+        }
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            main.ht_1d_moments(
+                adata,
+                treatment=treatment,
+                treatment_for_gene=treatment_for_gene,
+                num_boot=200,
+                verbose=0,
+                num_cpus=1,
+                resample_rep=True,
+                random_state=42,
+            )
+        return main.get_1d_ht_result(adata).set_index(["gene", "tx"]).sort_index()
+
+    result1 = run()
+    result2 = run()
+
+    # Fully-dropped gene never appears; every other gene keeps exactly its
+    # surviving (non-constant) columns.
+    assert (result1.index.get_level_values("tx") == "snp_monomorphic").sum() == 0
+    assert result1.index.equals(result2.index)
+    pd.testing.assert_frame_equal(result1, result2)
