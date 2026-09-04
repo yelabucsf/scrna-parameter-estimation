@@ -598,7 +598,18 @@ def _cross_coef_resampled(A, B, sample_weight):
     ssA = (A_mA**2*sample_weight[:, :, np.newaxis]).sum(axis=0)/sample_weight.sum(axis=0)[:, np.newaxis]
 #     ssB = ((B_mB**2*sample_weight).sum(axis=0)/sample_weight.sum(axis=0))[:, np.newaxis]
 
-    beta = np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / ssA.T
+    # A given bootstrap iteration can, purely by chance, resample a subset
+    # of replicates for which a (globally non-constant) treatment column
+    # ends up with zero variance -- e.g. a small donor cohort happening to
+    # draw the same genotype repeatedly. The resulting coefficient is
+    # genuinely undefined for that iteration, which is fine (well-tolerated
+    # by the downstream nanmean/nanstd aggregation), but computing it via an
+    # actual division by zero triggers noisy RuntimeWarnings on every
+    # occurrence, which adds up across a large scan. Avoid the division
+    # entirely and substitute NaN directly instead.
+    safe_ssA = np.where(ssA > 0, ssA, 1.0)
+    beta = np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / safe_ssA.T
+    beta[ssA.T == 0] = np.nan
 #     r = beta * np.sqrt(ssA).T/np.sqrt(ssB).T
 #     num_cells_per_boot = sample_weight.sum(axis=0)
 #     t = np.sqrt(num_cells_per_boot-2)*r/np.sqrt(1-r**2)
@@ -636,40 +647,33 @@ def _regress_1d(
 
         return [np.zeros(treatment.shape[1])*np.nan]*5
     
-    if (treatment == 1).mean()==1:
-        
-        mean_coef = np.average(boot_mean, axis=0, weights=Nc_list).reshape(1, -1)
-        var_coef = np.average(boot_var, axis=0, weights=Nc_list).reshape(1, -1)
-        
+    boot_mean_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate,boot_mean, Nc_list).predict(covariate)
+    boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
+    treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
+
+    if resample_rep:            
+
+        replicate_assignment = _choice(
+            rng, num_rep, size=(num_rep, num_boot)
+        )
+        replicate_assignment[:, 0] = np.arange(num_rep)
+        b_iter_assignment = _choice(
+            rng, num_boot, size=(num_rep, num_boot)
+        ) + 1
+        b_iter_assignment[:, 0] = 0
+
+        boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
+        boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
+        treatment_resampled = treatment_tilde[replicate_assignment]
+        weights_resampled = Nc_list[replicate_assignment]
+
+        mean_coef = _cross_coef_resampled(treatment_resampled, boot_mean_resampled, weights_resampled)
+        var_coef = _cross_coef_resampled(treatment_resampled, boot_var_resampled, weights_resampled)    
+
     else:
 
-        boot_mean_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate,boot_mean, Nc_list).predict(covariate)
-        boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
-        treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
-
-        if resample_rep:            
-
-            replicate_assignment = _choice(
-                rng, num_rep, size=(num_rep, num_boot)
-            )
-            replicate_assignment[:, 0] = np.arange(num_rep)
-            b_iter_assignment = _choice(
-                rng, num_boot, size=(num_rep, num_boot)
-            ) + 1
-            b_iter_assignment[:, 0] = 0
-
-            boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
-            boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
-            treatment_resampled = treatment_tilde[replicate_assignment]
-            weights_resampled = Nc_list[replicate_assignment]
-
-            mean_coef = _cross_coef_resampled(treatment_resampled, boot_mean_resampled, weights_resampled)
-            var_coef = _cross_coef_resampled(treatment_resampled, boot_var_resampled, weights_resampled)    
-
-        else:
-
-            mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
-            var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
+        mean_coef = _cross_coef(treatment_tilde, boot_mean_tilde, Nc_list)
+        var_coef = _cross_coef(treatment_tilde, boot_var_tilde, Nc_list)
 
     mean_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, mean_coef)
     var_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, var_coef)
@@ -778,35 +782,29 @@ def _regress_2d(
 
         return [np.zeros(treatment.shape[1])*np.nan]*5
     
-    if (treatment == 1).mean()==1:
-        
-        corr_coef = np.average(boot_corr, axis=0, weights=Nc_list).reshape(1,-1)
-        
+    boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+    treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
+
+    if resample_rep:
+
+        replicate_assignment = _choice(
+            rng, num_rep, size=(num_rep, num_boot)
+        )
+        replicate_assignment[:, 0] = np.arange(num_rep)
+        b_iter_assignment = _choice(
+            rng, num_boot, size=(num_rep, num_boot)
+        ) + 1
+        b_iter_assignment[:, 0] = 0
+
+        boot_corr_resampled = boot_corr_tilde[(replicate_assignment, b_iter_assignment)]
+        treatment_resampled = treatment_tilde[replicate_assignment]
+        weights_resampled = Nc_list[replicate_assignment]
+
+        corr_coef = _cross_coef_resampled(treatment_resampled, boot_corr_resampled, weights_resampled)
+
     else:
 
-        boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
-        treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
-
-        if resample_rep:
-
-            replicate_assignment = _choice(
-                rng, num_rep, size=(num_rep, num_boot)
-            )
-            replicate_assignment[:, 0] = np.arange(num_rep)
-            b_iter_assignment = _choice(
-                rng, num_boot, size=(num_rep, num_boot)
-            ) + 1
-            b_iter_assignment[:, 0] = 0
-
-            boot_corr_resampled = boot_corr_tilde[(replicate_assignment, b_iter_assignment)]
-            treatment_resampled = treatment_tilde[replicate_assignment]
-            weights_resampled = Nc_list[replicate_assignment]
-
-            corr_coef = _cross_coef_resampled(treatment_resampled, boot_corr_resampled, weights_resampled)
-
-        else:
-
-            corr_coef = _cross_coef(treatment_tilde, boot_corr_tilde, Nc_list)
+        corr_coef = _cross_coef(treatment_tilde, boot_corr_tilde, Nc_list)
 
     corr_asl = np.apply_along_axis(lambda x: _compute_asl(x, **kwargs), 1, corr_coef)
 

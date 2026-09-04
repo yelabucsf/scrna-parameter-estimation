@@ -194,3 +194,31 @@ def test_cross_coef_matches_manual_calculation_when_no_zero_variance():
     expected = (A_mA.T @ B_mB) / n / ssA[:, None]
 
     np.testing.assert_allclose(result, expected)
+
+
+def test_cross_coef_resampled_handles_zero_variance_iteration_without_warning():
+    # Regression test for issue #38: unlike a treatment column that is
+    # constant across the whole dataset (filtered out upstream before this
+    # function is ever called), a single bootstrap iteration can, purely by
+    # chance, resample a subset for which an otherwise-varying column ends
+    # up with zero variance. The resulting coefficient is genuinely
+    # undefined for that one iteration (fine, tolerated downstream), but it
+    # should come out as a clean NaN rather than triggering a
+    # RuntimeWarning from an actual division by zero.
+    rng = np.random.default_rng(0)
+    num_rep, num_boot, n_treatment_cols = 5, 4, 1
+
+    A = rng.normal(size=(num_rep, num_boot, n_treatment_cols))
+    A[:, 1, :] = 7.0  # bootstrap iteration 1 is degenerate: zero variance
+    B = rng.normal(size=(num_rep, num_boot))
+    sample_weight = np.ones((num_rep, num_boot))
+
+    with np.errstate(divide="raise", invalid="raise"):
+        beta = hypothesis_test._cross_coef_resampled(A, B, sample_weight)
+
+    assert beta.shape == (n_treatment_cols, num_boot)
+    assert np.all(np.isnan(beta[:, 1]))
+    # Other iterations, with genuine variance, are unaffected.
+    assert not np.isnan(beta[:, 0]).any()
+    assert not np.isnan(beta[:, 2]).any()
+    assert not np.isnan(beta[:, 3]).any()

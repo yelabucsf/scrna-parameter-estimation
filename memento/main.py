@@ -13,6 +13,7 @@ from scipy.sparse import csr_matrix, diags
 from joblib import Parallel, delayed
 from functools import partial
 import itertools
+import warnings
 import logging
 
 import memento.estimator as estimator
@@ -53,6 +54,81 @@ def _get_test_genes_and_indices(adata, treatment_for_gene):
         missing = np.asarray(test_genes, dtype=object)[data_indices < 0]
         raise ValueError(f"Genes not found in adata.var: {missing.tolist()}")
     return test_genes, data_indices
+
+
+def _drop_constant_treatment_columns(treatment, treatment_for_gene):
+    """
+    Identify treatment columns with zero variance across the groups being
+    tested (e.g. a monomorphic SNP genotype in an eQTL scan). There is
+    nothing to estimate for such a column -- the treatment never varies, so
+    no association with it can be detected -- and running the full
+    bootstrap/regression machinery on it only produces numerical warnings
+    and uninformative NaN-like output. These are dropped before any
+    bootstrap computation runs, rather than being run and reported as an
+    invalid result.
+
+    If `treatment_for_gene` is None, `treatment`'s columns apply uniformly
+    to every gene: returns the list of constant column names to drop from
+    `treatment` itself.
+
+    If `treatment_for_gene` is provided, each gene may test a different
+    subset of `treatment`'s columns: returns a filtered copy of
+    `treatment_for_gene` with constant columns removed from each gene's
+    list (dropping the gene entirely if none of its columns remain), and a
+    list of (gene, column) pairs that were dropped, for a summary warning.
+    """
+    constant_cols = [
+        col for col in treatment.columns if treatment[col].nunique(dropna=True) <= 1
+    ]
+
+    if treatment_for_gene is None:
+        return None, constant_cols
+
+    if not constant_cols:
+        return treatment_for_gene, []
+
+    constant_col_set = set(constant_cols)
+    filtered = {}
+    dropped = []
+    for gene, cols in treatment_for_gene.items():
+        kept = [c for c in cols if c not in constant_col_set]
+        dropped.extend((gene, c) for c in cols if c in constant_col_set)
+        if kept:
+            filtered[gene] = kept
+        # Genes with zero remaining columns are silently dropped, matching
+        # how genes that fail the expression filter are excluded elsewhere.
+
+    return filtered, dropped
+
+
+def _prefilter_constant_treatment(treatment, treatment_for_gene):
+    """
+    Applies `_drop_constant_treatment_columns` and warns with a short
+    summary if anything was dropped. Returns the (possibly filtered)
+    `treatment` and `treatment_for_gene` to use going forward.
+    """
+    if treatment_for_gene is None:
+        _, constant_cols = _drop_constant_treatment_columns(treatment, None)
+        if constant_cols:
+            warnings.warn(
+                f"Dropping treatment column(s) with zero variance across "
+                f"groups (nothing to test): {constant_cols}. These will not "
+                f"appear in the results."
+            )
+            treatment = treatment.drop(columns=constant_cols)
+        return treatment, treatment_for_gene
+
+    filtered, dropped = _drop_constant_treatment_columns(treatment, treatment_for_gene)
+    if dropped:
+        preview = dropped[:5]
+        suffix = " ..." if len(dropped) > 5 else ""
+        warnings.warn(
+            f"Dropping {len(dropped)} gene/treatment-column pair(s) with "
+            f"zero variance across groups (nothing to test); these will not "
+            f"appear in the results. Examples: {preview}{suffix}"
+        )
+    return treatment, filtered
+
 
 
 def _spawn_task_random_states(random_state, n_tasks):
@@ -430,6 +506,11 @@ def ht_1d_moments(
         Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
     Nc_list = np.array(Nc_list)
     
+    # Drop treatment columns with zero variance across groups (e.g. a
+    # monomorphic SNP genotype) before any bootstrap computation runs --
+    # there is nothing to test for a treatment that never varies.
+    treatment, treatment_for_gene = _prefilter_constant_treatment(treatment, treatment_for_gene)
+    
     # Get the number of tests and number of genes for those tests
     test_genes, test_gene_indices = _get_test_genes_and_indices(adata, treatment_for_gene)
     if treatment_for_gene is None:
@@ -682,13 +763,18 @@ def ht_2d_moments(
         Nc_list.append(adata.uns['memento']['group_cells'][group].shape[0])
     Nc_list = np.array(Nc_list)
         
+    # Drop treatment columns with zero variance across groups (e.g. a
+    # monomorphic SNP genotype) before any bootstrap computation runs --
+    # there is nothing to test for a treatment that never varies.
+    treatment, treatment_for_gene = _prefilter_constant_treatment(treatment, treatment_for_gene)
+        
     # Get the number of tests
     if treatment_for_gene is None:
         num_tests = treatment.shape[1]*G
     else:
         num_tests = 0
         for pair in adata.uns['memento']['2d_moments']['gene_pairs']:
-            num_tests += len(treatment_for_gene[pair])
+            num_tests += len(treatment_for_gene.get(pair, []))
             
     # Create dummy covariate DataFrame if one is not given
     if covariate is None:
@@ -711,6 +797,10 @@ def ht_2d_moments(
         idx_1 = gene_idx_1[conv_idx]
         idx_2 = gene_idx_2[conv_idx]
         if idx_1 == idx_2: # Skip if its the same gene
+            continue
+        if treatment_for_gene is not None and (adata.var.index[idx_1], adata.var.index[idx_2]) not in treatment_for_gene:
+            # All of this pair's treatment columns were dropped by the
+            # zero-variance pre-filter above -- nothing left to test.
             continue
             
         # Save the indices
@@ -923,7 +1013,7 @@ def get_2d_ht_result(adata):
     """
     if 'treatment_for_gene' in adata.uns['memento']['2d_ht']:
         result_df = pd.concat([
-            pd.DataFrame(itertools.product([pair], adata.uns['memento']['2d_ht']['treatment_for_gene'][pair]), 
+            pd.DataFrame(itertools.product([pair], adata.uns['memento']['2d_ht']['treatment_for_gene'].get(pair, [])), 
                 columns=['pair', 'tx']) for pair in adata.uns['memento']['2d_moments']['gene_pairs']])
         result_df = pd.concat([  pd.DataFrame(result_df['pair'].tolist(), columns=['gene_1', 'gene_2']), result_df[['tx']].reset_index(drop=True)  ], axis=1)
     else:
