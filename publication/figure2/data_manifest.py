@@ -133,33 +133,40 @@ def entries():
     return out
 
 
-def _summarize(rows):
-    present = [r for r in rows if os.path.exists(r[3])]
-    missing = [r for r in rows if not os.path.exists(r[3])]
-    size = sum(os.path.getsize(r[3]) for r in present)
+def _resolve(row, root):
+    """Path to test: inside an organized tree if given a root, else the source volume."""
+    return os.path.join(root, row[2]) if root else row[3]
+
+
+def _summarize(rows, root):
+    present = [r for r in rows if os.path.exists(_resolve(r, root))]
+    missing = [r for r in rows if not os.path.exists(_resolve(r, root))]
+    size = sum(os.path.getsize(_resolve(r, root)) for r in present)
     return present, missing, size
 
 
-def check():
+def check(root=None):
     rows = entries()
     ok = True
+    print(f'checking {root or config.DATA_PATH} '
+          f'({"organized tree" if root else "source volume"})\n')
     for panel in ['A', 'B', 'C', 'D', 'E']:
         for tier in [REQUIRED, PROVENANCE]:
             subset = [r for r in rows if r[0] == panel and r[1] == tier]
             if not subset:
                 continue
-            present, missing, size = _summarize(subset)
+            present, missing, size = _summarize(subset, root)
             status = 'OK ' if not missing else 'GAP'
             print(f'{status} panel {panel} {tier:<10} {len(present):>4}/{len(subset):<4} files'
                   f'  {size / 1e9:6.2f} GB')
             for row in missing[:5]:
-                print(f'      missing: {row[3]}')
+                print(f'      missing: {_resolve(row, root)}')
             if len(missing) > 5:
                 print(f'      ... and {len(missing) - 5} more')
             if missing and tier == REQUIRED:
                 ok = False
 
-    present, missing, size = _summarize(rows)
+    present, missing, size = _summarize(rows, root)
     print(f'\ntotal {len(present)}/{len(rows)} files, {size / 1e9:.2f} GB')
     print('Panel E needs no data files; its runtimes are literals in panel_e_runtime.py.')
     return ok
@@ -182,12 +189,13 @@ def build(root, copy):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('command', choices=['check', 'link', 'bundle'])
-    parser.add_argument('--root', default=config.DATA_PATH + 'figure2_data')
+    parser.add_argument('--root', default=None,
+                        help='organized tree to build, or to check instead of the source volume')
     args = parser.parse_args()
 
     if args.command == 'check':
-        raise SystemExit(0 if check() else 1)
-    build(args.root, copy=args.command == 'bundle')
+        raise SystemExit(0 if check(args.root) else 1)
+    build(args.root or config.FIGURE2_DATA, copy=args.command == 'bundle')
 
 
 if __name__ == '__main__':

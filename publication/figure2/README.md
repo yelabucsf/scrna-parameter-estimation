@@ -30,10 +30,14 @@ touch only **4.1 GB of the 329 GB volume**, scattered across nine top-level fold
 on, and drives three things:
 
 ```bash
-python data_manifest.py check     # is every input present? prints per-panel counts and sizes
-python data_manifest.py link      # build the panel-organized tree as symlinks (free, reversible)
-python data_manifest.py bundle    # copy that tree into a standalone ~4 GB directory
+python data_manifest.py check              # is every input present on the source volume?
+python data_manifest.py check --root DIR   # ... or in an organized tree / unpacked bundle
+python data_manifest.py link               # build the tree as symlinks (free, reversible)
+python data_manifest.py bundle --root DIR  # copy that tree into a standalone ~4 GB directory
 ```
+
+Build the bundle *after* the compute steps below, so the generated BASiCS output is
+included in it.
 
 The tree it builds is what every panel script actually reads (`config.FIGURE2_DATA`):
 
