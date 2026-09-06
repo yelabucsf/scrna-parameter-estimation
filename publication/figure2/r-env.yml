@@ -1,0 +1,17 @@
+# Environment for run_basics_simulation.R (Figure 2A, BASiCS arm).
+#
+#   conda env create -f r-env.yml
+#   conda run -n r-env Rscript run_basics_simulation.R
+#
+# Deliberately minimal. The original run_basics.r also pulled in Seurat and SeuratDisk
+# purely to read counts out of an h5ad; run_basics_simulation.R reads MatrixMarket
+# instead, which drops both of those and their long dependency chains.
+name: r-env
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base=4.5.3
+  - bioconductor-basics=2.22.0
+  - bioconductor-singlecellexperiment=1.32.0
+  - r-matrix=1.7_6

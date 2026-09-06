@@ -27,7 +27,7 @@ import memento_size_factor
 config.add_memento_oo_to_path()
 import memento  # noqa: E402
 
-SMFISH_PATH = config.DATA_PATH + 'smfish/'
+SMFISH_PATH = config.FIGURE2_DATA + 'panelB_smfish/'
 NUM_TRIALS = 20
 NUMBER_OF_CELLS = [500, 1000, 5000, 8000]
 MIN_MEAN_THRESH = 0.01
@@ -37,8 +37,8 @@ METHODS = ['naive', 'saver', 'poisson', 'hypergeometric', 'scvi']
 
 
 def load_pairs():
-    dropseq_genes = sc.read_h5ad(SMFISH_PATH + 'filtered_dropseq.h5ad').var.index.tolist()
-    ref = np.load(SMFISH_PATH + 'smfish_estimates.npz', allow_pickle=True)
+    dropseq_genes = sc.read_h5ad(SMFISH_PATH + 'reference/filtered_dropseq.h5ad').var.index.tolist()
+    ref = np.load(SMFISH_PATH + 'reference/smfish_estimates.npz', allow_pickle=True)
     pairs = ref['corr_genes']
     idx1 = np.array([dropseq_genes.index(a) for a, _ in pairs])
     idx2 = np.array([dropseq_genes.index(b) for _, b in pairs])
@@ -59,14 +59,14 @@ def estimate(method, data, obs_mean, num_cell, trial, dropseq_genes, pairs, idx1
         sf = memento_size_factor.trimmed_size_factor(data, q=DROPSEQ_Q)
         values = memento.estimator.RNAHypergeometric(DROPSEQ_Q).correlation(data, sf, idx1, idx2)
     elif method == 'saver':
-        table = pd.read_csv(SMFISH_PATH + f'correlation/{num_cell}_{trial}_corr2.csv', index_col=0)
+        table = pd.read_csv(SMFISH_PATH + f'correlation/saver/{num_cell}_{trial}_corr2.csv', index_col=0)
         if num_cell < 8000:
             names = dict(zip([f'gene{i}' for i in range(len(dropseq_genes))], dropseq_genes))
             table.index = [names[n] for n in table.index]
             table.columns = table.index
         values = np.array([table.loc[a, b] for a, b in pairs])
     elif method == 'scvi':
-        table = pd.read_csv(SMFISH_PATH + f'correlation/{num_cell}_{trial}_scvi_corr.csv', index_col=0)
+        table = pd.read_csv(SMFISH_PATH + f'correlation/scvi/{num_cell}_{trial}_scvi_corr.csv', index_col=0)
         values = np.array([table.loc[a, b] for a, b in pairs])
     else:
         raise ValueError(f'Unknown method {method}')
@@ -84,7 +84,7 @@ def main():
     for num_cell in NUMBER_OF_CELLS:
         for trial in range(NUM_TRIALS if num_cell < 8000 else 1):
             start = time.time()
-            adata = sc.read_h5ad(SMFISH_PATH + f'variance/{num_cell}_{trial}.h5ad')
+            adata = sc.read_h5ad(SMFISH_PATH + f'correlation/subsamples/{num_cell}_{trial}.h5ad')
             data = adata.X.tocsr()
             obs_mean = data.mean(axis=0).A1
             for method in METHODS:

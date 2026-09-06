@@ -17,7 +17,7 @@ import scipy.stats as stats
 
 import config
 
-SMFISH_PATH = config.DATA_PATH + 'smfish/'
+SMFISH_PATH = config.FIGURE2_DATA + 'panelB_smfish/'
 
 PANEL_METHODS = {
     'mean': [('hypergeometric', 'memento', config.MEMENTO_COLOR, 'o', '-'),
@@ -40,8 +40,8 @@ def pearson(x, y, mask, log):
 
 
 def load_reference():
-    ref = np.load(SMFISH_PATH + 'smfish_estimates.npz', allow_pickle=True)
-    dropseq_genes = sc.read_h5ad(SMFISH_PATH + 'filtered_dropseq.h5ad').var.index.tolist()
+    ref = np.load(SMFISH_PATH + 'reference/smfish_estimates.npz', allow_pickle=True)
+    dropseq_genes = sc.read_h5ad(SMFISH_PATH + 'reference/filtered_dropseq.h5ad').var.index.tolist()
     return ref, dropseq_genes
 
 

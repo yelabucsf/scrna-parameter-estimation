@@ -7,8 +7,14 @@ import matplotlib as mpl
 import matplotlib.pylab as pylab
 
 # Root of the data volume. The original scripts used '/home/ubuntu/Data/' or
-# '/data_volume/memento/'; both now live under /memento_data.
+# '/data_volume/memento/'; both now live under /memento_data. This is the upstream
+# source, organized by dataset, and is only read by data_manifest.py.
 DATA_PATH = os.environ.get('MEMENTO_DATA_PATH', '/memento_data/')
+
+# Every panel script reads from here instead: a tree organized by panel and role,
+# built by `python data_manifest.py link` (symlinks) or `bundle` (a standalone 4 GB
+# copy). Point this at an unpacked bundle to run without the full data volume.
+FIGURE2_DATA = os.environ.get('FIGURE2_DATA', DATA_PATH + 'figure2_data/')
 
 # The object-oriented rewrite of memento (github.com/mincheoly/memento) holds the
 # estimator classes and the simulation helpers the publication scripts import.

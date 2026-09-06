@@ -8,6 +8,8 @@ The published middle panel also carries a BASiCS curve. BASiCS runs in R against
 per-replicate h5ad dumps that are not on the data volume, so it is omitted here.
 """
 
+import os
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -16,6 +18,11 @@ import numpy as np
 import pandas as pd
 
 import config
+
+BASICS_PATH = config.FIGURE2_DATA + 'panelA_simulation/basics/'
+BASICS_NUM_CELL = 100
+BASICS_CAPTURE_EFFICIENCIES = [0.05, 0.1, 0.2, 0.3, 0.5]
+BASICS_TRIALS = 20
 
 # num_cell each published panel is drawn at. The caption says 100 cells for the
 # correlation panel, but correlation_comparison.ipynb drew it at 500, and at 100 the
@@ -27,6 +34,7 @@ PANEL_METHODS = {
              ('naive', 'naive', config.BASELINE_COLOR, ',', '--')],
     'variance': [('hypergeometric', 'memento', config.MEMENTO_COLOR, 'o', '-'),
                  ('poisson', 'Poisson', config.BASELINE_COLOR, 's', '-'),
+                 ('basics', 'BASiCS', config.BASELINE_COLOR, '^', '-'),
                  ('naive', 'naive', config.BASELINE_COLOR, ',', '--')],
     'correlation': [('hypergeometric', 'memento', config.MEMENTO_COLOR, 'o', '-'),
                     ('poisson', 'Poisson', config.BASELINE_COLOR, 's', '-'),
@@ -60,11 +68,45 @@ def concordance_table_mean():
     return results
 
 
+def load_basics_variances(num_genes, columns):
+    """BASiCS variance estimates, rescaled onto the simulation's units.
+
+    BASiCS works in its own expression scale, so variance_estimation.py rescaled by the
+    mean ratio against the ground-truth means; the same correction is applied here.
+    Genes BASiCS could not fit (zero in every cell) come back as NaN and drop out of the
+    per-replicate mask, exactly as they did in the published panel.
+    """
+    true_mean = np.load(config.intermediate_path('panel_a_mean_estimates.npz'))['estimates'][0]
+
+    rows = []
+    for q in BASICS_CAPTURE_EFFICIENCIES:
+        for trial in range(BASICS_TRIALS):
+            path = BASICS_PATH + f'{BASICS_NUM_CELL}_{q}_{trial}_parameters.csv'
+            if not os.path.exists(path):
+                continue
+            params = pd.read_csv(path, index_col=0)
+            kept = params.index.astype(int).values
+            scale_factor = (params['mu'].values / true_mean[kept]).mean()
+
+            values = np.full(num_genes, np.nan)
+            values[kept] = params['variance'].values / scale_factor ** 2
+            rows.append(dict(zip(columns, values))
+                        | {'q': q, 'num_cell': BASICS_NUM_CELL, 'trial': trial + 1,
+                           'method': 'basics'})
+    return pd.DataFrame(rows)
+
+
 def concordance_table_grouped(quantity, log):
     """Variance and correlation carry a per-replicate ground_truth row."""
     estimates, meta = load(quantity)
     columns = [f'v{i}' for i in range(estimates.shape[1])]
     frame = pd.concat([meta, pd.DataFrame(estimates, columns=columns)], axis=1)
+
+    if quantity == 'variance':
+        basics = load_basics_variances(estimates.shape[1], columns)
+        if not basics.empty:
+            frame = pd.concat([frame, basics], ignore_index=True)
+            print(f'including BASiCS for {basics.shape[0]} replicates')
 
     group_keys = ['q', 'num_cell', 'trial']
     rows = []

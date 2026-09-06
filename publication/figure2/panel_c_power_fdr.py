@@ -19,13 +19,13 @@ import scanpy as sc
 
 import config
 
-SIM_PATH = config.DATA_PATH + 'simulation/'
+SIM_PATH = config.FIGURE2_DATA + 'panelC_inference/'
 
 DM_METHODS = OrderedDict([
-    ('memento', ('de/memento_wls.csv', ['coef', 'pval', 'fdr'])),
-    ('edgeR LRT', ('de/edger_lrt.csv', ['logFC', 'PValue', 'FDR'])),
-    ('edgeR QLF', ('de/edger_qlft.csv', ['logFC', 'PValue', 'FDR'])),
-    ('t-test', ('de/t.csv', ['coef', 'pval', 'fdr'])),
+    ('memento', ('dm/memento_wls.csv', ['coef', 'pval', 'fdr'])),
+    ('edgeR LRT', ('dm/edger_lrt.csv', ['logFC', 'PValue', 'FDR'])),
+    ('edgeR QLF', ('dm/edger_qlft.csv', ['logFC', 'PValue', 'FDR'])),
+    ('t-test', ('dm/t.csv', ['coef', 'pval', 'fdr'])),
 ])
 DM_THRESHOLDS = {
     'memento': np.logspace(-5, -1, 8),
@@ -36,7 +36,7 @@ DM_THRESHOLDS = {
 
 
 def dm_curves():
-    adata = sc.read(SIM_PATH + 'de/anndata.h5ad')
+    adata = sc.read(SIM_PATH + 'dm/anndata.h5ad')
 
     results = OrderedDict()
     for name, (path, columns) in DM_METHODS.items():

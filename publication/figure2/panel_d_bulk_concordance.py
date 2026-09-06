@@ -26,9 +26,9 @@ import seaborn as sns
 
 import config
 
-CANOGAMEZ_PATH = config.DATA_PATH + 'canogamez/'
-HAGAI_PATH = config.DATA_PATH + 'hagai/'
-LUPUS_PATH = config.DATA_PATH + 'lupus_bulk/'
+CANOGAMEZ_PATH = config.FIGURE2_DATA + 'panelD_bulk/canogamez/'
+HAGAI_PATH = config.FIGURE2_DATA + 'panelD_bulk/hagai/'
+LUPUS_PATH = config.FIGURE2_DATA + 'panelD_bulk/lupus/'
 
 CANOGAMEZ_DATASETS = ['CD4_Memory-Th0', 'CD4_Memory-Th2', 'CD4_Memory-Th17', 'CD4_Memory-iTreg',
                       'CD4_Naive-Th0', 'CD4_Naive-Th2', 'CD4_Naive-Th17', 'CD4_Naive-iTreg']
@@ -105,10 +105,10 @@ def _score_datasets(datasets, read_bulk, read_sc):
 
 def hagai_scores():
     def read_bulk(dataset, method, columns):
-        return _read(HAGAI_PATH + f'bulk_rnaseq/results/{dataset}_{method}.csv', columns)
+        return _read(HAGAI_PATH + f'bulk/{dataset}_{method}.csv', columns)
 
     def read_sc(dataset, method, columns):
-        return _read(HAGAI_PATH + f'sc_rnaseq/results/{dataset}_{method}.csv', columns)
+        return _read(HAGAI_PATH + f'single_cell/{dataset}_{method}.csv', columns)
 
     return _score_datasets(HAGAI_DATASETS, read_bulk, read_sc)
 
@@ -117,12 +117,12 @@ def canogamez_scores(trial=1):
     symbols = ensembl_to_symbol()
 
     def read_bulk(dataset, method, columns):
-        frame = _read(CANOGAMEZ_PATH + f'bulk_results/{dataset}_{method}.csv', columns)
+        frame = _read(CANOGAMEZ_PATH + f'bulk/{dataset}_{method}.csv', columns)
         frame.index = [symbols.get(gene, gene) for gene in frame.index]
         return frame
 
     def read_sc(dataset, method, columns):
-        return _read(CANOGAMEZ_PATH + f'sc_results/{dataset}_{trial}_{method}.csv', columns)
+        return _read(CANOGAMEZ_PATH + f'single_cell/{dataset}_{trial}_{method}.csv', columns)
 
     return _score_datasets(CANOGAMEZ_DATASETS, read_bulk, read_sc)
 
@@ -131,17 +131,17 @@ def lupus_scores(num_cells=100, num_trials=50):
     """The lupus dataset has no matched bulk assay, so pseudobulk-of-all-cells calls
     from four bulk-style methods stand in as the reference rankings."""
     references = [
-        (f'T4_vs_cM.bulk.edger_lrt.{{}}.{{}}.csv', ['logFC', 'PValue', 'FDR']),
-        (f'T4_vs_cM.bulk.edger_qlft.{{}}.{{}}.csv', ['logFC', 'PValue', 'FDR']),
-        (f'T4_vs_cM.bulk.deseq2_wald.{{}}.{{}}.csv', ['log2FoldChange', 'pvalue', 'padj']),
-        (f'T4_vs_cM.bulk.deseq2_lrt.{{}}.{{}}.csv', ['log2FoldChange', 'pvalue', 'padj']),
+        (f'bulk/T4_vs_cM.bulk.edger_lrt.{{}}.{{}}.csv', ['logFC', 'PValue', 'FDR']),
+        (f'bulk/T4_vs_cM.bulk.edger_qlft.{{}}.{{}}.csv', ['logFC', 'PValue', 'FDR']),
+        (f'bulk/T4_vs_cM.bulk.deseq2_wald.{{}}.{{}}.csv', ['log2FoldChange', 'pvalue', 'padj']),
+        (f'bulk/T4_vs_cM.bulk.deseq2_lrt.{{}}.{{}}.csv', ['log2FoldChange', 'pvalue', 'padj']),
     ]
     methods = [
-        ('memento', '{}_{}_quasiGLM.csv', ['coef', 'pval', 'fdr']),
-        ('edgeR', 'T4_vs_cM.pseudobulk.edger_lrt.{}.{}.csv', ['logFC', 'PValue', 'FDR']),
-        ('DESeq2', 'T4_vs_cM.pseudobulk.deseq2_wald.{}.{}.csv', ['log2FoldChange', 'pvalue', 'padj']),
-        ('t-test', '{}_{}_t.csv', ['logFC', 'PValue', 'FDR']),
-        ('MWU', '{}_{}_mwu.csv', ['logFC', 'PValue', 'FDR']),
+        ('memento', 'single_cell/{}_{}_quasiGLM.csv', ['coef', 'pval', 'fdr']),
+        ('edgeR', 'single_cell/T4_vs_cM.pseudobulk.edger_lrt.{}.{}.csv', ['logFC', 'PValue', 'FDR']),
+        ('DESeq2', 'single_cell/T4_vs_cM.pseudobulk.deseq2_wald.{}.{}.csv', ['log2FoldChange', 'pvalue', 'padj']),
+        ('t-test', 'single_cell/{}_{}_t.csv', ['logFC', 'PValue', 'FDR']),
+        ('MWU', 'single_cell/{}_{}_mwu.csv', ['logFC', 'PValue', 'FDR']),
     ]
 
     rows = []
