@@ -46,6 +46,10 @@ def entries():
         'hbec/HBEC_type_I_filtered_counts_deep.h5ad')
     add('DEFG', REQUIRED, 'panelDEFG_isg/external/mostafavi2016_mmc2.xls',
         'hbec/external/mostafavi2016_mmc2.xls')
+    # The published DC table carries the `type` column from which the canonical and
+    # non-canonical ISG lists are recovered; see isg_gene_lists.py.
+    add('DEFG', REQUIRED, 'panelDEFG_isg/Supplementary_Table_2_HTEC_DC.csv',
+        'tables/Supplementary_Table_2_HTEC_DC.csv')
     for stim in config.STIMS:
         name = f'{CELL_TYPE}_{stim}_6.h5ad'
         add('DEFG', REQUIRED, f'panelDEFG_isg/tests/{name}', f'hbec/binary_test_latest/{name}')
