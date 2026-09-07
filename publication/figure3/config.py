@@ -26,9 +26,12 @@ INTERMEDIATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'int
 BATCH_CAPTURE_EFFICIENCY = {0: 0.387 * 0.25, 1: 0.392 * 0.25, 2: 0.436 * 0.25}
 DEFAULT_CAPTURE_EFFICIENCY = 0.417 * 0.25
 
+# Verbatim from the `converter` dict in select_isgs.ipynb cell 12. Note the data says
+# 'neuroendo', not 'neuroendocrine' -- getting this wrong maps those cells to NaN
+# rather than failing, so abbreviate_cell_types() checks instead of relying on it.
 CELL_TYPE_ABBREV = {
     'basal/club': 'BC', 'basal': 'B', 'ciliated': 'C', 'goblet': 'G',
-    'ionocyte/tuft': 'IT', 'neuroendocrine': 'NE',
+    'ionocyte/tuft': 'IT', 'neuroendo': 'N',
 }
 STIMS = ['alpha', 'beta', 'gamma', 'lambda']
 TIMEPOINTS = ['3', '6', '9', '24', '48']
@@ -40,6 +43,14 @@ NONCANONICAL_COLOR = 'magenta'
 def add_repo_to_path():
     if REPO_ROOT not in sys.path:
         sys.path.insert(0, REPO_ROOT)
+
+
+def abbreviate_cell_types(cell_types):
+    """Map cell type names to the short codes the notebooks use, failing on surprises."""
+    unmapped = set(cell_types.unique()) - set(CELL_TYPE_ABBREV)
+    if unmapped:
+        raise ValueError(f'cell types not in CELL_TYPE_ABBREV: {sorted(unmapped)}')
+    return cell_types.map(CELL_TYPE_ABBREV)
 
 
 def assign_capture_efficiency(batch):

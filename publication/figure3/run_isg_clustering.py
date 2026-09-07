@@ -52,7 +52,7 @@ CANONICAL_ANCHOR = 'MX1'
 
 def load_ciliated():
     adata = sc.read(COUNTS)
-    adata.obs['ct'] = adata.obs['cell_type'].map(config.CELL_TYPE_ABBREV)
+    adata.obs['ct'] = config.abbreviate_cell_types(adata.obs['cell_type'])
     adata.obs['q'] = adata.obs['batch'].apply(config.assign_capture_efficiency)
     memento.setup_memento(adata, q_column='q', trim_percent=0.1)
     return adata[adata.obs['ct'] == CILIATED].copy()
