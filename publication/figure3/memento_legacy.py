@@ -75,3 +75,30 @@ def read_1d_moments(adata_or_path):
         frame.insert(1, 'group', group)
         frames.append(frame)
     return pd.concat(frames, ignore_index=True)
+
+
+def read_1d_moments_by(adata_or_path, groupby):
+    """Reproduce the old `get_1d_moments(adata, groupby=...)` -> (mean, variability).
+
+    Group labels look like 'sg^0^d2513': a prefix followed by one field per entry in
+    `uns['memento']['label_columns']`. Averaging over the other fields for each level of
+    `groupby` gives the wide `time_step_0`, `time_step_1`, ... frames the notebooks index
+    into. Element 1 of the returned tuple -- the variability table -- is what panel 3E
+    plots, and matches the old package's residual-variance column.
+    """
+    adata = sc.read(adata_or_path) if isinstance(adata_or_path, str) else adata_or_path
+    long = read_1d_moments(adata)
+
+    label_columns = list(adata.uns['memento']['label_columns'])
+    fields = long['group'].str.split('^', regex=False)
+    if groupby not in label_columns:
+        raise ValueError(f'{groupby!r} is not one of the stored label columns {label_columns}')
+    # The first field is memento's 'sg' prefix, so labels start at offset 1.
+    long[groupby] = fields.str[label_columns.index(groupby) + 1]
+
+    out = []
+    for moment in ['mean', 'residual_variance']:
+        wide = long.pivot_table(index='gene', columns=groupby, values=moment, aggfunc='mean')
+        wide.columns = [f'{groupby}_{level}' for level in wide.columns]
+        out.append(wide.reset_index())
+    return tuple(out)
