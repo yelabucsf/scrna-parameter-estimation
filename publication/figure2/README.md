@@ -130,10 +130,17 @@ scHOT would need the runtime simulation datasets, which are not on the volume.
 * **Panel A's BASiCS arm is regenerated, not recovered.** The original
   `{num_cell}_{q}_{trial}_parameters.csv` files were never uploaded to
   `s3://memento-paper/revision/` — the bucket's `simulation/` prefix only ever held
-  `dc/`, `de/` and `dv/` — and they are not on any volume here. Because the inputs are
+  `dc/`, `de/` and `dv/` — and they were not on any volume here. Because the inputs are
   simulated rather than measured, they are regenerable, which is what
   `run_basics_simulation.R` does. It scores only the slice the published panel is drawn
   at (100 cells, q < 0.6): 100 MCMC runs rather than the 480 the original loops over.
+
+  **That output is now in the bucket**, so this does not need rerunning:
+  `s3://memento-paper/revision/simulation/variance/` holds the 100 `_parameters.csv`
+  files (34 MB) alongside the `_counts.mtx` / `_genes.csv` replicates BASiCS scored, so
+  the results can be checked against their exact inputs rather than a reseeded
+  regeneration. A normal sync of the bucket picks them up. Regenerating from scratch is
+  about two hours on 16 cores.
 * **`run_basics_simulation.R` drops Seurat and SeuratDisk.** The original used them only
   to read counts out of an h5ad. Reading MatrixMarket instead removes the most fragile
   dependency in that pipeline (`Convert()` on an h5ad) and cuts the R environment to
