@@ -15,10 +15,16 @@ the marker cell 43 used to identify it.
 genes verbatim; two of them (ADAR, TAP1) never entered the differential-correlation test
 and so are absent from the table.
 
-Note the non-canonical set here is the notebook's `noncanonical_genes_1` -- the only one
-it ever saved to a pickle, and the one panels D, F and G use. Its `noncanonical_genes_2`
-(61 genes) survives in cell 46's output but is not part of these panels;
-`noncanonical_genes_3` (46 genes) was never printed and is not recoverable.
+The notebook built its non-canonical set from three clustering modules. Two survive:
+`noncanonical_genes_1` (72 genes, confirmed twice over -- by the supplementary table and
+by a `print` in an earlier revision of this notebook named coexpression.ipynb) and
+`noncanonical_genes_2` (61 genes, from cell 46's stored output). `noncanonical_genes_3`
+(46 genes) was never printed in any of the 1109 notebook blobs in this repository's
+history, and the 251-gene `all_selected_genes` it could be subtracted out of is likewise
+gone -- so 133 of the original 179 non-canonical genes are recoverable.
+
+The `module` column keeps the two apart, because they are not interchangeable:
+Supplementary Table 2's differential-correlation analysis covers `noncanonical_1` only.
 """
 
 import ast
@@ -34,6 +40,7 @@ NOTEBOOK = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     'hbec_interferon', 'classify_isg', 'select_isgs.ipynb')
 CANONICAL_LIST_CELL = 40
+NONCANONICAL_2_LIST_CELL = 46
 
 
 def _genes_by_type(table, isg_type):
@@ -41,32 +48,37 @@ def _genes_by_type(table, isg_type):
     return set(rows['gene_1']) | set(rows['gene_2'])
 
 
-def _notebook_canonical():
-    """Cell 40's printed list, the only surviving record of the full canonical set."""
+def _notebook_gene_list(cell_index):
+    """A gene list preserved in one of the notebook's stored cell outputs."""
     with open(NOTEBOOK) as handle:
         notebook = json.load(handle)
-    for output in notebook['cells'][CANONICAL_LIST_CELL].get('outputs', []):
+    for output in notebook['cells'][cell_index].get('outputs', []):
         text = ''.join(output.get('text', [])) or ''.join(
             output.get('data', {}).get('text/plain', []))
         if text.strip().startswith('['):
             return set(ast.literal_eval(text.strip()))
-    raise ValueError(f'cell {CANONICAL_LIST_CELL} of {NOTEBOOK} no longer holds a gene list')
+    raise ValueError(f'cell {cell_index} of {NOTEBOOK} no longer holds a gene list')
 
 
 def load():
-    """Return a DataFrame of gene, isg_class over the canonical and non-canonical sets."""
+    """Gene, isg_class and module over the recoverable ISG modules."""
     table = pd.read_csv(SUPPLEMENTARY_TABLE)
-    canonical = _genes_by_type(table, 'canonical') | _notebook_canonical()
-    noncanonical = _genes_by_type(table, 'noncanonical')
+    modules = {
+        'canonical': _genes_by_type(table, 'canonical') | _notebook_gene_list(CANONICAL_LIST_CELL),
+        'noncanonical_1': _genes_by_type(table, 'noncanonical'),
+        'noncanonical_2': _notebook_gene_list(NONCANONICAL_2_LIST_CELL),
+    }
 
-    overlap = canonical & noncanonical
-    if overlap:
-        raise ValueError(f'{len(overlap)} genes are in both ISG classes: {sorted(overlap)[:5]}')
+    for left, right in [('canonical', 'noncanonical_1'), ('canonical', 'noncanonical_2'),
+                        ('noncanonical_1', 'noncanonical_2')]:
+        overlap = modules[left] & modules[right]
+        if overlap:
+            raise ValueError(
+                f'{len(overlap)} genes are in both {left} and {right}: {sorted(overlap)[:5]}')
 
-    return pd.DataFrame(
-        [(gene, 'canonical') for gene in sorted(canonical)]
-        + [(gene, 'noncanonical') for gene in sorted(noncanonical)],
-        columns=['gene', 'isg_class'])
+    rows = [(gene, 'canonical' if module == 'canonical' else 'noncanonical', module)
+            for module, genes in modules.items() for gene in sorted(genes)]
+    return pd.DataFrame(rows, columns=['gene', 'isg_class', 'module'])
 
 
 def canonical_genes():
