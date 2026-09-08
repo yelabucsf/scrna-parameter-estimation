@@ -28,12 +28,12 @@ Panels A–E are published as one archive, 5.8 GB to download and 21 GB unpacked
 largest of the five, since panels B and C rest on 480 resampled-cohort result files.
 
 All five figures share one Zenodo record; download just this figure's archive.
-DOI: _pending_
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
 
 ```bash
 mkdir -p ~/memento_bundles && cd ~/memento_bundles
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure5_data.tar.gz
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure5_data.tar.gz.sha256
+curl -L -O https://zenodo.org/records/22667586/files/figure5_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure5_data.tar.gz.sha256
 sha256sum -c figure5_data.tar.gz.sha256      # macOS: shasum -a 256 -c
 tar -xzf figure5_data.tar.gz
 export MEMENTO_DATA_PATH=~/memento_bundles

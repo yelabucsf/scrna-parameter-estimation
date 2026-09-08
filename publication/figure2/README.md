@@ -33,12 +33,12 @@ Everything Figure 2 needs is published as one archive, 4.1 GB unpacked. No S3 ac
 no data volume.
 
 All five figures share one Zenodo record; download just this figure's archive.
-DOI: _pending_
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
 
 ```bash
 mkdir -p ~/memento_bundles && cd ~/memento_bundles
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure2_data.tar.gz
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure2_data.tar.gz.sha256
+curl -L -O https://zenodo.org/records/22667586/files/figure2_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure2_data.tar.gz.sha256
 sha256sum -c figure2_data.tar.gz.sha256      # macOS: shasum -a 256 -c
 tar -xzf figure2_data.tar.gz
 export MEMENTO_DATA_PATH=~/memento_bundles

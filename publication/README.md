@@ -8,7 +8,7 @@ Download one archive, point one environment variable at it, run one script:
 
 ```bash
 mkdir -p ~/memento_bundles && cd ~/memento_bundles
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure3_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure3_data.tar.gz
 sha256sum -c figure3_data.tar.gz.sha256
 tar -xzf figure3_data.tar.gz
 export MEMENTO_DATA_PATH=~/memento_bundles
@@ -16,7 +16,7 @@ export MEMENTO_DATA_PATH=~/memento_bundles
 cd <repo>/publication/figure3 && python make_figure3.py
 ```
 
-All the archives live in one Zenodo record — DOI _pending_ — and are independent of each
+All the archives live in one Zenodo record — DOI [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586) — and are independent of each
 other, so download only the one you need.
 
 | Figure | Directory | Subject | Download | Unpacked |

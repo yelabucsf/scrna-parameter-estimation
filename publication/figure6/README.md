@@ -30,16 +30,16 @@ needs a [memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
 
 ## Data
 
-Figure 6 is by far the lightest: a 42 MB archive, because most of what it needs is either
+Figure 6 is by far the lightest: a 44 MB archive, because most of what it needs is either
 streamed from the public CELLxGENE census at run time or computed locally.
 
 All five figures share one Zenodo record; download just this figure's archive.
-DOI: _pending_
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
 
 ```bash
 mkdir -p ~/memento_bundles && cd ~/memento_bundles
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure6_data.tar.gz
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure6_data.tar.gz.sha256
+curl -L -O https://zenodo.org/records/22667586/files/figure6_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure6_data.tar.gz.sha256
 sha256sum -c figure6_data.tar.gz.sha256      # macOS: shasum -a 256 -c
 tar -xzf figure6_data.tar.gz
 export MEMENTO_DATA_PATH=~/memento_bundles

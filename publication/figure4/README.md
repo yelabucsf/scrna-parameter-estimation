@@ -27,12 +27,12 @@ ENCODE peak files panel H uses and the `GRCh38Genes.bed` annotation, so no S3 ac
 data volume, and no separate checkout.
 
 All five figures share one Zenodo record; download just this figure's archive.
-DOI: _pending_
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
 
 ```bash
 mkdir -p ~/memento_bundles && cd ~/memento_bundles
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure4_data.tar.gz
-curl -L -O https://zenodo.org/records/<RECORD>/files/figure4_data.tar.gz.sha256
+curl -L -O https://zenodo.org/records/22667586/files/figure4_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure4_data.tar.gz.sha256
 sha256sum -c figure4_data.tar.gz.sha256      # macOS: shasum -a 256 -c
 tar -xzf figure4_data.tar.gz
 export MEMENTO_DATA_PATH=~/memento_bundles
