@@ -21,7 +21,7 @@ import pandas as pd
 
 import config
 
-SOURCE = config.HBEC_PATH + 'external/mostafavi2016_mmc2.xls'
+SOURCE = config.FIGURE3_DATA + 'panelDEFG_isg/external/mostafavi2016_mmc2.xls'
 SHEET = 'S1E'
 # Row indices into the raw, header-less sheet. The macrophage header sits at 281.
 MACROPHAGE_HEADER_ROW = 281
