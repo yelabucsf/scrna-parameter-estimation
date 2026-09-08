@@ -33,7 +33,7 @@ FIGURES = [
     (2, 'method validation and comparisons', '1.3 GB', '4.1 GB'),
     (3, 'interferon stimulation in human airway epithelium', '2.7 GB', '9.6 GB'),
     (4, 'Perturb-seq of transcription factor knockouts', '1.6 GB', '4.9 GB'),
-    (5, 'eQTL, vQTL and coexpression QTL analysis', None, '21 GB'),
+    (5, 'eQTL, vQTL and coexpression QTL analysis', '5.8 GB', '21 GB'),
     (6, 'memento in CZI CELLxGENE Discover', '44 MB', '44 MB'),
 ]
 

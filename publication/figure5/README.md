@@ -24,8 +24,8 @@ Figure 5 uses **this repository's** memento package. No separate clone needed.
 
 ## Data
 
-Panels A–E are published as one archive, 21 GB unpacked — the largest of the five, since
-panels B and C rest on 480 resampled-cohort result files.
+Panels A–E are published as one archive, 5.8 GB to download and 21 GB unpacked — the
+largest of the five, since panels B and C rest on 480 resampled-cohort result files.
 
 All five figures share one Zenodo record; download just this figure's archive.
 DOI: _pending_

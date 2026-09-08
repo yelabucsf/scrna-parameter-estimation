@@ -25,7 +25,7 @@ other, so download only the one you need.
 | 2 | [`figure2/`](figure2/) | method validation and comparisons | 1.3 GB | 4.1 GB |
 | 3 | [`figure3/`](figure3/) | interferon stimulation in airway epithelium | 2.7 GB | 9.6 GB |
 | 4 | [`figure4/`](figure4/) | Perturb-seq of transcription factor knockouts | 1.6 GB | 4.9 GB |
-| 5 | [`figure5/`](figure5/) | eQTL, vQTL and cQTL analysis | — | 21 GB |
+| 5 | [`figure5/`](figure5/) | eQTL, vQTL and cQTL analysis | 5.8 GB | 21 GB |
 | 6 | [`figure6/`](figure6/) | memento in CZI CELLxGENE Discover | 44 MB | 44 MB |
 
 Nothing here requires the 346 GB working volume the analysis was run against, and nothing
