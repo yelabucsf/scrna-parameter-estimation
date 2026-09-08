@@ -20,6 +20,12 @@ import config
 REQUIRED, PROVENANCE = 'required', 'provenance'
 
 
+def _tested_guides():
+    """Imported lazily so the manifest can be inspected without loading the h5ad."""
+    import perturbseq_data
+    return perturbseq_data.selected_guides()
+
+
 def entries():
     """(panel, tier, destination in the organized tree, source path)."""
     out = []
@@ -40,6 +46,8 @@ def entries():
 
     # --- Panels E, F: the two regulatory networks -----------------------------
     # cytoscape_SIF*.csv are the edge lists the published networks were laid out from.
+    add('EF', REQUIRED, 'panelEF_network/guide_combine_donor.csv',
+        'tfko140/2d/guide_combine_donor.csv')
     add('EF', REQUIRED, 'panelEF_network/cytoscape_SIF.csv', 'tfko140/cytoscape_SIF.csv')
     add('EF', REQUIRED, 'panelEF_network/cytoscape_SIF_explicit.csv',
         'tfko140/cytoscape_SIF_explicit.csv')
@@ -48,10 +56,21 @@ def entries():
     add('EF', REQUIRED, 'panelEF_network/Supplementary_Table_4_Perturb-seq_DC.csv',
         'tables/Supplementary_Table_4_Perturb-seq_DC.csv')
 
+    # Per-guide differential correlation tests, Fisher-combined per regulator to decide
+    # which regulator pairs interact (panel G's split).
+    for guide in _tested_guides():
+        name = f'{guide}_vs_WT.csv'
+        add('GH', REQUIRED, f'panelGH_chipseq/dc_tests/{name}', f'tfko140/2d_tests/{name}')
+
     # --- Panels G, H: ChIP-seq binding relative to the TSS --------------------
     add('GH', REQUIRED, 'panelGH_chipseq/encode_result.csv', 'tfko140/encode_result.csv')
     add('GH', REQUIRED, 'panelGH_chipseq/GRCh38Genes.bed', 'GRCh38Genes.bed',
         root=config.MISCSEQ_PATH + '/')
+    # ENCODE peak sets for the panel H locus view, selected by the same rule the
+    # notebook's Encode helper used (it streamed and deleted them, leaving nothing).
+    for accession in ['ENCFF557FUM', 'ENCFF719BHI']:
+        add('GH', REQUIRED, f'panelGH_chipseq/peaks/{accession}.bed.gz',
+            f'tfko140/encode_peaks/{accession}.bed.gz')
     add('GH', PROVENANCE, 'panelGH_chipseq/activator_interaction.h5ad',
         'tfko140/activator_interaction.h5ad')
 
