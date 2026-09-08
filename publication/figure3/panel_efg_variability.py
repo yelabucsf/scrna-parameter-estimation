@@ -122,7 +122,17 @@ def main():
     fig, axes = plt.subplots(1, 2, figsize=(4, 2))
     plt.subplots_adjust(wspace=0.6)
     panel_e(axes[0], canonical, noncanonical)
-    panel_f(axes[1], canonical)
+    try:
+        panel_f(axes[1], canonical)
+    except SystemExit as reason:
+        # Panel F is the one part of this figure that needs a file we do not
+        # redistribute. Skipping it must not take panels E and G down with it.
+        print(f'\nskipping panel F:\n{reason}\n', flush=True)
+        axes[1].text(0.5, 0.5, 'Panel F\nrequires mmc2.xls\n(see README)',
+                     transform=axes[1].transAxes, ha='center', va='center',
+                     fontsize=7, color='firebrick', style='italic')
+        axes[1].set_xticks([])
+        axes[1].set_yticks([])
     fig.savefig(config.figure_path('figure3EF.pdf'), bbox_inches='tight')
     fig.savefig(config.figure_path('figure3EF.png'), bbox_inches='tight', dpi=300)
 
