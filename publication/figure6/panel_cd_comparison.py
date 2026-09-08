@@ -15,9 +15,11 @@ Census note: the notebook used release 2023-10-30, which CZI has retired. `confi
 at 2023-12-15, the nearest surviving release. The Lupus dataset carries the same
 1,263,676 cells in every available release, so the comparison is unaffected.
 
-Cube note: the stored cube's dimension names are rotated relative to their contents -- the
-column called `feature_id` holds cell types, `cell_type` holds dataset ids and
-`dataset_id` holds features. The notebook corrected this on read and so does this script.
+Cube note: the notebook rotated the cube's dimension names on read, correcting an
+earlier build in which they were mislabelled. The cube on the volume
+(`estimators_cube_v2`, built 2023-10-23) is labelled correctly -- its `cell_type`
+dimension really does hold cell types -- so that rename is *not* applied here; doing so
+would scramble the query.
 """
 
 import os
@@ -42,6 +44,7 @@ CENSUS_URI = ('s3://cellxgene-data-public/cell-census/'
               f'{config.CENSUS_VERSION}/soma/census_data/homo_sapiens')
 BUFFER_BYTES = 2 ** 31
 CACHED_MEMENTO = 'panel_cd_memento_default.csv'
+CACHED_CELLS = 'panel_cd_donor_cells.h5ad'
 
 
 def load_donor_cells():
@@ -64,6 +67,20 @@ def load_donor_cells():
     return adata
 
 
+def load_cells():
+    """Donor cells, cached locally so the census is queried only once."""
+    cached = config.intermediate_path(CACHED_CELLS)
+    if os.path.exists(cached):
+        import scanpy as sc
+        adata = sc.read_h5ad(cached)
+    else:
+        adata = load_donor_cells()
+        adata.write(cached)
+    print(f'{adata.shape[0]} cells x {adata.shape[1]} genes for donor '
+          f'{config.LUPUS_DONOR}', flush=True)
+    return adata
+
+
 def run_default(adata, ct1, ct2):
     """Full memento on the raw cells."""
     subset = adata[adata.obs['cell_type'].isin([ct1, ct2])].copy()
@@ -75,10 +92,22 @@ def run_default(adata, ct1, ct2):
 
     groups = memento.get_groups(subset)
     groups['intercept'] = 1
+    # get_groups now returns label columns already numerically encoded, so the notebook's
+    # `groups[['cell_type']] == ct2` compares floats against a string and yields an
+    # all-zero treatment -- which today's memento then drops as constant, leaving an
+    # empty design. The group labels ('sg^<cell type>') still carry the name, so the
+    # treatment is derived from those instead.
+    labels = groups.index.str.replace(r'^sg\^', '', regex=True)
+    treatment = pd.DataFrame({'cell_type': (labels == ct2).astype(float)}, index=groups.index)
+    if treatment['cell_type'].nunique() < 2:
+        raise ValueError(f'treatment is constant; group labels were {list(labels)}')
+
     memento.ht_1d_moments(
-        subset, covariate=groups[['intercept']],
-        treatment=(groups[['cell_type']] == ct2).astype(float),
-        num_boot=5000, verbose=1, num_cpus=8, resample_rep=False, approx=True)
+        subset, covariate=groups[['intercept']], treatment=treatment,
+        # `approx` was a boolean in the version the notebook used and now names the null
+        # approximation. 'norm' is the default and gives the wider usable range here;
+        # 'gdp' saturates around -log10(P) = 6 on this two-group comparison.
+        num_boot=5000, verbose=1, num_cpus=8, resample_rep=False, approx='norm')
     return memento.get_1d_ht_result(subset)
 
 
@@ -98,12 +127,16 @@ def add_residual_variance(frame):
     frame['res_var'] = residual
 
 
-def load_estimators():
-    """This donor's slice of the precomputed cube, with the rotated names corrected."""
-    estimators = tiledb.open(config.CUBE_PATH).df[:]
-    estimators = estimators.query(f'donor_id == "{config.LUPUS_DONOR}"').rename(columns={
-        'feature_id': 'cell_type', 'cell_type': 'dataset_id', 'dataset_id': 'feature_id'})
-    return estimators
+def load_estimators(cell_types):
+    """This donor's slice of the precomputed cube.
+
+    Sliced on the cube's dimensions rather than read whole: the array is 17 GB, and the
+    comparison needs two cell types in one dataset for one donor.
+    """
+    with tiledb.open(config.CUBE_PATH) as cube:
+        frames = [cube.df[cell_type, config.LUPUS_DATASET_ID, :] for cell_type in cell_types]
+    estimators = pd.concat(frames, ignore_index=True)
+    return estimators.query(f'donor_id == "{config.LUPUS_DONOR}"')
 
 
 def run_precomputed(estimators, ct1, ct2):
@@ -126,15 +159,24 @@ def run_precomputed(estimators, ct1, ct2):
     se_dv_lfc = np.sqrt(merged['selv_ct1'] ** 2 + merged['selv_ct2'] ** 2).values
     dv_pval = stats.norm.sf(np.abs(dv_lfc), loc=0, scale=se_dv_lfc) * 2
 
+    # No global dropna: the mean comparison needs only mean and sem, which are defined
+    # for every gene, while the variability comparison needs a residual variance, which
+    # is undefined wherever the stored variance collapsed to zero. Dropping rows for both
+    # at once would throw away most of panel C for panel D's sake.
     return pd.DataFrame({
         'gene': merged['feature_id'].values,
         'cxg_de_coef': lfc, 'cxg_de_pval': de_pval,
-        'cxg_dv_coef': dv_lfc, 'cxg_dv_pval': dv_pval}).dropna()
+        'cxg_dv_coef': dv_lfc, 'cxg_dv_pval': dv_pval})
 
 
 def scatter(ax, x, y, title, limit):
     ax.scatter(x, y, s=3, color=config.MEMENTO_COLOR)
-    ax.plot([0, limit], [0, limit], '--', color='k', lw=1)
+    if limit is None:
+        low = float(min(x.min(), y.min()))
+        high = float(max(x.max(), y.max()))
+        ax.plot([low, high], [low, high], '--', color='k', lw=1)
+    else:
+        ax.plot([0, limit], [0, limit], '--', color='k', lw=1)
     ax.set_title(title)
     ax.set_xlabel('Default')
     ax.set_ylabel('Precomputed')
@@ -150,30 +192,40 @@ def main():
         print(f'reusing cached default-mode result: {cache}')
         default = pd.read_csv(cache)
     else:
-        adata = load_donor_cells()
-        print(f'{adata.shape[0]} cells x {adata.shape[1]} genes for donor '
-              f'{config.LUPUS_DONOR}', flush=True)
-        default = run_default(adata, ct1, ct2)
+        default = run_default(load_cells(), ct1, ct2)
         default.to_csv(cache, index=False)
 
-    precomputed = run_precomputed(load_estimators(), ct1, ct2)
+    precomputed = run_precomputed(load_estimators([ct1, ct2]), ct1, ct2)
     merged = default.merge(precomputed, on='gene')
     for prefix, column in [('de', 'de_pval'), ('dv', 'dv_pval')]:
         merged[f'mem_{prefix}_logp'] = -np.log10(merged[column])
         merged[f'cxg_{prefix}_logp'] = -np.log10(merged[f'cxg_{prefix}_pval'])
     print(f'{merged.shape[0]} genes tested by both routes')
 
-    fig, axes = plt.subplots(1, 2, figsize=(6, 2.4))
-    plt.subplots_adjust(wspace=0.5)
+    fig, axes = plt.subplots(1, 4, figsize=(12, 2.4))
+    plt.subplots_adjust(wspace=0.55)
 
-    dm = merged.query('mem_de_logp < 200 & cxg_de_logp < 200')
-    r_dm = scatter(axes[0], dm['mem_de_logp'], dm['cxg_de_logp'],
-                   'mean -log10(P)', 200)
-    dv = merged.query('dv_coef < 6 & cxg_dv_coef < 6 & mem_dv_logp < 25 & cxg_dv_logp < 25')
-    r_dv = scatter(axes[1], dv['mem_dv_logp'], dv['cxg_dv_logp'],
+    dm = merged.query('mem_de_logp < 200 & cxg_de_logp < 200').dropna(
+        subset=['mem_de_logp', 'cxg_de_logp'])
+    dv = merged.query(
+        'dv_coef < 6 & cxg_dv_coef < 6 & mem_dv_logp < 25 & cxg_dv_logp < 25').dropna(
+        subset=['mem_dv_logp', 'cxg_dv_logp'])
+
+    # The effect sizes are where the two routes should agree outright; the p-values carry
+    # a systematic offset because the precomputed route tests analytically from stored
+    # standard errors while the default route bootstraps.
+    coef_dm = merged.dropna(subset=['de_coef', 'cxg_de_coef'])
+    r_coef_dm = scatter(axes[0], coef_dm['de_coef'], coef_dm['cxg_de_coef'],
+                        'mean LFC', None)
+    r_dm = scatter(axes[1], dm['mem_de_logp'], dm['cxg_de_logp'], 'mean -log10(P)', 200)
+    r_coef_dv = scatter(axes[2], dv['dv_coef'], dv['cxg_dv_coef'], 'variability LFC', None)
+    r_dv = scatter(axes[3], dv['mem_dv_logp'], dv['cxg_dv_logp'],
                    'variability -log10(P)', 20)
-    print(f'panel C: {dm.shape[0]} genes, Pearson r = {r_dm:.3f}')
-    print(f'panel D: {dv.shape[0]} genes, Pearson r = {r_dv:.3f}')
+
+    print(f'panel C  mean LFC:        {coef_dm.shape[0]:5} genes, Pearson r = {r_coef_dm:.3f}')
+    print(f'panel C  mean -log10(P):  {dm.shape[0]:5} genes, Pearson r = {r_dm:.3f}')
+    print(f'panel D  variability LFC: {dv.shape[0]:5} genes, Pearson r = {r_coef_dv:.3f}')
+    print(f'panel D  var -log10(P):   {dv.shape[0]:5} genes, Pearson r = {r_dv:.3f}')
 
     fig.savefig(config.figure_path('figure6CD.pdf'), bbox_inches='tight')
     fig.savefig(config.figure_path('figure6CD.png'), bbox_inches='tight', dpi=300)
