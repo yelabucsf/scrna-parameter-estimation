@@ -253,6 +253,14 @@ def main():
     r_dv = scatter(axes[3], dv['mem_dv_logp'], dv['cxg_dv_logp'],
                    f'variability -log10(P) (n={dv.shape[0]})', 20)
 
+    # The cube on the volume has its variance fields unpopulated for all but a few dozen
+    # genes, so panel D is not running on the input it needs. Mark that on the figure
+    # itself -- the png travels without the README.
+    for ax in axes[2:]:
+        ax.set_facecolor('#f6f6f6')
+        ax.text(0.5, -0.42, 'incomplete input — placeholder', transform=ax.transAxes,
+                ha='center', va='top', fontsize=8, style='italic', color='firebrick')
+
     print(f'panel C  mean LFC:        {coef_dm.shape[0]:5} genes, Pearson r = {r_coef_dm:.3f}')
     print(f'panel C  mean -log10(P):  {dm.shape[0]:5} genes, Pearson r = {r_dm:.3f}')
     print(f'panel D  variability LFC: {dv.shape[0]:5} genes, Pearson r = {r_coef_dv:.3f}')

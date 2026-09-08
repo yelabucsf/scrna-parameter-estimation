@@ -8,12 +8,16 @@ Regenerates the analysis panels of Figure 6 of
 | A | UMAP of the SLE dataset in CELLxGENE | screenshot — not code |
 | B | Enumeration of possible comparisons | schematic — not code |
 | C | Precomputed vs full mode, differential mean | `cxg_comparison/cellxgene_comparison.ipynb` |
-| D | Precomputed vs full mode, differential variability | `cxg_comparison/cellxgene_comparison.ipynb` |
+| D | Precomputed vs full mode, differential variability | `cxg_comparison/cellxgene_comparison.ipynb` — **incomplete, see below** |
 | E | Query runtime vs number of comparisons | `cxg_comparison/cellxgene_comparison.ipynb` |
 | F | Schematic of the multi-dataset pDC/cDC analysis | schematic — not code |
 | G | QQ plot, datasets pooled vs each alone | `rare_celltype_comparison.py`, `cellxgene_crossdata.ipynb` |
 
 Panels A, B and F are figure art with no generating code, so four panels are reproduced.
+
+> **Status:** C, E and G reproduce. **D does not yet run on the right input** — the
+> estimators cube recovered for this repository has its variance fields unpopulated for
+> all but a few dozen genes per cell type. Its output is a placeholder; see the notes.
 
 ## Requirements
 
@@ -59,10 +63,10 @@ across 23 datasets, pooled and then individually.
 - **C** — the two routes agree on the mean: log fold changes fall on the diagonal over
   1,498 genes (**r = 0.999**, slope 1.00, intercept 0.02), and the p-values follow at
   **r = 0.92** over 1,359, the precomputed route running slightly conservative.
-- **D** — reproduces on **44 genes only**, and not well: the precomputed variability log
-  fold changes are compressed about 13-fold toward zero (r = 0.79 but slope 0.08). See
-  the note on the cube's variance fields below — this is a limit of the stored data, not
-  a result.
+- **D** — **incomplete: the required input is not on the volume.** The cube here has its
+  variance fields populated for only a few dozen genes per cell type, so the panel runs
+  on 44 genes instead of the full set and the output should not be read as a comparison
+  of the two routes. See the note below.
 - **E** — the precomputed mode is 211× to 380× faster at query time (median 283×),
   against 9.3 minutes of one-off precomputation.
 - **G** — the pooled fit yields 10,624 genes with 7,001 at p < 0.05, and departs from the
@@ -86,13 +90,20 @@ across 23 datasets, pooled and then individually.
   r = 0.18, and corrected it is r = 0.92. `normalize_to_relative_abundance` divides each
   group by its own total, matching the default route, which normalizes both cell types
   together.
-- **The cube's variance fields are almost entirely unpopulated**, which is what limits
-  panel D. For this donor the cube carries a non-zero `var`/`sev`/`selv` for 119 of
-  15,106 monocyte genes and 50 of 13,893 CD4 T cell genes; every other entry is exactly
-  0.0. Only 44 genes survive into the comparison. The mean-variance trend that
-  `res_var` divides out is then fit on those few points and overfits, which is the likely
-  source of the 13-fold compression. Panel D as published needs a cube built with the
-  variance estimators filled in; the one on the volume cannot support it.
+- **The cube on the volume has its variance fields almost entirely unpopulated.** For the
+  donor panel D uses, `var`/`sev`/`selv` are non-zero for 119 of 15,106 monocyte genes
+  and 50 of 13,893 CD4 T cell genes; every other entry is exactly 0.0. Only 44 genes
+  reach the comparison, and the mean-variance trend that `res_var` divides out is then
+  fit on those few points, where it overfits.
+
+  This is a statement about `estimators_cube_v2` as it sits on the volume, and nothing
+  more. It says the variability comparison cannot be run from this input — not that the
+  published panel is wrong. The panel was generated from a cube built at the time, which
+  is not the artifact recovered here; a cube with the variance estimators filled in
+  would let the comparison run as intended. **Treat panel D's current output as a
+  placeholder pending that input, and do not cite the 44-gene numbers.** The script and
+  the panel-C machinery around it are believed correct and will work unchanged once the
+  right cube is available.
 - **The cube's dimension names are correct as stored.** The notebook rotated
   `feature_id`/`cell_type`/`dataset_id` on read to fix an earlier build; applying that
   rename to `estimators_cube_v2` would scramble the query, so it is not applied.
