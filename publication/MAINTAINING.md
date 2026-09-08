@@ -168,8 +168,8 @@ curl -sS -X POST \
 mistake means a new version, not an edit. Metadata, unlike files, stays editable after
 publication, so a wrong title can be fixed in place; a wrong file cannot.
 
-Confirm the paper DOI in `zenodo_metadata.py` before the first upload — it is marked TODO
-there.
+The paper DOI in `zenodo_metadata.py` is 10.1016/j.cell.2024.09.044, verified against
+Crossref.
 
 Afterwards, add the reverse link on the code record (edit its metadata, add
 `isSupplementTo` pointing at the new data DOI), and download one archive from the

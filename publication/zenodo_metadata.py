@@ -24,9 +24,9 @@ REPO = 'https://github.com/yelabucsf/scrna-parameter-estimation'
 # The existing code record, minted from GitHub releases. Concept DOI, so it resolves
 # to whichever version is current.
 CODE_CONCEPT_DOI = '10.5281/zenodo.13637731'
-# TODO: confirm before uploading. Taken from the article page rather than from Crossref,
-# and a wrong identifier would be baked into an immutable record.
-PAPER_DOI = '10.1016/j.cell.2024.09.045'
+# Verified against Crossref: "Method of moments framework for differential expression
+# analysis of single-cell RNA sequencing data", Cell 187(22), Kim et al.
+PAPER_DOI = '10.1016/j.cell.2024.09.044'
 
 # figure -> (subject, archive size, unpacked size)
 FIGURES = [
