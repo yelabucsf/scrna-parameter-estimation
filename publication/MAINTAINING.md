@@ -112,6 +112,53 @@ grep -rn 'config\.\(DATA_PATH\|HBEC_PATH\|TFKO_PATH\|LUPUS_PATH\|MISCSEQ_PATH\)'
   publication/figure{2,3,4,5,6}/*.py | grep -v data_manifest.py | grep -v config.py
 ```
 
+## Publishing to Zenodo
+
+One record per figure, so each has its own DOI to cite in its README and can be
+re-versioned independently. `zenodo_metadata.py N` emits the record metadata.
+
+**Rehearse on `sandbox.zenodo.org` first — published Zenodo files are immutable.** A
+mistake means a new version, not an edit.
+
+Reserve the DOI before writing it into the README, so the docs and the upload land in one
+commit:
+
+```bash
+export ZENODO_TOKEN=...                 # scopes: deposit:write, deposit:actions
+export ZENODO=https://zenodo.org/api    # sandbox.zenodo.org/api to rehearse
+N=3
+
+# 1. Draft the record and reserve its DOI.
+curl -sS -X POST "$ZENODO/deposit/depositions?access_token=$ZENODO_TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"metadata":{"prereserve_doi":true}}' > deposit.json
+DEP=$(jq -r .id deposit.json)
+BUCKET=$(jq -r .links.bucket deposit.json)
+jq -r .metadata.prereserve_doi.doi deposit.json    # -> paste into figureN/README.md
+
+# 2. Upload. Use the bucket API: the deposit/files API does not scale past a few GB,
+#    and figure 5 is ~20 GB.
+curl -sS --progress-bar -X PUT \
+     "$BUCKET/figure${N}_data.tar.gz?access_token=$ZENODO_TOKEN" \
+     --upload-file figure${N}_data.tar.gz
+curl -sS -X PUT \
+     "$BUCKET/figure${N}_data.tar.gz.sha256?access_token=$ZENODO_TOKEN" \
+     --upload-file figure${N}_data.tar.gz.sha256
+
+# 3. Attach metadata and publish.
+python zenodo_metadata.py $N > metadata_figure${N}.json
+curl -sS -X PUT "$ZENODO/deposit/depositions/$DEP?access_token=$ZENODO_TOKEN" \
+     -H 'Content-Type: application/json' -d @metadata_figure${N}.json
+curl -sS -X POST \
+     "$ZENODO/deposit/depositions/$DEP/actions/publish?access_token=$ZENODO_TOKEN"
+```
+
+Confirm the paper DOI in `zenodo_metadata.py` before the first upload — it is marked
+TODO there, and a wrong identifier cannot be corrected in place.
+
+After publishing, download one record from a clean directory and run the figure from it.
+That is the only check that covers the whole path.
+
 ## Republishing a bundle
 
 1. Fix whatever changed, and re-run the guard above.

@@ -100,11 +100,17 @@ def check(root=None):
             if not subset:
                 continue
             present, missing, size = _summarize(subset, root)
-            status = 'OK ' if not missing else 'GAP'
+            # Restricted files are absent from a published bundle by design, so their
+            # absence is the expected state rather than a gap.
+            status = 'OK ' if not missing else ('--- ' if tier == RESTRICTED else 'GAP')
             print(f'{status} panel {panel:<5} {tier:<10} {len(present):>3}/{len(subset):<3} files'
                   f'  {size / 1e9:6.2f} GB')
-            for row in missing[:5]:
-                print(f'      missing: {_resolve(row, root)}')
+            if tier == RESTRICTED and missing:
+                print('      withheld: publisher supplementary file; '
+                      'reconstruct_tonic_isg.py prints the DOI to fetch it from')
+            else:
+                for row in missing[:5]:
+                    print(f'      missing: {_resolve(row, root)}')
             if missing and tier == REQUIRED:
                 ok = False
 
