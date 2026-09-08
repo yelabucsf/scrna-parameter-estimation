@@ -1,6 +1,6 @@
 """Shared inputs for the Figure 4 panels: which sgRNAs were tested, and their effects.
 
-Ports the selection logic from publication/perturbseq/cd4_wt_coex.ipynb cells 11-31, which
+Ports the selection logic from publication/original/perturbseq/cd4_wt_coex.ipynb cells 11-31, which
 every downstream panel depends on:
 
   * keep sgRNAs seen in more than 500 perturbed cells,
@@ -29,7 +29,7 @@ FILTERED_1D = config.FIGURE4_DATA + 'panelBCD_effects/filtered_1d_result.csv'
 RAW_1D = config.FIGURE4_DATA + 'panelBCD_effects/raw_1d_result.csv'
 ENCODE_METADATA = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'perturbseq', 'encode_tf', 'metadata.tsv')
+    'original', 'perturbseq', 'encode_tf', 'metadata.tsv')
 
 MIN_CELLS_PER_GUIDE = 500
 PEAK_TYPES = ['IDR thresholded peaks', 'optimal IDR thresholded peaks']

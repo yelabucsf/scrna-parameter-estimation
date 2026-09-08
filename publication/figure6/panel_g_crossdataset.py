@@ -1,6 +1,6 @@
 """Figure 6G - pDCs against cDCs, pooling datasets versus one dataset at a time.
 
-Port of publication/cellxgene/rare_celltype_comparison.py, plotted as in
+Port of publication/original/cellxgene/rare_celltype_comparison.py, plotted as in
 cxg_comparison/cellxgene_crossdata.ipynb.
 
 The point of the panel: plasmacytoid and conventional dendritic cells are rare, so any
@@ -35,7 +35,7 @@ from sklearn.linear_model import LinearRegression
 import config
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                      'cellxgene', 'rare_celltype_comparison.py')
+                      'original', 'cellxgene', 'rare_celltype_comparison.py')
 CENSUS_URI = ('s3://cellxgene-data-public/cell-census/'
               f'{config.CENSUS_VERSION}/soma/census_data/homo_sapiens')
 

@@ -1,6 +1,6 @@
 """Figure 6C and 6D - precomputed mode against the default, for DM and DV.
 
-Port of publication/cellxgene/cxg_comparison/cellxgene_comparison.ipynb cells 15-39.
+Port of publication/original/cellxgene/cxg_comparison/cellxgene_comparison.ipynb cells 15-39.
 
 Two routes to the same comparison, classical monocytes against CD4 T cells in one donor
 of the SLE dataset:

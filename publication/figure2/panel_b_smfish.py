@@ -1,6 +1,6 @@
 """Figure 2B - agreement between Drop-seq estimates and smFISH ground truth.
 
-Reproduces publication/validation/estimation/smfish/{mean,variance,correlation}/
+Reproduces publication/original/validation/estimation/smfish/{mean,variance,correlation}/
 *_comparison.ipynb. Every input is precomputed on the data volume: the smFISH
 reference estimates, and the per-subsample Drop-seq estimates produced by the
 sample_*_datasets.py / *_estimation.py scripts in those folders.

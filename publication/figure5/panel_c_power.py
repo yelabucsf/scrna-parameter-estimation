@@ -1,6 +1,6 @@
 """Figure 5C - power to recover OneK1K eQTLs, vs cohort size.
 
-Port of publication/genetics/power_analysis/sample_power.ipynb.
+Port of publication/original/genetics/power_analysis/sample_power.ipynb.
 
 Individuals are subsampled from the SLE cohort, and both methods are run on the same
 subsample over the eQTLs a much larger cohort (OneK1K) already established. Power is the

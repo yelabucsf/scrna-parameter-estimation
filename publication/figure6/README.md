@@ -26,13 +26,14 @@ pip install tiledb tiledbsoma cellxgene-census
 
 Figure 6 uses **this repository's** memento package. Building the comparison cube also
 needs a [memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
-[memento-cxg patches](#memento-cxg-patches).
+[memento-cxg version](#memento-cxg-version).
 
 ## Data
 
 Figure 6 is by far the lightest: a 42 MB archive, because most of what it needs is either
 streamed from the public CELLxGENE census at run time or computed locally.
 
+All five figures share one Zenodo record; download just this figure's archive.
 DOI: _pending_
 
 ```bash
@@ -89,7 +90,7 @@ across 23 datasets, pooled and then individually.
   intercept 0.05, r = 0.92, with the p-values at r = 0.95.
 - **E** — the precomputed mode is 211× to 380× faster at query time (median 283×),
   against 9.3 minutes of one-off precomputation.
-- **G** — the pooled fit yields 10,624 genes with 7,001 at p < 0.05, and departs from the
+- **G** — the pooled fit yields 10,593 genes with 7,142 at p < 0.05, and departs from the
   null further than any single dataset.
 
 ## Notes
@@ -113,7 +114,7 @@ across 23 datasets, pooled and then individually.
 - **Why panels C and D build their own cube.** The full-census cube on the volume has its
   variance fields all but unpopulated — for this donor, `var`/`sev`/`selv` are non-zero
   for 119 of 15,106 monocyte genes and 50 of 13,893 CD4 T cell genes, and exactly 0.0
-  everywhere else. `publication/cellxgene/make_cube.py` shows why: `ESTIMATOR_NAMES` is
+  everywhere else. `publication/original/cellxgene/make_cube.py` shows why: `ESTIMATOR_NAMES` is
   truncated to seven entries and the `compute_variance` / `compute_sev` calls are
   commented out. Run against that cube, panel D compares 44 genes instead of ~1,500, and
   the mean-variance trend behind `res_var` gets fit on those few points and overfits.
@@ -136,13 +137,23 @@ across 23 datasets, pooled and then individually.
   and anything built by current memento-cxg order them the other way
   (`CUBE_TILEDB_DIMS_OBS + CUBE_DIMS_VAR`) and are labelled correctly as stored, so the
   rename is *not* applied here — applying it would scramble the query.
-- **Panel G substitutes the full census cube.** The original script read a purpose-built
-  `estimators_cube_dcs_many`, which is not on the volume. The full cube is used instead.
-  It carries dendritic-cell estimators for 12 of the 23 listed datasets, and only 4 of
-  those have both pDCs and cDCs from the same donors — the structure a per-dataset fit
-  needs. So the grey per-dataset curves are fewer than in the published panel. The
-  pooled fit is unaffected: 10,624 genes, 7,001 at p < 0.05, and it sits above the
-  individual datasets, which is the point the panel makes.
+- **Panel G's cube is a substitute.** The original script read a purpose-built
+  `estimators_cube_dcs_many`, which was not among the archived files. What ships instead
+  is the dendritic-cell slice of the full census cube (`build_dc_subset.py`), which
+  carries every row panel G reads and reproduces it exactly against the 17 GB original —
+  same genes, and identical coefficients, standard errors and p-values.
+
+  It covers 17 of the 23 listed datasets, and only 4 of those have both pDCs and cDCs
+  from the same donors, which is the structure a per-dataset fit needs. So the grey
+  per-dataset curves are fewer than in the published panel. The pooled fit is the point
+  the panel makes, and it stands: 10,593 genes, 7,142 at p < 0.05, above every individual
+  dataset.
+- **Panel G's deduplication is order-sensitive, and is now sorted.** One (donor, gene) can
+  appear several times — the same donor's dendritic cells under different assays or
+  suspension types — and here that is 102,260 of 831,157 rows. `drop_duplicates` keeps
+  whichever comes first while TileDB guarantees no row order, so the count of significant
+  genes moved by about 17 between two arrays holding identical data. `compare()` sorts on
+  a full key first, making the choice a property of the data rather than of the storage.
 - **`get_groups` now returns label columns numerically encoded.** The notebook's
   `groups[['cell_type']] == ct2` therefore compares floats to a string and yields an
   all-zero treatment, which current memento drops as constant, leaving an empty design.

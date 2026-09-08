@@ -3,7 +3,7 @@
 Per the caption, selection rested on two criteria: expression in the target cells (top)
 and binding-site availability (bottom).
 
-No notebook in `publication/perturbseq/` draws this panel -- it documents the
+No notebook in `publication/original/perturbseq/` draws this panel -- it documents the
 experimental design, which predates the analysis code -- so it is reconstructed from the
 two inputs the design used, both of which are on hand:
 

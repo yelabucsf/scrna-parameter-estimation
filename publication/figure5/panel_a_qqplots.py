@@ -1,6 +1,6 @@
 """Figure 5A - QQ plots for eQTLs, vQTLs and cQTLs.
 
-Port of publication/genetics/run_memento/qqplots.ipynb.
+Port of publication/original/genetics/run_memento/qqplots.ipynb.
 
 All three panels pool the tests across both ancestry groups and all six cell types, then
 keep only variants whose minor allele frequency exceeds 10% in their own population --

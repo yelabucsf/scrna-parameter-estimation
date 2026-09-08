@@ -1,6 +1,6 @@
 """Figure 3B and 3C - mean transcriptional response of ciliated cells to interferon.
 
-Port of publication/hbec_interferon/version3/mean_var/mean_analyze.ipynb:
+Port of publication/original/hbec_interferon/version3/mean_var/mean_analyze.ipynb:
   * cell 16  -> panel B, LFC to IFN-alpha against LFC to beta / gamma / lambda
   * cell 21  -> the type-1 / type-2 / shared ISG classification
   * cell 35  -> panel C, per-timepoint heatmaps of LFC across the four interferons

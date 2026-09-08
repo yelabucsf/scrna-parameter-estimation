@@ -29,6 +29,7 @@ Figure 2 needs. No separate clone required.
 Everything Figure 3 needs is published as one archive, 9.6 GB unpacked. No S3 access and
 no data volume.
 
+All five figures share one Zenodo record; download just this figure's archive.
 DOI: _pending_
 
 ```bash

@@ -1,6 +1,6 @@
 """Figure 4D - how each regulator correlates with its own targets in wild-type cells.
 
-Port of publication/perturbseq/interaction.ipynb cells 25-32.
+Port of publication/original/perturbseq/interaction.ipynb cells 25-32.
 
 A regulator is called an activator or a repressor by the sign of its knockout effect:
 if knocking the regulator out *raises* a gene (de_coef > 0) it was repressing it. The

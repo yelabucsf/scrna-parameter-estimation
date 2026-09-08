@@ -1,7 +1,7 @@
 """Figure 2C - power vs FDR for differential mean, variability and correlation.
 
 Reproduces the fdr_tpr_{de,dv,dc}.pdf cells of
-publication/validation/inference/simulation/{de,dv,dc}/*_plots.ipynb.
+publication/original/validation/inference/simulation/{de,dv,dc}/*_plots.ipynb.
 All method outputs are precomputed on the data volume under simulation/.
 """
 

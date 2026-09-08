@@ -2,7 +2,7 @@
 
 Reads the npz/csv written by panel_a_run_simulations.py and reproduces the three
 panels from the *_comparison.ipynb notebooks under
-publication/validation/estimation/simulation/.
+publication/original/validation/estimation/simulation/.
 
 The published middle panel also carries a BASiCS curve. BASiCS runs in R against
 per-replicate h5ad dumps that are not on the data volume, so it is omitted here.

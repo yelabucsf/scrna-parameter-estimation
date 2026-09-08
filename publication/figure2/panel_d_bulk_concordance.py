@@ -1,6 +1,6 @@
 """Figure 2D - concordance of single-cell DM calls with matched bulk RNA-seq.
 
-Port of publication/validation/inference/bulk_comparison/plotting_utils.py plus the
+Port of publication/original/validation/inference/bulk_comparison/plotting_utils.py plus the
 plotting cells of bulk_comparison_plots.ipynb.
 
 Two changes were needed against the current data volume:

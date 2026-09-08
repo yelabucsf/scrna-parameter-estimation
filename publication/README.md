@@ -16,19 +16,20 @@ export MEMENTO_DATA_PATH=~/memento_bundles
 cd <repo>/publication/figure3 && python make_figure3.py
 ```
 
-Each figure's README has its own DOI, its exact size, and anything specific to it.
+All the archives live in one Zenodo record — DOI _pending_ — and are independent of each
+other, so download only the one you need.
 
-| Figure | Directory | Subject | Data | DOI |
+| Figure | Directory | Subject | Download | Unpacked |
 | --- | --- | --- | --- | --- |
 | 1 | — | conceptual; no code | — | — |
-| 2 | [`figure2/`](figure2/) | method validation and comparisons | 4.1 GB | _pending_ |
-| 3 | [`figure3/`](figure3/) | interferon stimulation in airway epithelium | 9.6 GB | _pending_ |
-| 4 | [`figure4/`](figure4/) | Perturb-seq of transcription factor knockouts | 5.3 GB | _pending_ |
-| 5 | [`figure5/`](figure5/) | eQTL, vQTL and cQTL analysis | 21 GB | _pending_ |
-| 6 | [`figure6/`](figure6/) | memento in CZI CELLxGENE Discover | 42 MB | _pending_ |
+| 2 | [`figure2/`](figure2/) | method validation and comparisons | 1.3 GB | 4.1 GB |
+| 3 | [`figure3/`](figure3/) | interferon stimulation in airway epithelium | 2.7 GB | 9.6 GB |
+| 4 | [`figure4/`](figure4/) | Perturb-seq of transcription factor knockouts | 1.6 GB | 4.9 GB |
+| 5 | [`figure5/`](figure5/) | eQTL, vQTL and cQTL analysis | — | 21 GB |
+| 6 | [`figure6/`](figure6/) | memento in CZI CELLxGENE Discover | 44 MB | 44 MB |
 
-You need only the bundle for the figure you are reproducing. Nothing requires the full
-346 GB working volume, and nothing requires AWS credentials.
+Nothing here requires the 346 GB working volume the analysis was run against, and nothing
+requires AWS credentials.
 
 Two figures need something extra, for reasons outside our control:
 
@@ -39,15 +40,21 @@ Two figures need something extra, for reasons outside our control:
 - **Figure 6** streams cells from the public CELLxGENE census at run time, so panels C and
   D need network access.
 
-## The original notebooks
+## Layout
 
-`validation/`, `hbec_interferon/`, `perturbseq/`, `genetics/`, `cellxgene/` and `other/`
-are the **original, unmodified** analysis notebooks, kept for provenance. They carry
-hardcoded paths that no longer exist and depend on package versions that have since
-changed; they are a record of what was run, not something to run.
+```
+publication/
+  figure2/ .. figure6/   the maintained reproductions — start here
+  original/              the analysis as it was actually run, unmodified
+  MAINTAINING.md         regenerating and republishing the data bundles
+```
 
-`figure2/` through `figure6/` are the maintained reproductions. Where one departs from the
-original, its README says so and why.
+[`original/`](original/) holds the notebooks behind the paper, kept for provenance. They
+carry hardcoded paths to machines that no longer exist and depend on package versions
+whose APIs have changed — a record of what was run, not something to run. Three files in
+there are still read at run time by the reproductions; `original/README.md` says which.
+
+Where a reproduction departs from the original, its README says so and why.
 
 ## Maintainers
 

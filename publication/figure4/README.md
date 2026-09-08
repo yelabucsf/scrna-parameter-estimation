@@ -26,6 +26,7 @@ Everything Figure 4 needs is published as one archive, 5.3 GB unpacked — inclu
 ENCODE peak files panel H uses and the `GRCh38Genes.bed` annotation, so no S3 access, no
 data volume, and no separate checkout.
 
+All five figures share one Zenodo record; download just this figure's archive.
 DOI: _pending_
 
 ```bash

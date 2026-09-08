@@ -38,7 +38,7 @@ import config
 SUPPLEMENTARY_TABLE = config.FIGURE3_DATA + 'panelDEFG_isg/Supplementary_Table_2_HTEC_DC.csv'
 NOTEBOOK = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'hbec_interferon', 'classify_isg', 'select_isgs.ipynb')
+    'original', 'hbec_interferon', 'classify_isg', 'select_isgs.ipynb')
 CANONICAL_LIST_CELL = 40
 NONCANONICAL_2_LIST_CELL = 46
 

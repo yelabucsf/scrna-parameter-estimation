@@ -1,6 +1,6 @@
 """Figure 2A - run the estimator simulations.
 
-Ports publication/validation/estimation/simulation/{mean,variance,correlation}/*.py
+Ports publication/original/validation/estimation/simulation/{mean,variance,correlation}/*.py
 onto the current data layout. The variance simulation originally round-tripped every
 replicate through h5ad files so that BASiCS could be run in R; here the estimates are
 computed in memory. BASiCS is therefore not part of the regenerated variance curve.

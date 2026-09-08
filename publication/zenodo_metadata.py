@@ -1,9 +1,13 @@
-"""Generate the Zenodo record metadata for a figure's data bundle.
+"""Generate the Zenodo record metadata for the figure reproduction bundles.
 
-    python zenodo_metadata.py 3 > metadata_figure3.json
+    python zenodo_metadata.py > metadata.json
 
-One record per figure, so each gets its own DOI to cite in its README and can be
-re-versioned without touching the others. See MAINTAINING.md for the upload runbook.
+One record holds all five archives. Zenodo serves files individually, so a reader still
+downloads only the figure they want; a single DOI is simply what a paper's reproduction
+data is normally cited by.
+
+This is written to be uploaded as a **new version of the existing memento record**, which
+previously held code only. See MAINTAINING.md for the sequence.
 """
 
 import argparse
@@ -13,42 +17,29 @@ import sys
 
 REPO = 'https://github.com/yelabucsf/scrna-parameter-estimation'
 # TODO: confirm before uploading. Taken from the article page rather than from Crossref,
-# and a wrong identifier here would be baked into an immutable Zenodo record.
+# and a wrong identifier would be baked into an immutable record.
 PAPER_DOI = '10.1016/j.cell.2024.09.045'
 
-FIGURES = {
-    2: ('method validation and comparisons',
-        'Simulated and real-data benchmarks of memento against naive, pseudobulk, '
-        'Poisson and BASiCS estimators, smFISH-matched correlation estimates, and '
-        'concordance with bulk RNA-seq.'),
-    3: ('interferon stimulation in human airway epithelium',
-        'Differential mean and variability across four interferon stimulations and five '
-        'time points, and the canonical / non-canonical interferon-stimulated gene '
-        'analysis.'),
-    4: ('Perturb-seq of transcription factor knockouts',
-        'Differential expression for 84 sgRNAs against wild type, the coexpression '
-        'network, and ChIP-seq binding around perturbed loci.'),
-    5: ('eQTL, vQTL and coexpression QTL analysis',
-        'QTL summary statistics across two ancestry groups and six cell types, '
-        'replication against OneK1K, subsampled-cohort power curves, and enrichment in '
-        'cell-type-specific ATAC peaks.'),
-    6: ('memento in CZI CELLxGENE Discover',
-        'The dendritic-cell slice of the precomputed estimators cube, supporting the '
-        'cross-dataset comparison of plasmacytoid against conventional dendritic cells.'),
-}
+# figure -> (subject, archive size, unpacked size)
+FIGURES = [
+    (2, 'method validation and comparisons', '1.3 GB', '4.1 GB'),
+    (3, 'interferon stimulation in human airway epithelium', '2.7 GB', '9.6 GB'),
+    (4, 'Perturb-seq of transcription factor knockouts', '1.6 GB', '4.9 GB'),
+    (5, 'eQTL, vQTL and coexpression QTL analysis', None, '21 GB'),
+    (6, 'memento in CZI CELLxGENE Discover', '44 MB', '44 MB'),
+]
 
-# What a downloader has to know before they start, per figure.
-CAVEATS = {
-    3: ('Panel F additionally needs supplementary Table S1E of Mostafavi et al., Cell '
-        '2016 (mmc2.xls), which is a publisher supplementary file and is not '
-        'redistributed here. The figure README gives the DOI to fetch it from.'),
-    5: ('Panels F-I additionally need individual-level genotypes, which are '
-        'controlled-access under dbGaP phs002812.v1.p1 and are not included. Panels A-E '
-        'are complete: the minor-allele-frequency filter panel A applies ships as an '
-        'aggregate per-variant frequency, which contains no individual-level data.'),
-    6: ('Panels C and D additionally query the public CELLxGENE census at run time, so '
-        'this figure needs network access.'),
-}
+CAVEATS = [
+    ('Figure 3, panel F', 'additionally needs supplementary Table S1E of Mostafavi et '
+     'al., Cell 2016 (mmc2.xls). That is a publisher supplementary file and is not '
+     'redistributed here; the figure README gives the DOI to fetch it from.'),
+    ('Figure 5, panels F-I', 'additionally need individual-level genotypes, which are '
+     'controlled-access under dbGaP phs002812.v1.p1 and are not included. Panels A-E are '
+     'complete: the minor-allele-frequency filter panel A applies ships as an aggregate '
+     'per-variant frequency, which contains no individual-level data.'),
+    ('Figure 6, panels C and D', 'additionally query the public CELLxGENE census at run '
+     'time, so that figure needs network access.'),
+]
 
 
 def git_commit():
@@ -59,36 +50,51 @@ def git_commit():
         return 'unknown'
 
 
-def metadata(figure):
-    subject, description = FIGURES[figure]
-    commit = git_commit()
-    body = [
-        f'<p>Input data to reproduce <strong>Figure {figure}</strong> ({subject}) of '
-        f'Kim et al., <em>Cell</em> 2024.</p>',
-        f'<p>{description}</p>',
-        '<p>Unpack the archive and point <code>MEMENTO_DATA_PATH</code> at the directory '
-        'containing it, then run the figure script. Full instructions are in '
-        f'<a href="{REPO}/tree/main/publication/figure{figure}">'
-        f'publication/figure{figure}/README.md</a>.</p>',
-        '<pre>tar -xzf figure%d_data.tar.gz\n'
-        'export MEMENTO_DATA_PATH=$PWD\n'
-        'python make_figure%d.py</pre>' % (figure, figure),
-        '<p>Verify the download against the accompanying <code>.sha256</code> file '
-        'before unpacking.</p>',
-    ]
-    if figure in CAVEATS:
-        body.append(f'<p><strong>Note.</strong> {CAVEATS[figure]}</p>')
+def description():
+    rows = '\n'.join(
+        f'<tr><td>figure{n}_data.tar.gz</td><td>Figure {n} — {subject}</td>'
+        f'<td>{archive or "—"}</td><td>{unpacked}</td></tr>'
+        for n, subject, archive, unpacked in FIGURES)
+    caveats = '\n'.join(f'<li><strong>{who}</strong> {what}</li>' for who, what in CAVEATS)
+    return f'''\
+<p>Input data to reproduce the figures of Kim et al., <em>Cell</em> 2024, alongside the
+memento source code.</p>
 
+<p>Each archive holds one figure's inputs, organized by panel. Download only the figure
+you need — the archives are independent.</p>
+
+<table>
+<tr><th>File</th><th>Figure</th><th>Download</th><th>Unpacked</th></tr>
+{rows}
+</table>
+
+<p>Unpack an archive and point <code>MEMENTO_DATA_PATH</code> at the directory containing
+it, then run that figure's script:</p>
+
+<pre>tar -xzf figure3_data.tar.gz
+export MEMENTO_DATA_PATH=$PWD
+cd publication/figure3 &amp;&amp; python make_figure3.py</pre>
+
+<p>Verify each download against its <code>.sha256</code> file before unpacking. Full
+instructions, and what each figure should produce, are in
+<a href="{REPO}/tree/main/publication">publication/</a>.</p>
+
+<p>Three figures need something beyond their archive:</p>
+<ul>
+{caveats}
+</ul>
+'''
+
+
+def metadata():
     return {
         'metadata': {
-            'title': f'memento paper: Figure {figure} reproduction inputs',
+            'title': 'memento: source code and figure reproduction inputs',
             'upload_type': 'dataset',
-            'description': ''.join(body),
-            'creators': [
-                {'name': 'Kim, Min Cheol'},
-            ],
+            'description': description(),
+            'creators': [{'name': 'Kim, Min Cheol'}],
             'license': 'cc-by-4.0',
-            'version': commit,
+            'version': git_commit(),
             'related_identifiers': [
                 {'identifier': PAPER_DOI, 'relation': 'isSupplementTo',
                  'scheme': 'doi', 'resource_type': 'publication-article'},
@@ -101,10 +107,8 @@ def metadata(figure):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('figure', type=int, choices=sorted(FIGURES))
-    args = parser.parse_args()
-    json.dump(metadata(args.figure), sys.stdout, indent=2)
+    argparse.ArgumentParser(description=__doc__).parse_args()
+    json.dump(metadata(), sys.stdout, indent=2)
     sys.stdout.write('\n')
 
 

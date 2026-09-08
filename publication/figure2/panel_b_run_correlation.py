@@ -1,6 +1,6 @@
 """Figure 2B (right) - recompute the Drop-seq gene-correlation estimates.
 
-Port of publication/validation/estimation/smfish/correlation/correlation_estimation.py.
+Port of publication/original/validation/estimation/smfish/correlation/correlation_estimation.py.
 
 Why this has to be rerun rather than read off the data volume: the stored
 smfish/correlation/sample_correlations.npz holds one unnamed column per gene pair,

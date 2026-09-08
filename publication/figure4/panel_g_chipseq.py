@@ -1,6 +1,6 @@
 """Figure 4G - do interacting regulators share binding sites near their targets?
 
-Port of publication/perturbseq/cd4_tf_coex_analysis.ipynb cells 77-84.
+Port of publication/original/perturbseq/cd4_tf_coex_analysis.ipynb cells 77-84.
 
 For every (knocked-out regulator, second regulator) pair, the differential correlation
 p-values across that pair's genes are Fisher-combined into one number, and the pair is

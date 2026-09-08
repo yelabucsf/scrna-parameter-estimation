@@ -1,6 +1,6 @@
 # Figure 2A (variability) - BASiCS arm of the estimator simulation.
 #
-# Reimplementation of publication/validation/estimation/simulation/variance/run_basics.r.
+# Reimplementation of publication/original/validation/estimation/simulation/variance/run_basics.r.
 # Two changes from the original:
 #   * counts are read from MatrixMarket rather than converted h5ad, so this needs only
 #     BASiCS and SingleCellExperiment -- no Seurat, no SeuratDisk (whose h5ad Convert

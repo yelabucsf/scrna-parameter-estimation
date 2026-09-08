@@ -1,6 +1,6 @@
 """Figure 5F-I - worked examples of a vQTL and a cQTL.
 
-Port of publication/genetics/run_memento/analyze_variability.ipynb cells 26-31 (F, G) and
+Port of publication/original/genetics/run_memento/analyze_variability.ipynb cells 26-31 (F, G) and
 analyze_coexpression.ipynb cells 53-59 (H, I).
 
   F  HLA-C expression variability per individual, by genotype at chr6:31326612 (eur, ncM)

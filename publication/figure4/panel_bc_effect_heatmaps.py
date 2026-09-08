@@ -1,6 +1,6 @@
 """Figure 4B and 4C - perturbation effect sizes, and how the affected genes covary.
 
-Port of publication/perturbseq/cd4_wt_coex.ipynb cells 27-50:
+Port of publication/original/perturbseq/cd4_wt_coex.ipynb cells 27-50:
   * cell 28 -> panel B, the full sgRNA-by-gene differential mean matrix
   * cell 40 -> panel C left, the same restricted to DMGs and clustered
   * cell 50 -> panel C right, WT coexpression among those DMGs

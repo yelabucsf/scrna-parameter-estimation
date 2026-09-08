@@ -32,6 +32,7 @@ git clone https://github.com/mincheoly/memento ~/Github/memento   # set MEMENTO_
 Everything Figure 2 needs is published as one archive, 4.1 GB unpacked. No S3 access and
 no data volume.
 
+All five figures share one Zenodo record; download just this figure's archive.
 DOI: _pending_
 
 ```bash

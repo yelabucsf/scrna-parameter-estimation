@@ -1,6 +1,6 @@
 """Figure 3E, 3F and 3G - baseline variability, tonic sensitivity, and the mean/variability shift.
 
-Port of publication/hbec_interferon/classify_isg/select_isgs.ipynb:
+Port of publication/original/hbec_interferon/classify_isg/select_isgs.ipynb:
   * cells 73-75   -> panel E, baseline variability of canonical vs non-canonical ISGs
   * cells 59-71   -> panel F, tonic sensitivity of canonical vs the rest
   * cells 120-122 -> panel G, change in variability against change in mean
