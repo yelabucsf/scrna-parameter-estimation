@@ -279,7 +279,7 @@ def _good_mean_only(data, n_obs, q, size_factor=None, alpha=0, max_to_replace=13
 
         corrected_counts = sparse.diags(1/size_factor) @ corrected_counts # normalize for size_factor
         nonzero_sum = corrected_counts.sum(axis=0).A1
-        zero_sum = np.array([(final_values[0, idx]/size_factor[~np.in1d(range(size_factor.shape[0]), sparse.find(arr[:, idx])[0])]).sum() for idx in range(n_genes)])
+        zero_sum = np.array([(final_values[0, idx]/size_factor[~np.isin(range(size_factor.shape[0]), sparse.find(arr[:, idx])[0])]).sum() for idx in range(n_genes)])
         m = (nonzero_sum + zero_sum)/arr.shape[0]
         
         return [m, np.ones(m.shape)*10]
