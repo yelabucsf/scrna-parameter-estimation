@@ -136,15 +136,44 @@ def load_estimators(cell_types):
     with tiledb.open(config.CUBE_PATH) as cube:
         frames = [cube.df[cell_type, config.LUPUS_DATASET_ID, :] for cell_type in cell_types]
     estimators = pd.concat(frames, ignore_index=True)
-    return estimators.query(f'donor_id == "{config.LUPUS_DONOR}"')
+    estimators = estimators.query(f'donor_id == "{config.LUPUS_DONOR}"')
+    # The cube on the volume was built with the variance fields largely unpopulated, which
+    # caps how many genes panel D can compare. Report it rather than let it surface as a
+    # mysteriously small point cloud.
+    for cell_type, group in estimators.groupby('cell_type', observed=True):
+        print(f'  {cell_type}: {group.shape[0]} genes, '
+              f'{(group["var"] > 0).sum()} with a non-zero variance', flush=True)
+    return estimators
+
+
+def normalize_to_relative_abundance(frame):
+    """Put a cell type's stored means on a common scale.
+
+    The cube estimates each (cell type, dataset, donor) group independently, so the
+    stored means of two cell types do not sum to the same total -- here 41.42 for
+    monocytes against 14.48 for CD4 T cells. Taking a ratio without rescaling shifts
+    *every* gene's log fold change by log(14.48/41.42) = -1.05, which correlation against
+    the default route cannot see (it is a pure intercept) but which throws the p-values
+    off by orders of magnitude. The default route normalizes both cell types together, so
+    matching it means dividing each group by its own total first.
+
+    `sem` is rescaled with it, which leaves the delta-method log-scale SE untouched --
+    (log(m+s) - log(m-s))/2 is invariant when m and s are scaled together. `var` needs no
+    rescaling: a constant factor shifts log(var) by a constant, which the mean-variance
+    trend absorbs when it is refit.
+    """
+    total = frame['mean'].sum()
+    frame['mean'] = frame['mean'] / total
+    frame['sem'] = frame['sem'] / total
 
 
 def run_precomputed(estimators, ct1, ct2):
     """p-values from the stored estimators, with no access to the cells."""
     first = estimators.query('cell_type == @ct1').copy()
     second = estimators.query('cell_type == @ct2').copy()
-    add_residual_variance(first)
-    add_residual_variance(second)
+    for frame in (first, second):
+        normalize_to_relative_abundance(frame)
+        add_residual_variance(frame)
     merged = first.merge(second, on='feature_id', suffixes=('_ct1', '_ct2'))
 
     # Delta method on the log scale: the standard error of log(mean) from the SEM.
@@ -216,11 +245,13 @@ def main():
     # standard errors while the default route bootstraps.
     coef_dm = merged.dropna(subset=['de_coef', 'cxg_de_coef'])
     r_coef_dm = scatter(axes[0], coef_dm['de_coef'], coef_dm['cxg_de_coef'],
-                        'mean LFC', None)
-    r_dm = scatter(axes[1], dm['mem_de_logp'], dm['cxg_de_logp'], 'mean -log10(P)', 200)
-    r_coef_dv = scatter(axes[2], dv['dv_coef'], dv['cxg_dv_coef'], 'variability LFC', None)
+                        f'mean LFC (n={coef_dm.shape[0]})', None)
+    r_dm = scatter(axes[1], dm['mem_de_logp'], dm['cxg_de_logp'],
+                   f'mean -log10(P) (n={dm.shape[0]})', 200)
+    r_coef_dv = scatter(axes[2], dv['dv_coef'], dv['cxg_dv_coef'],
+                        f'variability LFC (n={dv.shape[0]})', None)
     r_dv = scatter(axes[3], dv['mem_dv_logp'], dv['cxg_dv_logp'],
-                   'variability -log10(P)', 20)
+                   f'variability -log10(P) (n={dv.shape[0]})', 20)
 
     print(f'panel C  mean LFC:        {coef_dm.shape[0]:5} genes, Pearson r = {r_coef_dm:.3f}')
     print(f'panel C  mean -log10(P):  {dm.shape[0]:5} genes, Pearson r = {r_dm:.3f}')
