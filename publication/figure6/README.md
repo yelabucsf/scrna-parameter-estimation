@@ -141,21 +141,24 @@ across 23 datasets, pooled and then individually.
 - **Panel E replots recorded measurements.** Re-timing the default mode means rerunning
   memento once per comparison, which is the cost the panel exists to show.
 
-## memento-cxg patches
+## memento-cxg version
 
 `build_cube.py` runs [memento-cxg](https://github.com/mincheoly/memento-cxg)'s
-`cell_census_summary_cube.py` unmodified, but that code needs two changes to run here.
-`build_cube.py` checks for both and exits with an explanation rather than failing
-obscurely.
+`cell_census_summary_cube.py` unmodified, and needs it at
+[PR #5](https://github.com/mincheoly/memento-cxg/pull/5) or later — merged, so a current
+clone of `main` is fine. `build_cube.py` checks for both changes and exits with an
+explanation rather than failing obscurely, so an older checkout will say so.
 
-1. **numpy 2 compatibility.** `estimators.py::compute_variance` ends with
+That PR fixed two things worth knowing about if you are reading older code:
+
+1. **numpy 2 compatibility.** `estimators.py::compute_variance` ended with
    `float(variance)` where `variance` is a shape-`(1,)` array. NumPy 1.25 deprecated the
-   implicit size-1-array-to-scalar conversion and 2.0 removed it, so every gene raises
+   implicit size-1-array-to-scalar conversion and 2.0 removed it, so every gene raised
    `TypeError: only 0-dimensional arrays can be converted to Python scalars` in every
-   worker and pass 2 produces nothing. Unwrap with `.item()`.
+   worker and pass 2 produced nothing at all.
 
-2. **A configurable capture rate.** `Q` is a module constant. Pass 2 runs in *spawned*
-   processes, which re-import the module, so assigning `builder.Q` from a caller has no
-   effect on the workers — the build silently uses the default. Reading it from the
-   environment (`Q = float(os.environ.get("MEMENTO_CUBE_Q", 0.1))`) is what lets
-   `build_cube.py` hold q equal to `config.CAPTURE_RATE`.
+2. **A configurable capture rate.** `Q` was a module constant. Pass 2 runs in *spawned*
+   processes, which re-import the module, so assigning `builder.Q` from a caller had no
+   effect on the workers and the build silently used the default. It now reads
+   `MEMENTO_CUBE_Q`, which is what lets `build_cube.py` hold q equal to
+   `config.CAPTURE_RATE`.
