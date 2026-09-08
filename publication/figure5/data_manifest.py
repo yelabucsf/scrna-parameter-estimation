@@ -14,8 +14,9 @@ source volume would bury its symlink tree under gigabytes of duplicates.
 This is maintainer tooling. Readers reproducing a figure download the published bundle
 instead -- see publication/MAINTAINING.md.
 
-Entries are tagged `required` (read directly by a panel script) or `provenance` (needed
-only to regenerate a `required` file).
+Entries are tagged `required` (read directly by a panel script), `provenance` (needed only
+to regenerate a `required` file), or `restricted` (may not be redistributed -- tracked and
+linked locally, never copied into a bundle).
 """
 
 import argparse
@@ -28,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bundle_tools  # noqa: E402
 
 REQUIRED, PROVENANCE = bundle_tools.REQUIRED, bundle_tools.PROVENANCE
+RESTRICTED = bundle_tools.RESTRICTED
 
 
 def entries():
@@ -37,10 +39,19 @@ def entries():
     def add(panel, tier, dest, src):
         out.append((panel, tier, dest, config.LUPUS_PATH + src))
 
-    # Genotypes, for the minor-allele-frequency filter every QTL panel applies.
+    # Genotypes. Individual-level data from the CLUES cohort, released by Perez et al.
+    # 2022 only under dbGaP phs002812.v1.p1 with a signed Data Use Certification, so they
+    # carry the RESTRICTED tier and are excluded from any published bundle.
+    #
+    # Panel A does not actually need them: it applies a minor-allele-frequency filter,
+    # which is one aggregate number per variant. panel_a_qqplots.write_minor_allele_
+    # frequencies() reduces the matrices to exactly that, and the aggregate is what ships.
+    # Panels F-I do need per-individual calls and are skipped without dbGaP access.
     for population in config.POPULATIONS:
-        add('A', REQUIRED, f'genotypes/{population}_genos.tsv',
+        add('A', RESTRICTED, f'genotypes/{population}_genos.tsv',
             f'mateqtl_input/{population}_genos.tsv')
+        add('A', REQUIRED, f'panelA_qq/maf/{population}_maf.csv',
+            f'mateqtl_input/maf/{population}_maf.csv')
 
     # --- Panel A: QQ plots for eQTL, vQTL and cQTL ---------------------------
     for population in config.POPULATIONS:
@@ -131,16 +142,21 @@ def check(root=None):
     print(f'checking {root or config.DATA_PATH} '
           f'({"organized tree" if root else "source volume"})\n')
     for panel in ['A', 'BC', 'DE', 'FI']:
-        for tier in [REQUIRED, PROVENANCE]:
+        for tier in [REQUIRED, PROVENANCE, RESTRICTED]:
             subset = [r for r in rows if r[0] == panel and r[1] == tier]
             if not subset:
                 continue
             present, missing, size = _summarize(subset, root)
-            status = 'OK ' if not missing else 'GAP'
+            # Restricted files are absent from a published bundle by design, so their
+            # absence is the expected state rather than a gap.
+            status = 'OK ' if not missing else ('--- ' if tier == RESTRICTED else 'GAP')
             print(f'{status} panel {panel:<3} {tier:<10} {len(present):>2}/{len(subset):<2} files'
                   f'  {size / 1e9:6.2f} GB')
-            for row in missing[:5]:
-                print(f'      missing: {_resolve(row, root)}')
+            if tier == RESTRICTED and missing:
+                print('      withheld: dbGaP phs002812; panels F-I are skipped without it')
+            else:
+                for row in missing[:5]:
+                    print(f'      missing: {_resolve(row, root)}')
             if missing and tier == REQUIRED:
                 ok = False
 

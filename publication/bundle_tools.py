@@ -17,17 +17,34 @@ import sys
 import tarfile
 
 REQUIRED, PROVENANCE = 'required', 'provenance'
+# Data that may not be redistributed -- controlled-access human subject data, or anything
+# else whose licence forbids it. RESTRICTED entries are still tracked and still linked
+# into a local tree, so a maintainer with access runs the full analysis, but `bundle` and
+# `archive` refuse to copy them. The exclusion is structural, not a matter of remembering:
+# a file is left out because of its tier, not because someone filtered it at publish time.
+RESTRICTED = 'restricted'
+PUBLISHABLE = (REQUIRED, PROVENANCE)
 CHUNK = 1 << 20
 
 
-def build(rows, root, copy, require_all=False):
+def build(rows, root, copy, require_all=False, publishable_only=False):
     """Materialize `rows` under `root`, as copies or as symlinks.
 
     Returns (built, skipped). Sources that do not exist are skipped rather than raising,
     because a partially-synced volume is a normal state to want to inspect — but
     `require_all` turns a missing REQUIRED-tier source into an error, which is what
     archiving needs: a bundle silently missing a panel's input is worse than no bundle.
+
+    `publishable_only` drops RESTRICTED entries. Bundling and archiving always set it.
     """
+    if publishable_only:
+        withheld = [r for r in rows if r[1] == RESTRICTED]
+        rows = [r for r in rows if r[1] != RESTRICTED]
+        if withheld:
+            print(f'withholding {len(withheld)} restricted file(s) from the bundle:')
+            for row in withheld:
+                print(f'  {row[2]}')
+
     present = [r for r in rows if os.path.exists(r[3])]
     skipped = [r for r in rows if not os.path.exists(r[3])]
 
@@ -122,7 +139,7 @@ def dispatch(args, entries, check, link_root):
                          'It writes real copies, so it will not default to the source '
                          'volume.')
 
-    build(entries(), args.root, copy=True, require_all=True)
+    build(entries(), args.root, copy=True, require_all=True, publishable_only=True)
     if args.command == 'archive':
         write_archive(args.root, args.out or args.root.rstrip('/') + '.tar.gz')
 

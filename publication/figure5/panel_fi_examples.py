@@ -16,6 +16,8 @@ for element 0 -- the mean -- while labelling the axis "Variability"; that is a s
 a vQTL panel is about variability.
 """
 
+import os
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -41,9 +43,30 @@ CQTL = {'pop': 'asian', 'ct': 'cM', 'snp': '12:69688073',
 MIN_CELLS_PER_DONOR = 100
 
 
+def require_genotypes(pop):
+    """Path to a genotype matrix, or a clear explanation of why it is not there.
+
+    These panels group individuals by their genotype at one variant, so unlike panel A
+    they cannot run from aggregate allele frequencies. The matrices are individual-level
+    data under dbGaP phs002812.v1.p1 and are not redistributable, so they are absent from
+    the published bundle by design -- this is not a broken download.
+    """
+    path = GENOTYPES + f'{pop}_genos.tsv'
+    if not os.path.exists(path):
+        raise SystemExit(
+            f'{path} is missing.\n\n'
+            'Panels F-I need per-individual genotype calls, which are controlled-access\n'
+            '(dbGaP phs002812.v1.p1, from Perez et al. 2022) and therefore not part of\n'
+            'the public data bundle. The rest of Figure 5 runs without them.\n\n'
+            'With an approved dbGaP Data Access Request, put the genotype matrices at\n'
+            f'  {GENOTYPES}\n'
+            'as {pop}_genos.tsv with a CHROM:POS index and one column per individual.')
+    return path
+
+
 def prepare(pop, cell_type, genes, mean_thresh, min_perc_group, min_cells=MIN_CELLS_PER_DONOR):
     """Load one population/cell type, keep genotyped donors, and estimate moments."""
-    genotypes = pd.read_csv(GENOTYPES + f'{pop}_genos.tsv', sep='\t', index_col=0)
+    genotypes = pd.read_csv(require_genotypes(pop), sep='\t', index_col=0)
     adata = sc.read(SINGLE_CELL + f'{pop}_{cell_type}.h5ad')
 
     counts = adata.obs['ind_cov'].value_counts()

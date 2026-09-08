@@ -11,6 +11,8 @@ The notebook also merged per-gene mean expression into the vQTL table; that colu
 used by the plot, so the twelve single-cell h5ads it required are not loaded here.
 """
 
+import os
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -35,8 +37,41 @@ GENOTYPE_VALUES = (0, 1, 2)
 GENOTYPE_CHUNK = 200_000
 
 
+MAF_DIR = config.FIGURE5_DATA + 'panelA_qq/maf/'
+
+
 def minor_allele_frequencies():
     """Frequency of the rarest observed genotype call per variant, per population.
+
+    Reads the precomputed per-variant frequencies if they are present, and falls back to
+    deriving them from the genotype matrices.
+
+    The precomputed form is what the published data bundle ships. The genotype matrices
+    are individual-level data from dbGaP phs002812 and cannot be redistributed, but this
+    panel never needs them: it only wants one aggregate frequency per variant, which
+    identifies nobody. `write_minor_allele_frequencies` below regenerates the csvs from
+    the matrices for anyone with dbGaP access.
+    """
+    precomputed = [MAF_DIR + f'{population}_maf.csv' for population in config.POPULATIONS]
+    if all(os.path.exists(path) for path in precomputed):
+        frames = [pd.read_csv(path) for path in precomputed]
+        for frame, population in zip(frames, config.POPULATIONS):
+            print(f'  {population}: {frame.shape[0]} variants (precomputed)', flush=True)
+        return pd.concat(frames, ignore_index=True)
+
+    if not os.path.isdir(GENOTYPE_DIR):
+        raise SystemExit(
+            f'no precomputed allele frequencies under {MAF_DIR}, and no genotype\n'
+            'matrices to derive them from. The genotypes are controlled-access (dbGaP\n'
+            'phs002812.v1.p1) and are not part of the published bundle; the bundle ships\n'
+            'the aggregate frequencies this panel actually uses. If you are seeing this,\n'
+            'the download is incomplete.')
+
+    return _derive_minor_allele_frequencies()
+
+
+def _derive_minor_allele_frequencies():
+    """Compute the frequencies from the genotype matrices. Needs dbGaP access.
 
     The notebook did this with a row-wise `value_counts` lambda. Over 3.3M variants that
     is hours of Python-level calls, so it is vectorised here and read in chunks to keep
@@ -64,6 +99,21 @@ def minor_allele_frequencies():
         frames.append(frame)
         print(f'  {population}: {frame.shape[0]} variants', flush=True)
     return pd.concat(frames, ignore_index=True)
+
+
+def write_minor_allele_frequencies(out_dir=None):
+    """Derive the per-variant frequencies and write them out, one csv per population.
+
+    Maintainer step, run once against the controlled-access genotypes to produce the
+    aggregate files the public bundle ships in their place.
+    """
+    out_dir = out_dir or MAF_DIR
+    os.makedirs(out_dir, exist_ok=True)
+    table = _derive_minor_allele_frequencies()
+    for population, group in table.groupby('pop'):
+        path = os.path.join(out_dir, f'{population}_maf.csv')
+        group.to_csv(path, index=False)
+        print(f'wrote {path} ({group.shape[0]} variants)')
 
 
 def load_tests(suffix, directory=MEMENTO_DIR):
