@@ -30,22 +30,27 @@ needs a [memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
 
 ## Data
 
-Unlike the other figures, almost nothing here is a file on the volume. Panels C, D and G
-stream cells and metadata from the public CELLxGENE census at run time. Two precomputed
-estimator cubes are involved, and they are not interchangeable:
+Figure 6 is by far the lightest: a 42 MB archive, because most of what it needs is either
+streamed from the public CELLxGENE census at run time or computed locally.
 
-**Panel G** reads the full-census cube, which ships as a tar and must be unpacked once:
+DOI: _pending_
 
 ```bash
-mkdir -p /memento_data/precomputation/extracted
-tar -xf /memento_data/precomputation/stimators_cube.2023-10-23-homo_sapiens-full.tar \
-    -C /memento_data/precomputation/extracted     # ~17 GB, several minutes
-
-python data_manifest.py check                     # confirms the cube is readable
+mkdir -p ~/memento_bundles && cd ~/memento_bundles
+curl -L -O https://zenodo.org/records/<RECORD>/files/figure6_data.tar.gz
+curl -L -O https://zenodo.org/records/<RECORD>/files/figure6_data.tar.gz.sha256
+sha256sum -c figure6_data.tar.gz.sha256      # macOS: shasum -a 256 -c
+tar -xzf figure6_data.tar.gz
+export MEMENTO_DATA_PATH=~/memento_bundles
 ```
 
-**Panels C and D** build their own cube, because the full-census one was produced with
-the variance estimators switched off and those panels are precisely a test of the
+The archive holds `panelG_cube/estimators_cube_dc`: the dendritic-cell slice of the
+census estimators cube, which is what panel G reads. It reproduces panel G exactly —
+identical genes and identical coefficients, standard errors and p-values to the last bit
+— against the 17 GB full-census cube it was cut from.
+
+**Panels C and D build their own cube**, because the archived census cube was produced
+with the variance estimators switched off and those panels are precisely a test of the
 variance path:
 
 ```bash
@@ -54,6 +59,12 @@ python build_cube.py         # ~2 min, writes intermediate/estimators_cube (1.2 
 
 It is scoped to the one donor and two cell types the comparison uses, and takes its
 capture rate from `config.CAPTURE_RATE` so it cannot drift from the full memento run.
+This step needs network access and a
+[memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
+[memento-cxg version](#memento-cxg-version).
+
+**Panels C, D and G reach the network.** C and D query the census for cells; G queries it
+for per-donor cell counts. There is no fully offline mode.
 
 Override locations with `MEMENTO_CUBE_PATH`, `MEMENTO_COMPARISON_CUBE_PATH` and
 `MEMENTO_CXG_PATH`, and the census release with `CENSUS_VERSION`.

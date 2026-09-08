@@ -18,32 +18,33 @@ Regenerates every panel of Figure 4 of
 
 Python with scanpy, pandas, scipy, scikit-learn, seaborn, matplotlib and networkx.
 
-Figure 4 uses **this repository's** memento package, like Figure 3. It also needs
-`GRCh38Genes.bed` from a separate repository:
-
-```bash
-git clone https://github.com/mincheoly/misc-seq ~/Github/misc-seq   # set MISCSEQ_PATH
-```
+Figure 4 uses **this repository's** memento package, like Figure 3. Nothing else to clone.
 
 ## Data
 
-```bash
-python data_manifest.py check     # 99 files, 5.3 GB
-python data_manifest.py link      # build the panel-organized tree the scripts read
-```
+Everything Figure 4 needs is published as one archive, 5.3 GB unpacked — including the
+ENCODE peak files panel H uses and the `GRCh38Genes.bed` annotation, so no S3 access, no
+data volume, and no separate checkout.
 
-`check --root DIR` validates a copy instead of the source volume; `bundle --root DIR`
-writes a standalone directory that `FIGURE4_DATA` can point at.
-
-Panel H needs two ENCODE peak files, staged on the volume at `tfko140/encode_peaks/`.
-If they are missing:
+DOI: _pending_
 
 ```bash
-mkdir -p /memento_data/tfko140/encode_peaks && cd $_
-for acc in ENCFF557FUM ENCFF719BHI; do
-  curl -sSL -o $acc.bed.gz "https://www.encodeproject.org/files/$acc/@@download/$acc.bed.gz"
-done
+mkdir -p ~/memento_bundles && cd ~/memento_bundles
+curl -L -O https://zenodo.org/records/<RECORD>/files/figure4_data.tar.gz
+curl -L -O https://zenodo.org/records/<RECORD>/files/figure4_data.tar.gz.sha256
+sha256sum -c figure4_data.tar.gz.sha256      # macOS: shasum -a 256 -c
+tar -xzf figure4_data.tar.gz
+export MEMENTO_DATA_PATH=~/memento_bundles
 ```
+
+The archive unpacks to `figure4_data/`, organized by panel:
+
+| Directory | Feeds |
+| --- | --- |
+| `panelA_selection/` | A |
+| `panelBCD_effects/` | B, C, D |
+| `panelEF_network/` | E, F |
+| `panelGH_chipseq/` | G, H |
 
 ## Run
 

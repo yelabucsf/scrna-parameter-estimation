@@ -29,37 +29,42 @@ git clone https://github.com/mincheoly/memento ~/Github/memento   # set MEMENTO_
 
 ## Data
 
-```bash
-python data_manifest.py check     # 914 files, 4.1 GB
-python data_manifest.py link      # build the panel-organized tree the scripts read
-```
+Everything Figure 2 needs is published as one archive, 4.1 GB unpacked. No S3 access and
+no data volume.
 
-`check --root DIR` validates a copy instead of the source volume. `bundle --root DIR`
-writes a standalone 4 GB directory; point `FIGURE2_DATA` at it to run without the full
-data volume.
-
-One input is not on the volume and must be downloaded once:
+DOI: _pending_
 
 ```bash
-curl -L -o /memento_data/interferon_filtered.h5ad \
-  https://memento-examples.s3.us-west-2.amazonaws.com/pbmc-ifnb/interferon_filtered.h5ad
+mkdir -p ~/memento_bundles && cd ~/memento_bundles
+curl -L -O https://zenodo.org/records/<RECORD>/files/figure2_data.tar.gz
+curl -L -O https://zenodo.org/records/<RECORD>/files/figure2_data.tar.gz.sha256
+sha256sum -c figure2_data.tar.gz.sha256      # macOS: shasum -a 256 -c
+tar -xzf figure2_data.tar.gz
+export MEMENTO_DATA_PATH=~/memento_bundles
 ```
+
+The archive unpacks to `figure2_data/`, organized by panel:
+
+| Directory | Feeds |
+| --- | --- |
+| `panelA_simulation/` | A — including the BASiCS parameter estimates, already computed |
+| `panelB_smfish/` | B |
+| `panelC_inference/` | C |
+| `panelD_bulk/` | D |
+
+Panel E needs no data files; its runtimes are literals in `panel_e_runtime.py`.
 
 ## Run
 
 ```bash
-python panel_a_run_simulations.py all --dump-basics-inputs   # ~20 min
-Rscript run_basics_simulation.R                              # ~2 h, or shard (below)
-python panel_b_run_correlation.py                            # ~5 min
-python data_manifest.py link                                 # pick up the BASiCS output
-python make_figure2.py                                       # all panels + figure2.png
+python panel_a_run_simulations.py all      # ~20 min, the estimator simulation
+python panel_b_run_correlation.py          # ~5 min
+python make_figure2.py                     # all panels + figure2.png
 ```
 
-The BASiCS step shards cleanly and skips completed files, so it is restartable:
-
-```bash
-for q in 0.05 0.1 0.2 0.3 0.5; do Rscript run_basics_simulation.R $q 3 & done
-```
+No R needed: panel A's BASiCS arm takes about two hours to recompute, so its parameter
+estimates ship in the archive. Regenerating them is a maintainer step — see
+[MAINTAINING.md](../MAINTAINING.md).
 
 Individual panels can be plotted alone (`python panel_c_power_fdr.py`). Figures land in
 `figures/` as pdf and png; estimates and summary tables in `intermediate/`.
