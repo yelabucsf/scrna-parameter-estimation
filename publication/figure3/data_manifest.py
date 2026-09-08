@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import bundle_tools  # noqa: E402
 
 REQUIRED, PROVENANCE = bundle_tools.REQUIRED, bundle_tools.PROVENANCE
+RESTRICTED = bundle_tools.RESTRICTED
 
 CELL_TYPE = 'C'
 
@@ -54,7 +55,10 @@ def entries():
     # the counts, so this h5ad is the upstream input for D, E, F and G alike.
     add('DEFG', REQUIRED, 'panelDEFG_isg/HBEC_type_I_filtered_counts_deep.h5ad',
         'hbec/HBEC_type_I_filtered_counts_deep.h5ad')
-    add('DEFG', REQUIRED, 'panelDEFG_isg/external/mostafavi2016_mmc2.xls',
+    # Supplementary Table S1E of Mostafavi et al., Cell 2016 -- a publisher's
+    # supplementary file. Tracked and linked locally so the panel runs here, but not
+    # redistributed: reconstruct_tonic_isg.py prints the DOI to fetch it from.
+    add('DEFG', RESTRICTED, 'panelDEFG_isg/external/mostafavi2016_mmc2.xls',
         'hbec/external/mostafavi2016_mmc2.xls')
     # The published DC table carries the `type` column from which the canonical and
     # non-canonical ISG lists are recovered; see isg_gene_lists.py.
@@ -91,7 +95,7 @@ def check(root=None):
     print(f'checking {root or config.DATA_PATH} '
           f'({"organized tree" if root else "source volume"})\n')
     for panel in ['A', 'BC', 'DEFG']:
-        for tier in [REQUIRED, PROVENANCE]:
+        for tier in [REQUIRED, PROVENANCE, RESTRICTED]:
             subset = [r for r in rows if r[0] == panel and r[1] == tier]
             if not subset:
                 continue

@@ -30,6 +30,15 @@ COLUMNS = ['ProbeSetID', 'GeneSymbol', 'IFN.FC.WT', 'Tonic Sensitivity', 'TonicI
 
 
 def build():
+    if not os.path.exists(SOURCE):
+        raise SystemExit(
+            f'{SOURCE} is missing.\n\n'
+            'Panel F needs supplementary Table S1E of Mostafavi et al., Cell 2016. It is\n'
+            "a publisher's supplementary file, so it is not redistributed in the data\n"
+            'bundle. Download mmc2.xls from\n'
+            '  https://doi.org/10.1016/j.cell.2016.01.012\n'
+            f'and save it as\n  {SOURCE}\n\n'
+            'The rest of Figure 3 runs without it.')
     raw = pd.read_excel(SOURCE, sheet_name=SHEET, header=None)
 
     header = raw.iloc[MACROPHAGE_HEADER_ROW].astype(str).tolist()
