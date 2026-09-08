@@ -414,7 +414,7 @@ def compute_1d_moments(
     # If a gene list is given, use that to further filter the moments
     if gene_list is not None:
         assert isinstance(gene_list, list)
-        given_gene_mask = np.in1d(adata.var.index.values, gene_list)
+        given_gene_mask = np.isin(adata.var.index.values, gene_list)
 
         adata.uns['memento']['group_cells'] = \
             {group:adata.uns['memento']['group_cells'][group][:, given_gene_mask] for group in group_names}

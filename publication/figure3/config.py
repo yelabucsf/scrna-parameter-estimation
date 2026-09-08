@@ -17,7 +17,9 @@ FIGURE3_DATA = os.environ.get('FIGURE3_DATA', DATA_PATH + 'figure3_data/')
 # Figure 3 uses THIS repository's memento package, not the object-oriented rewrite that
 # Figure 2 needs -- the notebooks call setup_memento / compute_1d_moments / ht_1d_moments,
 # which only exist here.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Three levels up: publication/figureN/config.py -> the repository root. Getting this
+# wrong silently falls back to a pip-installed memento in site-packages.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 FIGURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'figures')
 INTERMEDIATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'intermediate')

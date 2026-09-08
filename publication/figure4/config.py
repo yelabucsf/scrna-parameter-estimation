@@ -16,7 +16,9 @@ FIGURE4_DATA = os.environ.get('FIGURE4_DATA', DATA_PATH + 'figure4_data/')
 
 # Like Figure 3, Figure 4 uses THIS repository's memento package (the notebooks import
 # the memento-0.0.9 egg), not the object-oriented rewrite Figure 2 needs.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Three levels up: publication/figureN/config.py -> the repository root. Getting this
+# wrong silently falls back to a pip-installed memento in site-packages.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # github.com/mincheoly/misc-seq supplies the `encode` helper and GRCh38Genes.bed that
 # the ChIP-seq panels lean on. Override with MISCSEQ_PATH.
