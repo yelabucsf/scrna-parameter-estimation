@@ -57,10 +57,9 @@ Each script prints its key numbers, so a drift is visible without opening the fi
 
 ## Notes
 
-- **Panel F plots the variability estimate.** The notebook took element 0 of
-  `get_1d_moments`, which is the mean, while labelling the axis "Variability"; element 1
-  is the residual variance, which is what a vQTL panel shows and what the caption states.
-  `--use-mean` reproduces the notebook's literal behaviour.
+- **Panel F plots the residual variance**, element 1 of `get_1d_moments`. The notebook
+  took element 0 — the mean — while labelling the axis "Variability"; that is a slip,
+  since a vQTL panel is about variability.
 - **Minor allele frequencies are computed vectorised.** The notebook used a row-wise
   `value_counts` lambda over 3.3M variants, which takes hours; the chunked NumPy version
   here gives the same quantity in about 30 seconds.

@@ -11,13 +11,10 @@ analyze_coexpression.ipynb cells 53-59 (H, I).
 Both examples recompute their moments from the single-cell data, since the panels need
 per-individual estimates rather than the pooled QTL summary statistics.
 
-Panel F plots the variability estimate. The notebook reached for element 0 of
-`get_1d_moments`, which is the mean, while labelling the axis "Variability"; element 1 is
-the residual variance, which is what a vQTL panel is about and what the caption states.
-Pass --use-mean to reproduce the notebook's literal behaviour.
+Panel F plots the residual variance, element 1 of `get_1d_moments`. The notebook reached
+for element 0 -- the mean -- while labelling the axis "Variability"; that is a slip, since
+a vQTL panel is about variability.
 """
-
-import argparse
 
 import matplotlib
 matplotlib.use('Agg')
@@ -69,11 +66,12 @@ def _strip_group_prefix(frame):
     return frame
 
 
-def panel_fg(axes, use_mean):
+def panel_fg(axes):
     adata, genotypes = prepare(VQTL['pop'], VQTL['ct'], [VQTL['gene']],
                                VQTL['mean_thresh'], VQTL['min_perc_group'])
-    moments = memento.get_1d_moments(adata)
-    estimate = _strip_group_prefix(moments[0 if use_mean else 1])
+    # get_1d_moments returns (mean, residual variance, cell counts).
+    _, variability, _ = memento.get_1d_moments(adata)
+    estimate = _strip_group_prefix(variability)
 
     info = pd.concat([genotypes.loc[VQTL['snp']], estimate.loc[VQTL['gene']]], axis=1).dropna()
     info.columns = [VQTL['snp'], 'variability']
@@ -138,15 +136,10 @@ def panel_hi(axes):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--use-mean', action='store_true',
-                        help="plot the mean in panel F, as the notebook literally did")
-    args = parser.parse_args()
-
     config.set_style()
     fig, axes = plt.subplots(1, 4, figsize=(12, 2.6))
     plt.subplots_adjust(wspace=0.5)
-    panel_fg(axes[:2], args.use_mean)
+    panel_fg(axes[:2])
     panel_hi(axes[2:])
 
     fig.savefig(config.figure_path('figure5FI.pdf'), bbox_inches='tight')
