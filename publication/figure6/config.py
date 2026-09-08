@@ -7,9 +7,17 @@ import matplotlib as mpl
 import matplotlib.pylab as pylab
 
 DATA_PATH = os.environ.get('MEMENTO_DATA_PATH', '/memento_data/')
-# The precomputed estimators cube, unpacked from precomputation/*.tar.
+# The full-census estimators cube, unpacked from precomputation/*.tar. Panel G reads it
+# because it needs every dataset; panels C and D cannot, because it was built without the
+# variance estimators (see README).
 CUBE_PATH = os.environ.get(
     'MEMENTO_CUBE_PATH', DATA_PATH + 'precomputation/extracted/estimators_cube_v2')
+# The cube panels C and D compare against, built by build_cube.py: one donor, two cell
+# types, variance included, and the same capture rate as the full memento run.
+COMPARISON_CUBE_PATH = os.environ.get(
+    'MEMENTO_COMPARISON_CUBE_PATH',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'intermediate',
+                 'estimators_cube'))
 
 FIGURE6_DATA = os.environ.get('FIGURE6_DATA', DATA_PATH + 'figure6_data/')
 

@@ -36,7 +36,7 @@ def cube_status(root=None):
 
 def check(root=None):
     path, present, size = cube_status(root)
-    print(f'precomputed estimators cube\n  {path}')
+    print(f'full-census estimators cube (panel G)\n  {path}')
     if present:
         print(f'  OK  unpacked, {size / 1e9:.1f} GB')
     else:
@@ -44,6 +44,18 @@ def check(root=None):
         print(f'      mkdir -p {os.path.dirname(config.CUBE_PATH)}')
         print(f'      tar -xf {CUBE_TAR} -C {os.path.dirname(config.CUBE_PATH)}')
         print(f'  source tarball present: {os.path.exists(CUBE_TAR)}')
+
+    # Built rather than shipped: the full-census cube carries no variance estimators, so
+    # panels C and D cannot use it. See README.
+    comparison = config.COMPARISON_CUBE_PATH
+    print(f'\ncomparison estimators cube (panels C, D)\n  {comparison}')
+    if os.path.isdir(comparison):
+        size = sum(os.path.getsize(os.path.join(walk_root, name))
+                   for walk_root, _, names in os.walk(comparison) for name in names)
+        print(f'  OK  built, {size / 1e6:.1f} MB')
+    else:
+        print('  GAP not built. Build it with:')
+        print('      python build_cube.py        # ~2 min')
 
     print('\nfetched at run time, not stored locally:')
     for name, uri, note in REMOTE_INPUTS:

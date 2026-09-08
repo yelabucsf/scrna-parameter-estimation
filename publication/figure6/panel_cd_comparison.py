@@ -133,12 +133,14 @@ def add_residual_variance(frame):
 
 
 def load_estimators(cell_types):
-    """This donor's slice of the precomputed cube.
-
-    Sliced on the cube's dimensions rather than read whole: the array is 17 GB, and the
-    comparison needs two cell types in one dataset for one donor.
-    """
-    with tiledb.open(config.CUBE_PATH) as cube:
+    """This donor's slice of the precomputed cube built by build_cube.py."""
+    if not os.path.exists(config.COMPARISON_CUBE_PATH):
+        raise SystemExit(
+            f'no cube at {config.COMPARISON_CUBE_PATH}. Run `python build_cube.py` first '
+            '(about two minutes). The full-census cube on the volume cannot stand in: it '
+            'was built without the variance estimators, so panel D would compare a few '
+            'dozen genes instead of ~1,500. See README.')
+    with tiledb.open(config.COMPARISON_CUBE_PATH) as cube:
         frames = [cube.df[cell_type, config.LUPUS_DATASET_ID, :] for cell_type in cell_types]
     estimators = pd.concat(frames, ignore_index=True)
     estimators = estimators.query(f'donor_id == "{config.LUPUS_DONOR}"')
