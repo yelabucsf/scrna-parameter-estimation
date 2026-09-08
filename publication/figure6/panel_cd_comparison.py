@@ -45,6 +45,11 @@ CENSUS_URI = ('s3://cellxgene-data-public/cell-census/'
 BUFFER_BYTES = 2 ** 31
 CACHED_MEMENTO = 'panel_cd_memento_default.csv'
 CACHED_CELLS = 'panel_cd_donor_cells.h5ad'
+# Below this fraction of rows carrying a non-zero variance, the cube was built with the
+# variance estimators disabled and panel D is not a real comparison. A complete build
+# still leaves most genes at zero by design -- compute_variance returns 0 for anything
+# too sparse to estimate -- so the threshold sits well under that.
+MIN_VARIANCE_COVERAGE = 0.05
 
 
 def load_donor_cells():
@@ -137,9 +142,9 @@ def load_estimators(cell_types):
         frames = [cube.df[cell_type, config.LUPUS_DATASET_ID, :] for cell_type in cell_types]
     estimators = pd.concat(frames, ignore_index=True)
     estimators = estimators.query(f'donor_id == "{config.LUPUS_DONOR}"')
-    # The cube on the volume was built with the variance fields largely unpopulated, which
-    # caps how many genes panel D can compare. Report it rather than let it surface as a
-    # mysteriously small point cloud.
+    # Some cubes were built with the variance estimators switched off, which silently caps
+    # how many genes panel D can compare. Report the coverage rather than let it surface
+    # as a mysteriously small point cloud.
     for cell_type, group in estimators.groupby('cell_type', observed=True):
         print(f'  {cell_type}: {group.shape[0]} genes, '
               f'{(group["var"] > 0).sum()} with a non-zero variance', flush=True)
@@ -224,7 +229,9 @@ def main():
         default = run_default(load_cells(), ct1, ct2)
         default.to_csv(cache, index=False)
 
-    precomputed = run_precomputed(load_estimators([ct1, ct2]), ct1, ct2)
+    estimators = load_estimators([ct1, ct2])
+    variance_coverage = float((estimators['var'] > 0).mean())
+    precomputed = run_precomputed(estimators, ct1, ct2)
     merged = default.merge(precomputed, on='gene')
     for prefix, column in [('de', 'de_pval'), ('dv', 'dv_pval')]:
         merged[f'mem_{prefix}_logp'] = -np.log10(merged[column])
@@ -253,13 +260,14 @@ def main():
     r_dv = scatter(axes[3], dv['mem_dv_logp'], dv['cxg_dv_logp'],
                    f'variability -log10(P) (n={dv.shape[0]})', 20)
 
-    # The cube on the volume has its variance fields unpopulated for all but a few dozen
-    # genes, so panel D is not running on the input it needs. Mark that on the figure
-    # itself -- the png travels without the README.
-    for ax in axes[2:]:
-        ax.set_facecolor('#f6f6f6')
-        ax.text(0.5, -0.42, 'incomplete input — placeholder', transform=ax.transAxes,
-                ha='center', va='top', fontsize=8, style='italic', color='firebrick')
+    # A cube built with the variance estimators switched off leaves panel D running on a
+    # handful of genes. Mark that on the figure itself when it happens -- the png travels
+    # without the README -- and stay quiet when the cube is complete.
+    if variance_coverage < MIN_VARIANCE_COVERAGE:
+        for ax in axes[2:]:
+            ax.set_facecolor('#f6f6f6')
+            ax.text(0.5, -0.42, 'incomplete input — placeholder', transform=ax.transAxes,
+                    ha='center', va='top', fontsize=8, style='italic', color='firebrick')
 
     print(f'panel C  mean LFC:        {coef_dm.shape[0]:5} genes, Pearson r = {r_coef_dm:.3f}')
     print(f'panel C  mean -log10(P):  {dm.shape[0]:5} genes, Pearson r = {r_dm:.3f}')
