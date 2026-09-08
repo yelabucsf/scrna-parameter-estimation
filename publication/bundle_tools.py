@@ -60,12 +60,17 @@ def build(rows, root, copy, require_all=False, publishable_only=False):
     for _, _, dest, src in present:
         target = os.path.join(root, dest)
         os.makedirs(os.path.dirname(target), exist_ok=True)
-        if os.path.lexists(target):
+        if os.path.islink(target) or os.path.isfile(target):
             os.remove(target)
-        if copy:
-            shutil.copy2(src, target)
-        else:
+        elif os.path.isdir(target):
+            shutil.rmtree(target)
+        if not copy:
             os.symlink(os.path.realpath(src), target)
+        elif os.path.isdir(src):
+            # TileDB arrays are directories, so an entry can name a tree, not a file.
+            shutil.copytree(src, target)
+        else:
+            shutil.copy2(src, target)
 
     print(f'{"copied" if copy else "linked"} {len(present)} files into {root}')
     if skipped:
