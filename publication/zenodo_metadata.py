@@ -6,8 +6,13 @@ One record holds all five archives. Zenodo serves files individually, so a reade
 downloads only the figure they want; a single DOI is simply what a paper's reproduction
 data is normally cited by.
 
-This is written to be uploaded as a **new version of the existing memento record**, which
-previously held code only. See MAINTAINING.md for the sequence.
+This is a **new dataset record**, separate from the existing code record
+(10.5281/zenodo.13637731). The two cross-reference each other. Keeping them apart matters:
+the code record is minted automatically from GitHub releases, so a future release would
+add a version containing only the repository zip -- and its concept DOI resolves to the
+latest version, which would quietly stop being the one with the data in it.
+
+See MAINTAINING.md for the upload sequence.
 """
 
 import argparse
@@ -16,6 +21,9 @@ import subprocess
 import sys
 
 REPO = 'https://github.com/yelabucsf/scrna-parameter-estimation'
+# The existing code record, minted from GitHub releases. Concept DOI, so it resolves
+# to whichever version is current.
+CODE_CONCEPT_DOI = '10.5281/zenodo.13637731'
 # TODO: confirm before uploading. Taken from the article page rather than from Crossref,
 # and a wrong identifier would be baked into an immutable record.
 PAPER_DOI = '10.1016/j.cell.2024.09.045'
@@ -51,14 +59,15 @@ def git_commit():
 
 
 def description():
+    doi = CODE_CONCEPT_DOI
     rows = '\n'.join(
         f'<tr><td>figure{n}_data.tar.gz</td><td>Figure {n} — {subject}</td>'
         f'<td>{archive or "—"}</td><td>{unpacked}</td></tr>'
         for n, subject, archive, unpacked in FIGURES)
     caveats = '\n'.join(f'<li><strong>{who}</strong> {what}</li>' for who, what in CAVEATS)
     return f'''\
-<p>Input data to reproduce the figures of Kim et al., <em>Cell</em> 2024, alongside the
-memento source code.</p>
+<p>Input data to reproduce the figures of Kim et al., <em>Cell</em> 2024, using the
+memento analysis code at <a href="https://doi.org/{doi}">{doi}</a>.</p>
 
 <p>Each archive holds one figure's inputs, organized by panel. Download only the figure
 you need — the archives are independent.</p>
@@ -89,7 +98,7 @@ instructions, and what each figure should produce, are in
 def metadata():
     return {
         'metadata': {
-            'title': 'memento: source code and figure reproduction inputs',
+            'title': 'memento: input data for the figures of Kim et al., Cell 2024',
             'upload_type': 'dataset',
             'description': description(),
             'creators': [{'name': 'Kim, Min Cheol'}],
@@ -99,6 +108,8 @@ def metadata():
                 {'identifier': PAPER_DOI, 'relation': 'isSupplementTo',
                  'scheme': 'doi', 'resource_type': 'publication-article'},
                 {'identifier': REPO, 'relation': 'isSupplementTo', 'scheme': 'url'},
+                {'identifier': CODE_CONCEPT_DOI, 'relation': 'isSupplementedBy',
+                 'scheme': 'doi', 'resource_type': 'software'},
             ],
             'keywords': ['single-cell RNA-seq', 'memento', 'method of moments',
                          'differential expression', 'reproducibility'],

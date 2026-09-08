@@ -114,19 +114,30 @@ grep -rn 'config\.\(DATA_PATH\|HBEC_PATH\|TFKO_PATH\|LUPUS_PATH\|MISCSEQ_PATH\)'
 
 ## Publishing to Zenodo
 
-One record per figure, so each has its own DOI to cite in its README and can be
-re-versioned independently. `zenodo_metadata.py N` emits the record metadata.
+**Two records, deliberately.** The data lives in its own dataset record; the code lives in
+the existing record at concept DOI **10.5281/zenodo.13637731**, which is minted
+automatically from GitHub releases on `mincheoly/scrna-parameter-estimation` (a fork of
+the canonical repo — an artefact of who had release rights at publication time).
 
-**Rehearse on `sandbox.zenodo.org` first — published Zenodo files are immutable.** A
-mistake means a new version, not an edit.
+They are kept apart because a concept DOI resolves to the *latest* version. If the data
+were added as a version of the code record, the next GitHub release would mint a
+code-only version, and the DOI people cite would quietly stop pointing at the data. The
+two records cross-reference instead: the data record declares `isSupplementedBy` the code
+concept DOI, and the code record can carry the reverse link.
 
-Reserve the DOI before writing it into the README, so the docs and the upload land in one
-commit:
+To refresh the code, fast-forward the fork to the canonical repo's master and cut a
+release; Zenodo mints a new version of the code record on its own, leaving the data record
+untouched.
+
+One dataset record holds all five archives. Zenodo serves files individually, so a reader
+still downloads only the figure they want. `zenodo_metadata.py` emits its metadata.
+
+Reserve the DOI before writing it into the READMEs, so the docs and the upload land in
+one commit:
 
 ```bash
 export ZENODO_TOKEN=...                 # scopes: deposit:write, deposit:actions
 export ZENODO=https://zenodo.org/api    # sandbox.zenodo.org/api to rehearse
-N=3
 
 # 1. Draft the record and reserve its DOI.
 curl -sS -X POST "$ZENODO/deposit/depositions?access_token=$ZENODO_TOKEN" \
@@ -134,30 +145,36 @@ curl -sS -X POST "$ZENODO/deposit/depositions?access_token=$ZENODO_TOKEN" \
      -d '{"metadata":{"prereserve_doi":true}}' > deposit.json
 DEP=$(jq -r .id deposit.json)
 BUCKET=$(jq -r .links.bucket deposit.json)
-jq -r .metadata.prereserve_doi.doi deposit.json    # -> paste into figureN/README.md
+jq -r .metadata.prereserve_doi.doi deposit.json    # -> paste into the READMEs
 
-# 2. Upload. Use the bucket API: the deposit/files API does not scale past a few GB,
-#    and figure 5 is ~20 GB.
-curl -sS --progress-bar -X PUT \
-     "$BUCKET/figure${N}_data.tar.gz?access_token=$ZENODO_TOKEN" \
-     --upload-file figure${N}_data.tar.gz
-curl -sS -X PUT \
-     "$BUCKET/figure${N}_data.tar.gz.sha256?access_token=$ZENODO_TOKEN" \
-     --upload-file figure${N}_data.tar.gz.sha256
+# 2. Upload all five archives and their checksums. Use the bucket API: the
+#    deposit/files API does not scale past a few GB, and figure 5 is the largest.
+for n in 2 3 4 5 6; do
+  for f in figure${n}_data.tar.gz figure${n}_data.tar.gz.sha256; do
+    curl -sS --progress-bar -X PUT "$BUCKET/$f?access_token=$ZENODO_TOKEN" \
+         --upload-file "$f"
+  done
+done
 
 # 3. Attach metadata and publish.
-python zenodo_metadata.py $N > metadata_figure${N}.json
+python zenodo_metadata.py > metadata.json
 curl -sS -X PUT "$ZENODO/deposit/depositions/$DEP?access_token=$ZENODO_TOKEN" \
-     -H 'Content-Type: application/json' -d @metadata_figure${N}.json
+     -H 'Content-Type: application/json' -d @metadata.json
 curl -sS -X POST \
      "$ZENODO/deposit/depositions/$DEP/actions/publish?access_token=$ZENODO_TOKEN"
 ```
 
-Confirm the paper DOI in `zenodo_metadata.py` before the first upload — it is marked
-TODO there, and a wrong identifier cannot be corrected in place.
+**Rehearse on `sandbox.zenodo.org` first — published Zenodo files are immutable.** A
+mistake means a new version, not an edit. Metadata, unlike files, stays editable after
+publication, so a wrong title can be fixed in place; a wrong file cannot.
 
-After publishing, download one record from a clean directory and run the figure from it.
-That is the only check that covers the whole path.
+Confirm the paper DOI in `zenodo_metadata.py` before the first upload — it is marked TODO
+there.
+
+Afterwards, add the reverse link on the code record (edit its metadata, add
+`isSupplementTo` pointing at the new data DOI), and download one archive from the
+published record into a clean directory and run its figure. That is the only check that
+covers the whole path.
 
 ## Republishing a bundle
 
