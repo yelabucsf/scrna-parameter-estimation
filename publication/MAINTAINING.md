@@ -132,49 +132,37 @@ untouched.
 One dataset record holds all five archives. Zenodo serves files individually, so a reader
 still downloads only the figure they want. `zenodo_metadata.py` emits its metadata.
 
-Reserve the DOI before writing it into the READMEs, so the docs and the upload land in
-one commit:
+Reserve the DOI first, on the website or via the API, so the READMEs and the upload land
+in one commit. Then:
 
 ```bash
-export ZENODO_TOKEN=...                 # scopes: deposit:write, deposit:actions
-export ZENODO=https://zenodo.org/api    # sandbox.zenodo.org/api to rehearse
+# Put the API token somewhere the shell can read it but history cannot. Run this in a
+# real terminal -- `read -rs` needs a TTY and silently writes nothing without one.
+read -rs ZENODO_TOKEN && printf '%s' "$ZENODO_TOKEN" > ~/.zenodo_token \
+  && chmod 600 ~/.zenodo_token && unset ZENODO_TOKEN
+wc -c ~/.zenodo_token          # ~61 bytes; 0 means the read got nothing
 
-# 1. Draft the record and reserve its DOI.
-curl -sS -X POST "$ZENODO/deposit/depositions?access_token=$ZENODO_TOKEN" \
-     -H 'Content-Type: application/json' \
-     -d '{"metadata":{"prereserve_doi":true}}' > deposit.json
-DEP=$(jq -r .id deposit.json)
-BUCKET=$(jq -r .links.bucket deposit.json)
-jq -r .metadata.prereserve_doi.doi deposit.json    # -> paste into the READMEs
-
-# 2. Upload all five archives and their checksums. Use the bucket API: the
-#    deposit/files API does not scale past a few GB, and figure 5 is the largest.
-for n in 2 3 4 5 6; do
-  for f in figure${n}_data.tar.gz figure${n}_data.tar.gz.sha256; do
-    curl -sS --progress-bar -X PUT "$BUCKET/$f?access_token=$ZENODO_TOKEN" \
-         --upload-file "$f"
-  done
-done
-
-# 3. Attach metadata and publish.
-python zenodo_metadata.py > metadata.json
-curl -sS -X PUT "$ZENODO/deposit/depositions/$DEP?access_token=$ZENODO_TOKEN" \
-     -H 'Content-Type: application/json' -d @metadata.json
-curl -sS -X POST \
-     "$ZENODO/deposit/depositions/$DEP/actions/publish?access_token=$ZENODO_TOKEN"
+DEPOSITION=<draft record id> BUNDLE_DIST=~/bundle_dist ./upload_to_zenodo.sh
 ```
 
-**Rehearse on `sandbox.zenodo.org` first — published Zenodo files are immutable.** A
-mistake means a new version, not an edit. Metadata, unlike files, stays editable after
-publication, so a wrong title can be fixed in place; a wrong file cannot.
+`upload_to_zenodo.sh` uploads the ten files and stops. It does not publish — that is
+irreversible, so review the draft on the website and press Publish there.
 
-The paper DOI in `zenodo_metadata.py` is 10.1016/j.cell.2024.09.044, verified against
-Crossref.
+**Zenodo returns 504s, and not only under load.** During one upload run every endpoint
+started timing out, including read-only ones, for tens of minutes. The script therefore
+retries *every* API call with backoff, including the bucket lookup that everything else
+depends on — losing that one call means the run never starts. It also resumes: before
+uploading it reads the draft's file list with Zenodo's own md5 per file and skips anything
+already there with a matching checksum, so an interrupted 11 GB run picks up where it
+stopped rather than starting over.
+
+Every accepted file's md5 is compared against the local one, so a truncated upload is
+caught rather than sitting in the record looking healthy.
 
 Afterwards, add the reverse link on the code record (edit its metadata, add
-`isSupplementTo` pointing at the new data DOI), and download one archive from the
-published record into a clean directory and run its figure. That is the only check that
-covers the whole path.
+`isSupplementTo` pointing at the data DOI), then download one archive from the published
+record into a clean directory and run its figure. That is the only check covering the
+whole path.
 
 ## Republishing a bundle
 
