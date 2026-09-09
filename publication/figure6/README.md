@@ -148,6 +148,19 @@ across 23 datasets, pooled and then individually.
   per-dataset curves are fewer than in the published panel. The pooled fit is the point
   the panel makes, and it stands: 10,593 genes, 7,142 at p < 0.05, above every individual
   dataset.
+- **Panel G's donor groups can merge different individuals.** Groups are keyed on
+  `treatment + donor_id`, without `dataset_id`, and donor labels are only unique within a
+  dataset: 7 of the ids reaching this contrast — generic ones like `D1`, `F38`, `356C` —
+  appear in 2–3 different studies, covering 24% of the rows. A `D1` in one study is not
+  the `D1` in another, so those groups pool unrelated people, and the fit uses donor as
+  the covariate that makes the pDC-vs-cDC contrast within-individual.
+
+  This is left as it was. Adding `dataset_id` to the key moves the significant fraction
+  from 67.4% to 40.4%, which is a change to a published number and not one to make
+  casually; the label collisions come from how donors are named upstream in CELLxGENE
+  rather than from anything memento does, and the panel's claim — that pooling datasets
+  recovers signal no single dataset shows — does not rest on the exact count. Tracked in
+  [#79](https://github.com/yelabucsf/scrna-parameter-estimation/issues/79).
 - **Panel G's deduplication is order-sensitive, and is now sorted.** One (donor, gene) can
   appear several times — the same donor's dendritic cells under different assays or
   suspension types — and here that is 102,260 of 831,157 rows. `drop_duplicates` keeps
