@@ -95,6 +95,13 @@ instructions, and what each figure should produce, are in
 '''
 
 
+# Fields this script owns. Everything else on an existing draft -- title, creators with
+# their ORCIDs and affiliations, publication_date, access_right -- is set by a human on
+# the website and is preserved by --merge-into. A bare PUT replaces metadata wholesale,
+# so overwriting rather than merging silently drops all of it.
+OWNED = ('upload_type', 'description', 'related_identifiers', 'keywords', 'version')
+
+
 def metadata():
     return {
         'metadata': {
@@ -117,9 +124,33 @@ def metadata():
     }
 
 
+def merged(existing):
+    """Existing metadata, with only this script's fields added or replaced."""
+    out = dict(existing)
+    generated = metadata()['metadata']
+    for field in OWNED:
+        if field in generated:
+            out[field] = generated[field]
+    return {'metadata': out}
+
+
 def main():
-    argparse.ArgumentParser(description=__doc__).parse_args()
-    json.dump(metadata(), sys.stdout, indent=2)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--merge-into', metavar='FILE',
+                        help='a deposition JSON fetched from Zenodo. Its metadata is kept '
+                             'and only this script\'s fields are added, so a title, '
+                             'ORCIDs and affiliations set on the website survive.')
+    args = parser.parse_args()
+
+    if args.merge_into:
+        with open(args.merge_into) as handle:
+            existing = json.load(handle).get('metadata', {})
+        existing.pop('prereserve_doi', None)   # read-only; Zenodo rejects it on PUT
+        existing.pop('doi', None)
+        payload = merged(existing)
+    else:
+        payload = metadata()
+    json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write('\n')
 
 
