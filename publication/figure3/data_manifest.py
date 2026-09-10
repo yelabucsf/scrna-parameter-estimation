@@ -2,10 +2,17 @@
 
 Same contract as publication/figure2/data_manifest.py:
 
-    python data_manifest.py check              # present on the source volume?
-    python data_manifest.py check --root DIR   # ... or in an organized tree / bundle
-    python data_manifest.py link               # build the tree as symlinks
-    python data_manifest.py bundle --root DIR  # copy it into a standalone directory
+    python data_manifest.py check                # present on the source volume?
+    python data_manifest.py check --root DIR     # ... or in a downloaded bundle
+    python data_manifest.py link                 # build the tree as symlinks
+    python data_manifest.py bundle --root DIR    # copy it into a standalone directory
+    python data_manifest.py archive --root DIR   # ... and pack it for publication
+
+`bundle` and `archive` require --root: they write real copies, and defaulting to the
+source volume would bury its symlink tree under gigabytes of duplicates.
+
+This is maintainer tooling. Readers reproducing a figure download the published bundle
+instead -- see publication/MAINTAINING.md.
 
 Entries are tagged `required` (read directly by a panel script) or `provenance` (needed
 only to regenerate a `required` file).
@@ -13,11 +20,15 @@ only to regenerate a `required` file).
 
 import argparse
 import os
-import shutil
+import sys
 
 import config
 
-REQUIRED, PROVENANCE = 'required', 'provenance'
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import bundle_tools  # noqa: E402
+
+REQUIRED, PROVENANCE = bundle_tools.REQUIRED, bundle_tools.PROVENANCE
+RESTRICTED = bundle_tools.RESTRICTED
 
 CELL_TYPE = 'C'
 
@@ -44,7 +55,10 @@ def entries():
     # the counts, so this h5ad is the upstream input for D, E, F and G alike.
     add('DEFG', REQUIRED, 'panelDEFG_isg/HBEC_type_I_filtered_counts_deep.h5ad',
         'hbec/HBEC_type_I_filtered_counts_deep.h5ad')
-    add('DEFG', REQUIRED, 'panelDEFG_isg/external/mostafavi2016_mmc2.xls',
+    # Supplementary Table S1E of Mostafavi et al., Cell 2016 -- a publisher's
+    # supplementary file. Tracked and linked locally so the panel runs here, but not
+    # redistributed: reconstruct_tonic_isg.py prints the DOI to fetch it from.
+    add('DEFG', RESTRICTED, 'panelDEFG_isg/external/mostafavi2016_mmc2.xls',
         'hbec/external/mostafavi2016_mmc2.xls')
     # The published DC table carries the `type` column from which the canonical and
     # non-canonical ISG lists are recovered; see isg_gene_lists.py.
@@ -81,16 +95,22 @@ def check(root=None):
     print(f'checking {root or config.DATA_PATH} '
           f'({"organized tree" if root else "source volume"})\n')
     for panel in ['A', 'BC', 'DEFG']:
-        for tier in [REQUIRED, PROVENANCE]:
+        for tier in [REQUIRED, PROVENANCE, RESTRICTED]:
             subset = [r for r in rows if r[0] == panel and r[1] == tier]
             if not subset:
                 continue
             present, missing, size = _summarize(subset, root)
-            status = 'OK ' if not missing else 'GAP'
+            # Restricted files are absent from a published bundle by design, so their
+            # absence is the expected state rather than a gap.
+            status = 'OK ' if not missing else ('--- ' if tier == RESTRICTED else 'GAP')
             print(f'{status} panel {panel:<5} {tier:<10} {len(present):>3}/{len(subset):<3} files'
                   f'  {size / 1e9:6.2f} GB')
-            for row in missing[:5]:
-                print(f'      missing: {_resolve(row, root)}')
+            if tier == RESTRICTED and missing:
+                print('      withheld: publisher supplementary file; '
+                      'reconstruct_tonic_isg.py prints the DOI to fetch it from')
+            else:
+                for row in missing[:5]:
+                    print(f'      missing: {_resolve(row, root)}')
             if missing and tier == REQUIRED:
                 ok = False
 
@@ -99,29 +119,9 @@ def check(root=None):
     return ok
 
 
-def build(root, copy):
-    rows = [r for r in entries() if os.path.exists(r[3])]
-    for _, _, dest, src in rows:
-        target = os.path.join(root, dest)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        if os.path.lexists(target):
-            os.remove(target)
-        if copy:
-            shutil.copy2(src, target)
-        else:
-            os.symlink(os.path.realpath(src), target)
-    print(f'{"copied" if copy else "linked"} {len(rows)} files into {root}')
-
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check', 'link', 'bundle'])
-    parser.add_argument('--root', default=None)
-    args = parser.parse_args()
-
-    if args.command == 'check':
-        raise SystemExit(0 if check(args.root) else 1)
-    build(args.root or config.FIGURE3_DATA, copy=args.command == 'bundle')
+    parser = bundle_tools.add_arguments(argparse.ArgumentParser(description=__doc__))
+    bundle_tools.dispatch(parser.parse_args(), entries, check, config.FIGURE3_DATA)
 
 
 if __name__ == '__main__':

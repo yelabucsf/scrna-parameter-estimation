@@ -3,7 +3,7 @@
 Three panels, per the published caption: the whole dataset coloured by cell type, then
 the ciliated cells alone coloured by stimulation and by timepoint.
 
-Based on publication/hbec_interferon/version2/figure_4/umaps.ipynb, which predates the
+Based on publication/original/hbec_interferon/version2/figure_4/umaps.ipynb, which predates the
 final figure -- it drew only two UMAPs, both over the whole dataset (cell type and
 stim). The ciliated zoom comes from the caption. Subsetting the AnnData is what
 produces the zoom: the embedding is not recomputed, only the plotted cells change.

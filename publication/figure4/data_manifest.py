@@ -2,10 +2,17 @@
 
 Same contract as publication/figure{2,3}/data_manifest.py:
 
-    python data_manifest.py check              # present on the source volume?
-    python data_manifest.py check --root DIR   # ... or in an organized tree / bundle
-    python data_manifest.py link               # build the tree as symlinks
-    python data_manifest.py bundle --root DIR  # copy it into a standalone directory
+    python data_manifest.py check                # present on the source volume?
+    python data_manifest.py check --root DIR     # ... or in a downloaded bundle
+    python data_manifest.py link                 # build the tree as symlinks
+    python data_manifest.py bundle --root DIR    # copy it into a standalone directory
+    python data_manifest.py archive --root DIR   # ... and pack it for publication
+
+`bundle` and `archive` require --root: they write real copies, and defaulting to the
+source volume would bury its symlink tree under gigabytes of duplicates.
+
+This is maintainer tooling. Readers reproducing a figure download the published bundle
+instead -- see publication/MAINTAINING.md.
 
 Entries are tagged `required` (read directly by a panel script) or `provenance` (needed
 only to regenerate a `required` file).
@@ -13,17 +20,67 @@ only to regenerate a `required` file).
 
 import argparse
 import os
-import shutil
+import sys
 
 import config
 
-REQUIRED, PROVENANCE = 'required', 'provenance'
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import bundle_tools  # noqa: E402
+
+REQUIRED, PROVENANCE = bundle_tools.REQUIRED, bundle_tools.PROVENANCE
+
+
+# The 84 sgRNAs that survive perturbseq_data.selected_guides(), frozen here because the
+# manifest must be able to enumerate itself *before* the tree it describes exists --
+# selected_guides() reads tfko.sng.guides.full.ct.h5ad out of FIGURE4_DATA, which is
+# circular when checking a fresh download or building a bundle from scratch.
+# perturbseq_data.selected_guides() remains the source of truth for the analysis; this is
+# a cached copy of its output, and verify_guides() below asserts the two still agree.
+TESTED_GUIDES = [
+    'ATF3.212615192', 'ATF4.39521667', 'ATF4.39521890', 'ATF6.161846504',
+    'BACH1.29321463', 'BACH1.29326546', 'BHLHE40.4980001', 'CREM.35188237',
+    'CTCFL.57515801', 'CTCFL.57518862', 'DNMT1.10146475', 'DPF2.65340430',
+    'EGR1.138467317', 'EGR1.138467471', 'EGR2.62815887', 'ELK1.47638134',
+    'ELK4.205623693', 'ERG.38392383', 'ERG.38445525', 'EWSR1.29282556',
+    'EWSR1.29288709', 'EZH2.148826587', 'FOSL2.28408792', 'FOSL2.28412051',
+    'FOXP1.71015617', 'FUBP1.77964146', 'FUBP1.77969992', 'FUS.31183999',
+    'FUS.31184329', 'GABPA.25741671', 'GABPB1.50303991', 'GABPB1.50309696',
+    'GTF2I.74699069', 'HCFC1.153963360', 'HDAC3.141634859', 'IFI16.159018299',
+    'IKZF1.50376659', 'IRF1.132487047', 'IRF1.132487119', 'IRF2.184418577',
+    'IRF4.394977', 'KLF6.3782035', 'MAF1.144106162', 'MAFK.1540041', 'MATR3.139307613',
+    'MIER1.66958196', 'MIER1.66970832', 'MLX.42569204', 'MTA2.62596475',
+    'MTA2.62598030', 'NCOA3.47627735', 'NCOA3.47634078', 'NCOA4.46012894',
+    'NFATC3.68122059', 'NFATC3.68183267', 'NONO.71294280', 'NONO.71296973',
+    'NRF1.129710492', 'PCBP2.53455366', 'PCBP2.53459399', 'PHB.49411683',
+    'PHB.49411797', 'PHB2.6969554', 'POLR2A.7498096', 'PRDM1.106088300',
+    'PRDM1.106105284', 'SLC30A9.42063117', 'SMAD2.47870480', 'SMAD2.47896526',
+    'SMARCA5.143536626', 'SP1.53383311', 'SSRP1.57331762', 'STAT1.190997935',
+    'TAF7.141319508', 'TFDP1.113633911', 'TOE1.45342886', 'TP53.7675058',
+    'YBX1.42696671', 'ZNF146.36236488', 'ZNF207.32351892', 'ZNF24.35339842',
+    'ZNF24.35340244', 'ZNF460.57291533', 'ZNF622.16463242',
+]
 
 
 def _tested_guides():
-    """Imported lazily so the manifest can be inspected without loading the h5ad."""
+    return TESTED_GUIDES
+
+
+def verify_guides():
+    """Recompute the guide list from the h5ad and compare against the frozen copy.
+
+    Needs the data, so it is not part of `check`; run it after changing the selection
+    filters in perturbseq_data.py.
+    """
     import perturbseq_data
-    return perturbseq_data.selected_guides()
+    live = perturbseq_data.selected_guides()
+    if live != TESTED_GUIDES:
+        missing = sorted(set(live) - set(TESTED_GUIDES))
+        extra = sorted(set(TESTED_GUIDES) - set(live))
+        raise SystemExit(
+            f'TESTED_GUIDES is stale: {len(live)} live vs {len(TESTED_GUIDES)} frozen.\n'
+            f'  in selected_guides() but not frozen: {missing}\n'
+            f'  frozen but no longer selected:       {extra}')
+    print(f'TESTED_GUIDES matches selected_guides() ({len(live)} sgRNAs)')
 
 
 def entries():
@@ -112,29 +169,9 @@ def check(root=None):
     return ok
 
 
-def build(root, copy):
-    rows = [r for r in entries() if os.path.exists(r[3])]
-    for _, _, dest, src in rows:
-        target = os.path.join(root, dest)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        if os.path.lexists(target):
-            os.remove(target)
-        if copy:
-            shutil.copy2(src, target)
-        else:
-            os.symlink(os.path.realpath(src), target)
-    print(f'{"copied" if copy else "linked"} {len(rows)} files into {root}')
-
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check', 'link', 'bundle'])
-    parser.add_argument('--root', default=None)
-    args = parser.parse_args()
-
-    if args.command == 'check':
-        raise SystemExit(0 if check(args.root) else 1)
-    build(args.root or config.FIGURE4_DATA, copy=args.command == 'bundle')
+    parser = bundle_tools.add_arguments(argparse.ArgumentParser(description=__doc__))
+    bundle_tools.dispatch(parser.parse_args(), entries, check, config.FIGURE4_DATA)
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 """Regenerate every panel of Figure 4 and assemble them into one sheet.
 
-Assumes the compute step has already run (see README.md):
-    python data_manifest.py link
+Assumes the data bundle has been downloaded, MEMENTO_DATA_PATH points at it, and the
+compute step has run (see README.md):
     python run_wt_coexpression.py
 """
 

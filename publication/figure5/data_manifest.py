@@ -2,22 +2,34 @@
 
 Same contract as publication/figure{2,3,4}/data_manifest.py:
 
-    python data_manifest.py check              # present on the source volume?
-    python data_manifest.py check --root DIR   # ... or in an organized tree / bundle
-    python data_manifest.py link               # build the tree as symlinks
-    python data_manifest.py bundle --root DIR  # copy it into a standalone directory
+    python data_manifest.py check                # present on the source volume?
+    python data_manifest.py check --root DIR     # ... or in a downloaded bundle
+    python data_manifest.py link                 # build the tree as symlinks
+    python data_manifest.py bundle --root DIR    # copy it into a standalone directory
+    python data_manifest.py archive --root DIR   # ... and pack it for publication
 
-Entries are tagged `required` (read directly by a panel script) or `provenance` (needed
-only to regenerate a `required` file).
+`bundle` and `archive` require --root: they write real copies, and defaulting to the
+source volume would bury its symlink tree under gigabytes of duplicates.
+
+This is maintainer tooling. Readers reproducing a figure download the published bundle
+instead -- see publication/MAINTAINING.md.
+
+Entries are tagged `required` (read directly by a panel script), `provenance` (needed only
+to regenerate a `required` file), or `restricted` (may not be redistributed -- tracked and
+linked locally, never copied into a bundle).
 """
 
 import argparse
 import os
-import shutil
+import sys
 
 import config
 
-REQUIRED, PROVENANCE = 'required', 'provenance'
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import bundle_tools  # noqa: E402
+
+REQUIRED, PROVENANCE = bundle_tools.REQUIRED, bundle_tools.PROVENANCE
+RESTRICTED = bundle_tools.RESTRICTED
 
 
 def entries():
@@ -27,10 +39,19 @@ def entries():
     def add(panel, tier, dest, src):
         out.append((panel, tier, dest, config.LUPUS_PATH + src))
 
-    # Genotypes, for the minor-allele-frequency filter every QTL panel applies.
+    # Genotypes. Individual-level data from the CLUES cohort, released by Perez et al.
+    # 2022 only under dbGaP phs002812.v1.p1 with a signed Data Use Certification, so they
+    # carry the RESTRICTED tier and are excluded from any published bundle.
+    #
+    # Panel A does not actually need them: it applies a minor-allele-frequency filter,
+    # which is one aggregate number per variant. panel_a_qqplots.write_minor_allele_
+    # frequencies() reduces the matrices to exactly that, and the aggregate is what ships.
+    # Panels F-I do need per-individual calls and are skipped without dbGaP access.
     for population in config.POPULATIONS:
-        add('A', REQUIRED, f'genotypes/{population}_genos.tsv',
+        add('A', RESTRICTED, f'genotypes/{population}_genos.tsv',
             f'mateqtl_input/{population}_genos.tsv')
+        add('A', REQUIRED, f'panelA_qq/maf/{population}_maf.csv',
+            f'mateqtl_input/maf/{population}_maf.csv')
 
     # --- Panel A: QQ plots for eQTL, vQTL and cQTL ---------------------------
     for population in config.POPULATIONS:
@@ -121,16 +142,21 @@ def check(root=None):
     print(f'checking {root or config.DATA_PATH} '
           f'({"organized tree" if root else "source volume"})\n')
     for panel in ['A', 'BC', 'DE', 'FI']:
-        for tier in [REQUIRED, PROVENANCE]:
+        for tier in [REQUIRED, PROVENANCE, RESTRICTED]:
             subset = [r for r in rows if r[0] == panel and r[1] == tier]
             if not subset:
                 continue
             present, missing, size = _summarize(subset, root)
-            status = 'OK ' if not missing else 'GAP'
+            # Restricted files are absent from a published bundle by design, so their
+            # absence is the expected state rather than a gap.
+            status = 'OK ' if not missing else ('--- ' if tier == RESTRICTED else 'GAP')
             print(f'{status} panel {panel:<3} {tier:<10} {len(present):>2}/{len(subset):<2} files'
                   f'  {size / 1e9:6.2f} GB')
-            for row in missing[:5]:
-                print(f'      missing: {_resolve(row, root)}')
+            if tier == RESTRICTED and missing:
+                print('      withheld: dbGaP phs002812; panels F-I are skipped without it')
+            else:
+                for row in missing[:5]:
+                    print(f'      missing: {_resolve(row, root)}')
             if missing and tier == REQUIRED:
                 ok = False
 
@@ -139,29 +165,9 @@ def check(root=None):
     return ok
 
 
-def build(root, copy):
-    rows = [r for r in entries() if os.path.exists(r[3])]
-    for _, _, dest, src in rows:
-        target = os.path.join(root, dest)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        if os.path.lexists(target):
-            os.remove(target)
-        if copy:
-            shutil.copy2(src, target)
-        else:
-            os.symlink(os.path.realpath(src), target)
-    print(f'{"copied" if copy else "linked"} {len(rows)} files into {root}')
-
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check', 'link', 'bundle'])
-    parser.add_argument('--root', default=None)
-    args = parser.parse_args()
-
-    if args.command == 'check':
-        raise SystemExit(0 if check(args.root) else 1)
-    build(args.root or config.FIGURE5_DATA, copy=args.command == 'bundle')
+    parser = bundle_tools.add_arguments(argparse.ArgumentParser(description=__doc__))
+    bundle_tools.dispatch(parser.parse_args(), entries, check, config.FIGURE5_DATA)
 
 
 if __name__ == '__main__':

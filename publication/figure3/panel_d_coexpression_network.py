@@ -1,6 +1,6 @@
 """Figure 3D - ISG coexpression network over time.
 
-Port of publication/hbec_interferon/classify_isg/select_isgs.ipynb cells 51-53.
+Port of publication/original/hbec_interferon/classify_isg/select_isgs.ipynb cells 51-53.
 
 The notebook rendered these matrices as heatmaps (`ifnb_coex_tps.png`); the published
 panel shows the same data as a network, per the caption: cyan nodes are canonical ISGs,

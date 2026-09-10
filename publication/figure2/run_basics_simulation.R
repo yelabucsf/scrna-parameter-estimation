@@ -1,6 +1,6 @@
 # Figure 2A (variability) - BASiCS arm of the estimator simulation.
 #
-# Reimplementation of publication/validation/estimation/simulation/variance/run_basics.r.
+# Reimplementation of publication/original/validation/estimation/simulation/variance/run_basics.r.
 # Two changes from the original:
 #   * counts are read from MatrixMarket rather than converted h5ad, so this needs only
 #     BASiCS and SingleCellExperiment -- no Seurat, no SeuratDisk (whose h5ad Convert
@@ -16,8 +16,13 @@ suppressMessages(library(BASiCS))
 suppressMessages(library(SingleCellExperiment))
 suppressMessages(library(Matrix))
 
-DATA_PATH <- Sys.getenv("MEMENTO_DATA_PATH", "/memento_data/")
-WORK_DIR <- paste0(DATA_PATH, "simulation/variance/")
+# Must match BASICS_DUMP_DIR in panel_a_run_simulations.py: a local, writable directory,
+# not the downloaded data bundle. Override both with FIGURE2_BASICS_DIR.
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+script_dir <- if (length(script_arg)) dirname(sub("^--file=", "", script_arg[1])) else "."
+WORK_DIR <- Sys.getenv("FIGURE2_BASICS_DIR",
+                       file.path(script_dir, "intermediate", "basics_simulation"))
+WORK_DIR <- paste0(WORK_DIR, "/")
 
 NUM_CELL <- 100
 CAPTURE_EFFICIENCIES <- c(0.05, 0.1, 0.2, 0.3, 0.5)

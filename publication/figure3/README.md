@@ -26,17 +26,34 @@ Figure 2 needs. No separate clone required.
 
 ## Data
 
+Everything Figure 3 needs is published as one archive, 9.6 GB unpacked. No S3 access and
+no data volume.
+
+All five figures share one Zenodo record; download just this figure's archive.
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
+
 ```bash
-python data_manifest.py check     # 33 files, 9.6 GB
-python data_manifest.py link      # build the panel-organized tree the scripts read
+mkdir -p ~/memento_bundles && cd ~/memento_bundles
+curl -L -O https://zenodo.org/records/22667586/files/figure3_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure3_data.tar.gz.sha256
+sha256sum -c figure3_data.tar.gz.sha256      # macOS: shasum -a 256 -c
+tar -xzf figure3_data.tar.gz
+export MEMENTO_DATA_PATH=~/memento_bundles
 ```
 
-`check --root DIR` validates a copy instead of the source volume; `bundle --root DIR`
-writes a standalone directory that `FIGURE3_DATA` can point at.
+The archive unpacks to `figure3_data/`, organized by panel:
 
-Panel F needs supplementary Table S1E of Mostafavi et al., *Cell* 2016 (`mmc2.xls`),
-staged on the volume at `hbec/external/mostafavi2016_mmc2.xls`. If it is missing,
-download `mmc2.xls` from that paper and put it there.
+| Directory | Feeds |
+| --- | --- |
+| `panelA_umap/` | A |
+| `panelBC_mean/` | B, C |
+| `panelDEFG_isg/` | D, E, F, G |
+
+**Panel F needs one file we cannot redistribute:** supplementary Table S1E of Mostafavi
+et al., *Cell* 2016, a publisher's supplementary file. Download `mmc2.xls` from
+[doi.org/10.1016/j.cell.2016.01.012](https://doi.org/10.1016/j.cell.2016.01.012) and save
+it as `figure3_data/panelDEFG_isg/external/mostafavi2016_mmc2.xls`. Everything else runs
+without it.
 
 ## Run
 

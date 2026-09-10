@@ -1,6 +1,6 @@
 """Figure 5D and 5E - eQTL enrichment in cell-type-specific ATAC peaks.
 
-Port of publication/genetics/atac_enrichment/atac_plots.ipynb cells 15-26.
+Port of publication/original/genetics/atac_enrichment/atac_plots.ipynb cells 15-26.
 
 Panel D asks, for eQTLs found in one cell type, how enriched they are in open chromatin
 from every lineage — the diagonal should dominate if the eQTLs are genuinely cell-type

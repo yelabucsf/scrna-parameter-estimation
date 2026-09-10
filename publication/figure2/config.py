@@ -6,15 +6,26 @@ import sys
 import matplotlib as mpl
 import matplotlib.pylab as pylab
 
+
+def _dir(path):
+    """Normalize a directory path to end in exactly one separator.
+
+    Every path here is built by string concatenation, so `MEMENTO_DATA_PATH=~/bundles`
+    without a trailing slash would silently yield `~/bundlesfigure2_data/`. The READMEs
+    tell readers to set that variable, so it has to tolerate both forms.
+    """
+    return os.path.join(os.path.expanduser(path), '')
+
+
 # Root of the data volume. The original scripts used '/home/ubuntu/Data/' or
 # '/data_volume/memento/'; both now live under /memento_data. This is the upstream
 # source, organized by dataset, and is only read by data_manifest.py.
-DATA_PATH = os.environ.get('MEMENTO_DATA_PATH', '/memento_data/')
+DATA_PATH = _dir(os.environ.get('MEMENTO_DATA_PATH', '/memento_data'))
 
 # Every panel script reads from here instead: a tree organized by panel and role,
 # built by `python data_manifest.py link` (symlinks) or `bundle` (a standalone 4 GB
 # copy). Point this at an unpacked bundle to run without the full data volume.
-FIGURE2_DATA = os.environ.get('FIGURE2_DATA', DATA_PATH + 'figure2_data/')
+FIGURE2_DATA = _dir(os.environ.get('FIGURE2_DATA', DATA_PATH + 'figure2_data'))
 
 # The object-oriented rewrite of memento (github.com/mincheoly/memento) holds the
 # estimator classes and the simulation helpers the publication scripts import.

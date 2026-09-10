@@ -1,8 +1,8 @@
 """Regenerate every panel of Figure 3 and assemble them into one sheet.
 
-Assumes the two compute steps have already run (see README.md):
+Assumes the data bundle has been downloaded, MEMENTO_DATA_PATH points at it, and the
+compute step has run (see README.md):
     python run_isg_clustering.py correlations
-    python data_manifest.py link
 """
 
 import matplotlib

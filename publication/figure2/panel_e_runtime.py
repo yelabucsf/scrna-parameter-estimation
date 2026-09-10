@@ -1,7 +1,7 @@
 """Figure 2E - runtime vs number of cells.
 
 These are wall-clock measurements, not derived data: the numbers below are the ones
-recorded in publication/validation/inference/runtime/plots.ipynb, per gene and
+recorded in publication/original/validation/inference/runtime/plots.ipynb, per gene and
 normalised by the number of parallel workers each tool was given. BASiCS and scHOT
 are R packages, so re-measuring the full panel needs an R installation plus the
 simulated datasets that runtime/simulate.ipynb produces; neither is on this machine.

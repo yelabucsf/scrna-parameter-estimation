@@ -1,10 +1,18 @@
 """Declarative inventory of every data file Figure 2 depends on.
 
-This is the single source of truth behind three subcommands:
+This is the single source of truth behind four subcommands:
 
-    python data_manifest.py check     # is everything present?
-    python data_manifest.py link      # build a panel-organized symlink tree
-    python data_manifest.py bundle    # copy that tree into a portable directory
+    python data_manifest.py check                # is everything present?
+    python data_manifest.py check --root DIR     # ... or in a downloaded bundle
+    python data_manifest.py link                 # build a panel-organized symlink tree
+    python data_manifest.py bundle --root DIR    # copy that tree into a portable directory
+    python data_manifest.py archive --root DIR   # ... and pack it for publication
+
+`bundle` and `archive` require --root: they write real copies, and defaulting to the
+source volume would bury its symlink tree under gigabytes of duplicates.
+
+This is maintainer tooling. Readers reproducing a figure download the published bundle
+instead -- see publication/MAINTAINING.md.
 
 The volume at /memento_data is a flat sync of s3://memento-paper/revision/ and is
 organized by *dataset*, which says nothing about which figure needs what. The tree
@@ -18,11 +26,14 @@ Entries are tagged with a tier:
 
 import argparse
 import os
-import shutil
+import sys
 
 import config
 
-REQUIRED, PROVENANCE = 'required', 'provenance'
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import bundle_tools  # noqa: E402
+
+REQUIRED, PROVENANCE = bundle_tools.REQUIRED, bundle_tools.PROVENANCE
 
 CANOGAMEZ_DATASETS = ['CD4_Memory-Th0', 'CD4_Memory-Th2', 'CD4_Memory-Th17', 'CD4_Memory-iTreg',
                       'CD4_Naive-Th0', 'CD4_Naive-Th2', 'CD4_Naive-Th17', 'CD4_Naive-iTreg']
@@ -172,30 +183,9 @@ def check(root=None):
     return ok
 
 
-def build(root, copy):
-    rows = [r for r in entries() if os.path.exists(r[3])]
-    for _, _, dest, src in rows:
-        target = os.path.join(root, dest)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        if os.path.lexists(target):
-            os.remove(target)
-        if copy:
-            shutil.copy2(src, target)
-        else:
-            os.symlink(os.path.realpath(src), target)
-    print(f'{"copied" if copy else "linked"} {len(rows)} files into {root}')
-
-
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['check', 'link', 'bundle'])
-    parser.add_argument('--root', default=None,
-                        help='organized tree to build, or to check instead of the source volume')
-    args = parser.parse_args()
-
-    if args.command == 'check':
-        raise SystemExit(0 if check(args.root) else 1)
-    build(args.root or config.FIGURE2_DATA, copy=args.command == 'bundle')
+    parser = bundle_tools.add_arguments(argparse.ArgumentParser(description=__doc__))
+    bundle_tools.dispatch(parser.parse_args(), entries, check, config.FIGURE2_DATA)
 
 
 if __name__ == '__main__':

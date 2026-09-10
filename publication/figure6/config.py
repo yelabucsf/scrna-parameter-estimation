@@ -6,12 +6,30 @@ import sys
 import matplotlib as mpl
 import matplotlib.pylab as pylab
 
-DATA_PATH = os.environ.get('MEMENTO_DATA_PATH', '/memento_data/')
-# The full-census estimators cube, unpacked from precomputation/*.tar. Panel G reads it
-# because it needs every dataset; panels C and D cannot, because it was built without the
-# variance estimators (see README).
+
+def _dir(path):
+    """Normalize a directory path to end in exactly one separator.
+
+    Every path here is built by string concatenation, so `MEMENTO_DATA_PATH=~/bundles`
+    without a trailing slash would silently yield `~/bundlesfigure2_data/`. The READMEs
+    tell readers to set that variable, so it has to tolerate both forms.
+    """
+    return os.path.join(os.path.expanduser(path), '')
+
+
+DATA_PATH = _dir(os.environ.get('MEMENTO_DATA_PATH', '/memento_data'))
+FIGURE6_DATA = _dir(os.environ.get('FIGURE6_DATA', DATA_PATH + 'figure6_data'))
+
+# The dendritic-cell slice of the census cube that panel G reads, ~30 MB, built by
+# build_dc_subset.py and shipped in the data bundle.
 CUBE_PATH = os.environ.get(
-    'MEMENTO_CUBE_PATH', DATA_PATH + 'precomputation/extracted/estimators_cube_v2')
+    'MEMENTO_CUBE_PATH', FIGURE6_DATA + 'panelG_cube/estimators_cube_dc')
+
+# The full-census cube, 17 GB unpacked from precomputation/*.tar. Not in the bundle:
+# panel G needs five cell types out of it, and nothing else here needs it at all. Only
+# build_dc_subset.py reads this.
+CENSUS_CUBE_PATH = os.environ.get(
+    'MEMENTO_CENSUS_CUBE_PATH', DATA_PATH + 'precomputation/extracted/estimators_cube_v2')
 # The cube panels C and D compare against, built by build_cube.py: one donor, two cell
 # types, variance included, and the same capture rate as the full memento run.
 COMPARISON_CUBE_PATH = os.environ.get(
@@ -19,7 +37,6 @@ COMPARISON_CUBE_PATH = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), 'intermediate',
                  'estimators_cube'))
 
-FIGURE6_DATA = os.environ.get('FIGURE6_DATA', DATA_PATH + 'figure6_data/')
 
 # Three levels up: publication/figureN/config.py -> the repository root.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

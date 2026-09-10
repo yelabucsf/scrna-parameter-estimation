@@ -24,13 +24,45 @@ Figure 5 uses **this repository's** memento package. No separate clone needed.
 
 ## Data
 
+Panels A–E are published as one archive, 5.8 GB to download and 21 GB unpacked — the
+largest of the five, since panels B and C rest on 480 resampled-cohort result files.
+
+All five figures share one Zenodo record; download just this figure's archive.
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
+
 ```bash
-python data_manifest.py check     # 623 files, 22 GB
-python data_manifest.py link      # build the panel-organized tree the scripts read
+mkdir -p ~/memento_bundles && cd ~/memento_bundles
+curl -L -O https://zenodo.org/records/22667586/files/figure5_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure5_data.tar.gz.sha256
+sha256sum -c figure5_data.tar.gz.sha256      # macOS: shasum -a 256 -c
+tar -xzf figure5_data.tar.gz
+export MEMENTO_DATA_PATH=~/memento_bundles
 ```
 
-`check --root DIR` validates a copy instead of the source volume; `bundle --root DIR`
-writes a standalone directory that `FIGURE5_DATA` can point at.
+The archive unpacks to `figure5_data/`, organized by panel:
+
+| Directory | Feeds |
+| --- | --- |
+| `panelA_qq/` | A — QTL summary statistics, and per-variant allele frequencies |
+| `panelBC_replication/` | B, C |
+| `panelDE_atac/` | D, E |
+| `panelFI_examples/` | F–I — single-cell data (genotypes not included, see below) |
+
+### Panels F–I need controlled-access data
+
+These four panels group individuals by their genotype at a single variant. Those
+genotypes are individual-level data for the CLUES cohort, released by
+[Perez et al. 2022](https://www.science.org/doi/10.1126/science.abf1970) only under
+[dbGaP phs002812.v1.p1](https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs002812.v1.p1)
+with a signed Data Use Certification, so they are not in the archive and cannot be.
+
+**Panels A–E are unaffected**, and `make_figure5.py` assembles them without F–I rather
+than failing. Panel A's minor-allele-frequency filter needs only an aggregate frequency
+per variant, which is aggregate, identifies nobody, and ships in the archive.
+
+With an approved dbGaP request, place the matrices at
+`figure5_data/genotypes/{asian,eur}_genos.tsv` — a `CHROM:POS` index and one column per
+individual — and F–I run.
 
 ## Run
 

@@ -1,6 +1,6 @@
 """Figure 6E - query-time runtime, precomputed against default mode.
 
-Port of publication/cellxgene/cxg_comparison/cellxgene_comparison.ipynb cells 44-53.
+Port of publication/original/cellxgene/cxg_comparison/cellxgene_comparison.ipynb cells 44-53.
 
 These are wall-clock measurements, not derived data: the notebook timed both modes over
 an increasing number of pairwise cell-type comparisons in the SLE dataset and recorded

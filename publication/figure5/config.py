@@ -6,13 +6,24 @@ import sys
 import matplotlib as mpl
 import matplotlib.pylab as pylab
 
+
+def _dir(path):
+    """Normalize a directory path to end in exactly one separator.
+
+    Every path here is built by string concatenation, so `MEMENTO_DATA_PATH=~/bundles`
+    without a trailing slash would silently yield `~/bundlesfigure2_data/`. The READMEs
+    tell readers to set that variable, so it has to tolerate both forms.
+    """
+    return os.path.join(os.path.expanduser(path), '')
+
+
 # Upstream data volume, a sync of s3://memento-paper/revision/. The original notebooks
 # used '/data_volume/memento/lupus/'.
-DATA_PATH = os.environ.get('MEMENTO_DATA_PATH', '/memento_data/')
+DATA_PATH = _dir(os.environ.get('MEMENTO_DATA_PATH', '/memento_data'))
 LUPUS_PATH = DATA_PATH + 'lupus/'
 
 # Panel-organized tree built by data_manifest.py, which the panel scripts read from.
-FIGURE5_DATA = os.environ.get('FIGURE5_DATA', DATA_PATH + 'figure5_data/')
+FIGURE5_DATA = _dir(os.environ.get('FIGURE5_DATA', DATA_PATH + 'figure5_data'))
 
 # Three levels up: publication/figureN/config.py -> the repository root. Getting this
 # wrong silently falls back to a pip-installed memento in site-packages.

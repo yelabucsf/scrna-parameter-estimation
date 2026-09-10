@@ -1,6 +1,6 @@
 """Rebuild the canonical / non-canonical ISG classification that panels D-G rest on.
 
-Port of publication/hbec_interferon/classify_isg/select_isgs.ipynb cells 30-52.
+Port of publication/original/hbec_interferon/classify_isg/select_isgs.ipynb cells 30-52.
 
 The original wrote its gene lists to `canonical_isgs.pkl` / `noncanonical_isgs.pkl`,
 which are gone, so they are recomputed here: gene-by-gene memento correlations over

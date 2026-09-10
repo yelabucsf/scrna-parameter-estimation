@@ -1,6 +1,6 @@
 """Figure 5B - recovery of OneK1K eQTLs, memento against pseudobulk Matrix eQTL.
 
-Port of publication/genetics/auc_curve/roc_curve.ipynb cells 39-42.
+Port of publication/original/genetics/auc_curve/roc_curve.ipynb cells 39-42.
 
 Both axes are measured rather than assumed. Power is the fraction of eQTLs already
 established by the much larger OneK1K cohort that each method calls at a given p-value

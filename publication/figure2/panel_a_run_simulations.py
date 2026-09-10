@@ -1,6 +1,6 @@
 """Figure 2A - run the estimator simulations.
 
-Ports publication/validation/estimation/simulation/{mean,variance,correlation}/*.py
+Ports publication/original/validation/estimation/simulation/{mean,variance,correlation}/*.py
 onto the current data layout. The variance simulation originally round-tripped every
 replicate through h5ad files so that BASiCS could be run in R; here the estimates are
 computed in memory. BASiCS is therefore not part of the regenerated variance curve.
@@ -51,7 +51,13 @@ METHODS = {
 # The slice of the variance simulation that run_basics_simulation.R scores, matching
 # the (num_cell, q) the published panel is drawn at. Dumped as MatrixMarket so R can
 # read the counts without Seurat/SeuratDisk.
-BASICS_DUMP_DIR = config.DATA_PATH + 'simulation/variance/'
+#
+# This is a regeneration output, so it goes to the local intermediate directory rather
+# than to the data bundle: the panel itself is drawn from the BASiCS results already in
+# the bundle, and someone re-running the simulation should not be writing back into their
+# downloaded inputs. Override with FIGURE2_BASICS_DIR.
+BASICS_DUMP_DIR = os.environ.get(
+    'FIGURE2_BASICS_DIR', os.path.join(config.INTERMEDIATE_DIR, 'basics_simulation')) + '/'
 BASICS_NUM_CELL = 100
 BASICS_CAPTURE_EFFICIENCIES = [0.05, 0.1, 0.2, 0.3, 0.5]
 

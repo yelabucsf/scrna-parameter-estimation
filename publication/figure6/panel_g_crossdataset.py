@@ -1,6 +1,6 @@
 """Figure 6G - pDCs against cDCs, pooling datasets versus one dataset at a time.
 
-Port of publication/cellxgene/rare_celltype_comparison.py, plotted as in
+Port of publication/original/cellxgene/rare_celltype_comparison.py, plotted as in
 cxg_comparison/cellxgene_crossdata.ipynb.
 
 The point of the panel: plasmacytoid and conventional dendritic cells are rare, so any
@@ -35,7 +35,7 @@ from sklearn.linear_model import LinearRegression
 import config
 
 SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                      'cellxgene', 'rare_celltype_comparison.py')
+                      'original', 'cellxgene', 'rare_celltype_comparison.py')
 CENSUS_URI = ('s3://cellxgene-data-public/cell-census/'
               f'{config.CENSUS_VERSION}/soma/census_data/homo_sapiens')
 
@@ -122,7 +122,16 @@ def compare(estimators, counts):
     estimators = estimators[estimators['donor_id'].isin(usable[usable > 1].index)]
     if estimators.empty:
         return pd.DataFrame(columns=['feature_id', 'coef', 'se', 'pval'])
-    estimators = estimators.drop_duplicates(subset=['group_name', 'feature_id'])
+    # One (donor, gene) can appear several times -- the same donor's dendritic cells
+    # measured under different assays or suspension types, across five dendritic-cell
+    # labels. Here that is 102,260 of 831,157 rows. `drop_duplicates` keeps whichever
+    # comes first, and TileDB guarantees no row order, so without an explicit sort the
+    # panel's output depends on how the cube happens to be laid out on disk: the same
+    # data in a differently-fragmented array shifts the count of significant genes by
+    # about 17. Sort first so the choice is a property of the data, not of the storage.
+    estimators = estimators.sort_values(
+        ['group_name', 'feature_id', 'dataset_id', 'cell_type', 'assay',
+         'suspension_type']).drop_duplicates(subset=['group_name', 'feature_id'])
 
     mean = estimators.pivot(index='group_name', columns='feature_id', values='mean')
     sem = estimators.pivot(index='group_name', columns='feature_id', values='sem')

@@ -1,6 +1,6 @@
 """Gene-by-gene memento correlations among the DMGs, in wild-type cells.
 
-Port of publication/perturbseq/cd4_wt_coex.ipynb cells 42-47, the right half of panel 4C.
+Port of publication/original/perturbseq/cd4_wt_coex.ipynb cells 42-47, the right half of panel 4C.
 
 This has to be computed rather than read off the volume: `2d/wt_one_sample.csv` holds
 10,721 regulator-target pairs, only 563 of the 64,261 DMG-DMG pairs the panel needs.

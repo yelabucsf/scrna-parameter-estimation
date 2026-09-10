@@ -26,26 +26,32 @@ pip install tiledb tiledbsoma cellxgene-census
 
 Figure 6 uses **this repository's** memento package. Building the comparison cube also
 needs a [memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
-[memento-cxg patches](#memento-cxg-patches).
+[memento-cxg version](#memento-cxg-version).
 
 ## Data
 
-Unlike the other figures, almost nothing here is a file on the volume. Panels C, D and G
-stream cells and metadata from the public CELLxGENE census at run time. Two precomputed
-estimator cubes are involved, and they are not interchangeable:
+Figure 6 is by far the lightest: a 44 MB archive, because most of what it needs is either
+streamed from the public CELLxGENE census at run time or computed locally.
 
-**Panel G** reads the full-census cube, which ships as a tar and must be unpacked once:
+All five figures share one Zenodo record; download just this figure's archive.
+DOI: [10.5281/zenodo.22667586](https://doi.org/10.5281/zenodo.22667586)
 
 ```bash
-mkdir -p /memento_data/precomputation/extracted
-tar -xf /memento_data/precomputation/stimators_cube.2023-10-23-homo_sapiens-full.tar \
-    -C /memento_data/precomputation/extracted     # ~17 GB, several minutes
-
-python data_manifest.py check                     # confirms the cube is readable
+mkdir -p ~/memento_bundles && cd ~/memento_bundles
+curl -L -O https://zenodo.org/records/22667586/files/figure6_data.tar.gz
+curl -L -O https://zenodo.org/records/22667586/files/figure6_data.tar.gz.sha256
+sha256sum -c figure6_data.tar.gz.sha256      # macOS: shasum -a 256 -c
+tar -xzf figure6_data.tar.gz
+export MEMENTO_DATA_PATH=~/memento_bundles
 ```
 
-**Panels C and D** build their own cube, because the full-census one was produced with
-the variance estimators switched off and those panels are precisely a test of the
+The archive holds `panelG_cube/estimators_cube_dc`: the dendritic-cell slice of the
+census estimators cube, which is what panel G reads. It reproduces panel G exactly —
+identical genes and identical coefficients, standard errors and p-values to the last bit
+— against the 17 GB full-census cube it was cut from.
+
+**Panels C and D build their own cube**, because the archived census cube was produced
+with the variance estimators switched off and those panels are precisely a test of the
 variance path:
 
 ```bash
@@ -54,6 +60,12 @@ python build_cube.py         # ~2 min, writes intermediate/estimators_cube (1.2 
 
 It is scoped to the one donor and two cell types the comparison uses, and takes its
 capture rate from `config.CAPTURE_RATE` so it cannot drift from the full memento run.
+This step needs network access and a
+[memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
+[memento-cxg version](#memento-cxg-version).
+
+**Panels C, D and G reach the network.** C and D query the census for cells; G queries it
+for per-donor cell counts. There is no fully offline mode.
 
 Override locations with `MEMENTO_CUBE_PATH`, `MEMENTO_COMPARISON_CUBE_PATH` and
 `MEMENTO_CXG_PATH`, and the census release with `CENSUS_VERSION`.
@@ -78,7 +90,7 @@ across 23 datasets, pooled and then individually.
   intercept 0.05, r = 0.92, with the p-values at r = 0.95.
 - **E** — the precomputed mode is 211× to 380× faster at query time (median 283×),
   against 9.3 minutes of one-off precomputation.
-- **G** — the pooled fit yields 10,624 genes with 7,001 at p < 0.05, and departs from the
+- **G** — the pooled fit yields 10,593 genes with 7,142 at p < 0.05, and departs from the
   null further than any single dataset.
 
 ## Notes
@@ -102,7 +114,7 @@ across 23 datasets, pooled and then individually.
 - **Why panels C and D build their own cube.** The full-census cube on the volume has its
   variance fields all but unpopulated — for this donor, `var`/`sev`/`selv` are non-zero
   for 119 of 15,106 monocyte genes and 50 of 13,893 CD4 T cell genes, and exactly 0.0
-  everywhere else. `publication/cellxgene/make_cube.py` shows why: `ESTIMATOR_NAMES` is
+  everywhere else. `publication/original/cellxgene/make_cube.py` shows why: `ESTIMATOR_NAMES` is
   truncated to seven entries and the `compute_variance` / `compute_sev` calls are
   commented out. Run against that cube, panel D compares 44 genes instead of ~1,500, and
   the mean-variance trend behind `res_var` gets fit on those few points and overfits.
@@ -125,13 +137,36 @@ across 23 datasets, pooled and then individually.
   and anything built by current memento-cxg order them the other way
   (`CUBE_TILEDB_DIMS_OBS + CUBE_DIMS_VAR`) and are labelled correctly as stored, so the
   rename is *not* applied here — applying it would scramble the query.
-- **Panel G substitutes the full census cube.** The original script read a purpose-built
-  `estimators_cube_dcs_many`, which is not on the volume. The full cube is used instead.
-  It carries dendritic-cell estimators for 12 of the 23 listed datasets, and only 4 of
-  those have both pDCs and cDCs from the same donors — the structure a per-dataset fit
-  needs. So the grey per-dataset curves are fewer than in the published panel. The
-  pooled fit is unaffected: 10,624 genes, 7,001 at p < 0.05, and it sits above the
-  individual datasets, which is the point the panel makes.
+- **Panel G's cube is a substitute.** The original script read a purpose-built
+  `estimators_cube_dcs_many`, which was not among the archived files. What ships instead
+  is the dendritic-cell slice of the full census cube (`build_dc_subset.py`), which
+  carries every row panel G reads and reproduces it exactly against the 17 GB original —
+  same genes, and identical coefficients, standard errors and p-values.
+
+  It covers 17 of the 23 listed datasets, and only 4 of those have both pDCs and cDCs
+  from the same donors, which is the structure a per-dataset fit needs. So the grey
+  per-dataset curves are fewer than in the published panel. The pooled fit is the point
+  the panel makes, and it stands: 10,593 genes, 7,142 at p < 0.05, above every individual
+  dataset.
+- **Panel G's donor groups can merge different individuals.** Groups are keyed on
+  `treatment + donor_id`, without `dataset_id`, and donor labels are only unique within a
+  dataset: 7 of the ids reaching this contrast — generic ones like `D1`, `F38`, `356C` —
+  appear in 2–3 different studies, covering 24% of the rows. A `D1` in one study is not
+  the `D1` in another, so those groups pool unrelated people, and the fit uses donor as
+  the covariate that makes the pDC-vs-cDC contrast within-individual.
+
+  This is left as it was. Adding `dataset_id` to the key moves the significant fraction
+  from 67.4% to 40.4%, which is a change to a published number and not one to make
+  casually; the label collisions come from how donors are named upstream in CELLxGENE
+  rather than from anything memento does, and the panel's claim — that pooling datasets
+  recovers signal no single dataset shows — does not rest on the exact count. Tracked in
+  [#79](https://github.com/yelabucsf/scrna-parameter-estimation/issues/79).
+- **Panel G's deduplication is order-sensitive, and is now sorted.** One (donor, gene) can
+  appear several times — the same donor's dendritic cells under different assays or
+  suspension types — and here that is 102,260 of 831,157 rows. `drop_duplicates` keeps
+  whichever comes first while TileDB guarantees no row order, so the count of significant
+  genes moved by about 17 between two arrays holding identical data. `compare()` sorts on
+  a full key first, making the choice a property of the data rather than of the storage.
 - **`get_groups` now returns label columns numerically encoded.** The notebook's
   `groups[['cell_type']] == ct2` therefore compares floats to a string and yields an
   all-zero treatment, which current memento drops as constant, leaving an empty design.

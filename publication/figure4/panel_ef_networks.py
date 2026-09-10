@@ -1,6 +1,6 @@
 """Figure 4E and 4F - the regulatory networks, and their Cytoscape inputs.
 
-Port of publication/perturbseq/cd4_tf_coex_analysis.ipynb cells 27, 41-45, 52-64.
+Port of publication/original/perturbseq/cd4_tf_coex_analysis.ipynb cells 27, 41-45, 52-64.
 
 Panel E is the bipartite network from differential mean alone: an edge from each
 regulator to every gene its knockout moves. Panel F adds differential correlation --
