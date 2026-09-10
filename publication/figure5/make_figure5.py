@@ -36,6 +36,7 @@ def main():
                         help='rebuild the sheet from existing panel pngs; panel A is slow')
     args = parser.parse_args()
 
+    skipped = set()
     if not args.assemble_only:
         for module in [panel_a_qqplots, panel_b_roc, panel_c_power,
                        panel_de_atac, panel_fi_examples]:
@@ -49,9 +50,16 @@ def main():
                 if module is not panel_fi_examples:
                     raise
                 print(f'skipping panels F-I:\n{reason}', flush=True)
+                skipped.add('figure5FI')
 
+    # A panel that was skipped this run is excluded even if its png is still on disk from
+    # an earlier one. Assembling from whatever files exist would otherwise paste a stale
+    # panel into a fresh sheet -- and F-I is exactly the panel someone runs once with
+    # dbGaP access and then again without, so the sheet would silently claim to show
+    # something this run did not produce.
     panels = [entry for entry in SHEET
-              if os.path.exists(config.figure_path(f'{entry[0]}.png'))]
+              if entry[0] not in skipped
+              and os.path.exists(config.figure_path(f'{entry[0]}.png'))]
     missing = [label for stem, label in SHEET if (stem, label) not in panels]
     if missing:
         print(f'assembling without: {", ".join(missing)}')
