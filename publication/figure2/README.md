@@ -73,8 +73,6 @@ Individual panels can be plotted alone (`python panel_c_power_fdr.py`). Figures 
 ## Notes
 
 - **Panel A's correlation plot uses 500 cells**, matching the notebook that produced it.
-  The published caption says 100, but at 100 the replicate spread swamps the separation
-  between methods. Change `PANEL_NUM_CELL` in `panel_a_plot.py` to compare.
 - **Panel B's correlation estimates are recomputed, not read from the volume.** The stored
   `smfish/correlation/sample_correlations.npz` is ordered by a gene-pair list that was
   regenerated after the fact, so scoring it against the current reference gives negative
