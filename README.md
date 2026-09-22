@@ -14,7 +14,7 @@ Scanpy is the only direct dependency of the CPU installation; its dependencies
 provide the numerical libraries used by memento. PyTorch is not required or
 imported for CPU use. Install the optional `gpu` extra only for GPU execution.
 
-### Optional GPU tests
+### GPU acceleration
 
 From this checkout, install `pip install -e '.[gpu]'` into an environment with a
 CUDA-enabled PyTorch build. After the usual `setup_memento`, `create_groups`,
@@ -56,8 +56,6 @@ Currently supported: `hyper_relative`, `approx="norm"`, and
 `resample_rep=False`, including gene-specific treatments/covariates.
 Other estimators and replicate resampling are not supported by this backend.
 CPU remains the default and does not import PyTorch.
-See the [real-data experiment](experimental/gpu_acceleration/REAL_DATA_GPU_RESULTS.md)
-for donor-adjusted ctrl-versus-stim comparisons and validation.
 
 For eQTL-style testing, supply genotype dosage columns in `treatment` and select
 columns per gene using a dictionary:
@@ -101,8 +99,6 @@ of invalid correlations and regression on raw correlations; reported effects
 are observed correlation differences adjusted for the covariates. Self-pairs
 return NaN. Pair-specific treatment/covariate selections are supported by the
 GPU backend. Observed moments are still prepared on CPU.
-See the [correlation experiment](experimental/gpu_acceleration/CORRELATION_RESULTS.md)
-for validation and a reproducible benchmark.
 
 For more information, please refer to the documentation [here](https://memento.readthedocs.io/en/v0.1.3/)!
 

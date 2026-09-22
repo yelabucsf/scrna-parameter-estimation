@@ -17,13 +17,7 @@ configuration side effects.
 Install a compatible CUDA-enabled PyTorch build and `pip install -e '.[gpu]'`
 to exercise the GPU cases. They skip when PyTorch or CUDA is unavailable.
 
-The standalone experiment runners do not configure global CPU affinity. Apply
-resource limits explicitly when reproducing benchmarks, for example on Linux:
-
-```bash
-taskset -c 0-9 env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
-  python experimental/gpu_acceleration/run_fibroblasts.py
-```
-
-Choose CPU IDs allowed by your environment. The fibroblast runner uses ten
-joblib threads and limits BLAS threads during its CPU/GPU test calls.
+GPU tests construct their own synthetic counts and designs. They do not require
+benchmark JSON files or external datasets. Coverage includes 1D and correlation
+moments, CPU/GPU regression agreement, eQTL dictionaries, memory-limited
+sampling, reproducibility, optional dependencies, and failure cleanup.
