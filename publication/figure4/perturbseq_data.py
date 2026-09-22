@@ -21,7 +21,7 @@ import scanpy as sc
 
 import config
 
-config.add_repo_to_path()
+config.add_helper_paths()
 from memento.util import _fdrcorrect  # noqa: E402
 
 COUNTS = config.FIGURE4_DATA + 'panelA_selection/tfko.sng.guides.full.ct.h5ad'

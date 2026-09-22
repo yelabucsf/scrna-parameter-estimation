@@ -23,7 +23,7 @@ import seaborn as sns
 import config
 import perturbseq_data
 
-config.add_repo_to_path()
+config.add_helper_paths()
 from memento.util import _fdrcorrect  # noqa: E402
 
 DC_TEST_DIR = config.FIGURE4_DATA + 'panelGH_chipseq/dc_tests/'

@@ -37,7 +37,6 @@ from somacore import AxisQuery
 
 import config
 
-config.add_repo_to_path()
 import memento  # noqa: E402
 
 CENSUS_URI = ('s3://cellxgene-data-public/cell-census/'

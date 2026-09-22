@@ -240,7 +240,10 @@ def create_groups(
     inplace=True,
     ):
     """
-        Creates discrete groups of the data, based on the columns in :label_columns:
+        Create groups from combinations of observation columns in label_columns.
+
+        Groups below the min_cell_count set during setup are omitted. Grouping
+        does not add regression covariates or enable replicate resampling.
     """
     if not inplace:
         adata = adata.copy()
@@ -450,7 +453,8 @@ def get_corr_matrix(adata, group):
 def compute_2d_moments(adata, gene_pairs, inplace=True):
     """
         Compute the covariance and correlation for given genes.
-        This function computes the covariance and the correlation between genes in :gene_1: and genes in :gene_2:. 
+        gene_pairs is a list of (gene_1, gene_2) tuples. Both genes must remain
+        in adata.var_names after compute_1d_moments filtering.
     """
     
     if not inplace:
@@ -511,17 +515,58 @@ def ht_1d_moments(
     gpu_batch_size=256,
     gpu_device="cuda",
     **kwargs):
-    """
-        Performs hypothesis testing for 1D moments.
+    """Test differences in log mean and log residual variance.
 
-        backend='cpu' retains the reference implementation. backend='gpu' uses
-        shared cell bootstrap weights and CUDA matrix multiplication (optional
-        memento-de[gpu] extra). The GPU path supports hyper_relative, norm ASL,
-        and resample_rep=False, including gene-specific treatment/covariates.
-        gpu_memory_budget=None uses half the free device memory (up to 8 GiB).
-        An integer sets a working-memory target in MiB, not a hard bound
-        on CUDA context or allocator-reserved memory. gpu_batch_size caps the
-        number of simultaneous genes. CPU/GPU bootstrap draws differ.
+    Parameters
+    ----------
+    adata : AnnData
+        Counts and analysis state after setup, grouping, and 1D moments.
+    treatment : pandas.DataFrame
+        Numeric treatment columns, one row per retained group in
+        ``adata.uns['memento']['groups']`` order. Columns are tested separately.
+    covariate : pandas.DataFrame, optional
+        Numeric adjustment variables in the same group order. An intercept is
+        included internally. Omitting this argument fits only an intercept.
+    treatment_for_gene, covariate_for_gene : dict, optional
+        Map retained gene names to selected treatment or covariate column names.
+        Omit to use all columns. Treatments are not mutually adjusted unless
+        explicitly included as covariates.
+    inplace : bool, default True
+        Store results in ``adata.uns['memento']['1d_ht']``. If False, return an
+        analyzed copy of AnnData; use ``get_1d_ht_result`` to retrieve its table.
+    num_boot : int, default 10000
+        Number of bootstrap draws, in addition to the observed statistic.
+    verbose : int, default 1
+        CPU joblib verbosity.
+    num_cpus : int, default 1
+        CPU gene-level parallelism; does not control GPU parallelism.
+    random_state : int, optional
+        Seed for local random generators. CPU and GPU draws differ.
+    backend : {'cpu', 'gpu'}, default 'cpu'
+        GPU requires optional PyTorch/CUDA, integer counts, the
+        ``hyper_relative`` estimator, and ``approx='norm'``.
+    gpu_memory_budget : int, optional
+        Working-memory target in MiB, capped at 75% of free device memory.
+        None targets half the free memory, capped at 8 GiB. Excludes CUDA
+        context and allocator cache; not a hard allocation limit.
+    gpu_batch_size : int, default 256
+        Maximum simultaneous genes; the memory planner can lower this.
+    gpu_device : str, default 'cuda'
+        CUDA device, e.g. ``'cuda:1'``.
+    resample_rep : bool, default False
+        Passed through kwargs. Additionally resample valid group rows and
+        their cell-bootstrap iterations, after covariate residualization.
+        Supported by CPU and GPU. Does not preserve paired donor rows or refit
+        covariates within each draw. See the bootstrap inference guide.
+    approx : {'norm', 'boot', 'gdp'}, default 'norm'
+        Passed through kwargs. Bootstrap p-value approximation. GPU supports
+        only ``'norm'``.
+
+    Returns
+    -------
+    AnnData or None
+        An analyzed copy if ``inplace=False``; otherwise None. Results contain
+        unadjusted p-values; multiple-testing correction is left to the caller.
     """
     
     if backend not in ('cpu', 'gpu'):
@@ -804,13 +849,22 @@ def ht_2d_moments(
     gpu_batch_size=256,
     gpu_device="cuda",
     **kwargs):
-    """
-        Performs differential correlation testing.
+    """Test differences in raw gene-gene correlation.
 
-        backend="gpu" uses shared cell resampling on CUDA with hyper_relative,
-        normal ASL, and resample_rep=False. Memory settings match ht_1d_moments;
-        gpu_batch_size counts pairs. Correlations are regressed without a log
-        or Fisher transform, matching the CPU reference.
+    Run ``compute_1d_moments`` and ``compute_2d_moments`` first. Parameters and
+    group-row ordering match :func:`ht_1d_moments`, except that dictionary keys
+    are gene-pair tuples and ``gpu_batch_size`` counts pairs. Requested pairs
+    must have been computed before testing.
+
+    Both backends support ``resample_rep=True`` through kwargs. This resamples
+    individual group rows after covariate residualization; it is not a paired
+    donor bootstrap. GPU supports ``hyper_relative`` and ``approx='norm'``.
+
+    Correlations are regressed without a log or Fisher transform. The reported
+    coefficient is the observed covariate-adjusted slope, with bootstrap
+    standard error and an unadjusted p-value. Results are stored under
+    ``adata.uns['memento']['2d_ht']`` and retrieved by ``get_2d_ht_result``.
+    Returns an analyzed AnnData copy only when ``inplace=False``.
     """
     
     if backend not in ("cpu", "gpu"):

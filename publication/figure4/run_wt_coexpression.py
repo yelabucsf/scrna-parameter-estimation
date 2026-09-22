@@ -16,7 +16,7 @@ import scanpy as sc
 import config
 import perturbseq_data
 
-config.add_repo_to_path()
+config.add_helper_paths()
 import memento  # noqa: E402
 
 # Overall capture efficiency for this experiment, from the notebook.

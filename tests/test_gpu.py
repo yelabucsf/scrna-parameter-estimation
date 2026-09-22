@@ -126,7 +126,7 @@ def test_empty_tests(cuda,prepared):
 
 
 @pytest.mark.parametrize('options,error',[
-    ({'resample_rep':True},NotImplementedError),({'approx':'gdp'},NotImplementedError),
+    ({'resample_rep':1},ValueError),({'approx':'gdp'},NotImplementedError),
     ({'gpu_memory_budget':0},ValueError),({'gpu_batch_size':0},ValueError),
     ({'num_boot':1},ValueError),({'gpu_device':'cpu'},ValueError),({'unknown_option':1},TypeError)])
 def test_unsupported_options_are_explicit(cuda,prepared,options,error):
@@ -218,7 +218,8 @@ def test_pair_api_order_reproducibility_streaming_and_diagonal(cuda,prepared_pai
     assert list(zip(r.gene_1,r.gene_2,r.tx))==[('g0','g1','stim'),('g3','g4','interaction'),('g3','g4','stim')]
     empty=memento.ht_2d_moments(a,treatment_for_gene={},**kwargs)
     assert memento.get_2d_ht_result(empty).empty
-    with pytest.raises(NotImplementedError):memento.ht_2d_moments(a,resample_rep=True,**kwargs)
+    resampled=memento.ht_2d_moments(a,resample_rep=True,**kwargs)
+    assert resampled.uns['memento']['2d_ht']['gpu']['resample_rep']
 
 
 def test_automatic_memory_policy(cuda):
@@ -350,3 +351,123 @@ def test_all_invalid_bootstrap_groups_return_nan(cuda,prepared_pairs):
         getter=memento.get_1d_ht_result if dimension==1 else memento.get_2d_ht_result
         frame=getter(result)
         assert np.isnan(frame.iloc[:,2 if dimension==1 else 3:].values).all()
+
+
+@pytest.mark.parametrize('correlation',[False,True])
+def test_replicate_regression_matches_cpu_with_identical_assignments(cuda,prepared,monkeypatch,correlation):
+    torch,gpu=cuda;_,tx,cov=prepared
+    from memento import hypothesis_test as ht
+    rng=np.random.default_rng(51)
+    means=rng.normal(size=(3,6,1001));variances=rng.normal(size=means.shape)
+    means[1,1,10]=np.nan
+    good=np.ones((3,6),bool);good[2,2]=False
+    designs=[(('stim','interaction'),('d1','d2')),(('interaction',),('d1',)),(('stim',),('d1','d2'))]
+    nc=np.arange(6)*7+20
+    def assignments(groups,boots,device,generator):
+        arrays=ht._replicate_assignments(groups,boots,np.random.default_rng(197))
+        return tuple(torch.as_tensor(x,device=device) for x in arrays)
+    monkeypatch.setattr(gpu,'_replicate_assignments',assignments)
+    got=gpu._regress(torch.tensor(means,device='cuda'),
+        None if correlation else torch.tensor(variances,device='cuda'),
+        torch.tensor(good,device='cuda'),cov,tx,nc,designs,
+        resample_generator=gpu._generator('cuda',44))
+    for i,(ts,cs) in enumerate(designs):
+        mask=good[i]
+        args=dict(covariate=cov[list(cs)].values[mask],treatment=tx[list(ts)].values[mask],
+                  Nc_list=nc[mask],resample_rep=True,rng=np.random.default_rng(197))
+        if correlation:
+            ref=ht._regress_2d(boot_corr=means[i,mask],**args)
+        else:
+            ref=ht._regress_1d(boot_mean=means[i,mask],boot_var=variances[i,mask],**args)
+        np.testing.assert_allclose(got[i],ref,rtol=2e-8,atol=2e-11,equal_nan=True)
+
+
+@pytest.mark.parametrize('dimension',[1,2])
+def test_replicate_api_seed_and_streaming(cuda,prepared_pairs,dimension):
+    torch,gpu=cuda;a,tx,cov=prepared_pairs
+    call=memento.ht_1d_moments if dimension==1 else memento.ht_2d_moments
+    getter=memento.get_1d_ht_result if dimension==1 else memento.get_2d_ht_result
+    assignment={'g3':['interaction','stim'],'g1':['stim']} if dimension==1 else {
+        ('g3','g4'):['interaction','stim'],('g0','g1'):['stim']}
+    kwargs=dict(treatment=tx,covariate=cov,treatment_for_gene=assignment,backend='gpu',inplace=False,
+                num_boot=1024,resample_rep=True,gpu_memory_budget=1,gpu_batch_size=1,random_state=113)
+    before=torch.cuda.get_rng_state().clone()
+    first=call(a,**kwargs);second=call(a,**kwargs)
+    data=getter(first)
+    np.testing.assert_array_equal(data,getter(second))
+    assert np.isfinite(data.iloc[:,2 if dimension==1 else 3:].values).all()
+    assert first.uns['memento'][f'{dimension}d_ht']['gpu']['resample_rep']
+    assert not first.uns['memento'][f'{dimension}d_ht']['gpu']['cached_cell_weights']
+    assert torch.equal(before,torch.cuda.get_rng_state())
+    assert f'{dimension}d_ht' not in a.uns['memento']
+
+
+def test_replicate_assignments_and_degenerate_null(cuda,prepared):
+    torch,gpu=cuda;_,_,_=prepared
+    assignment,iters=gpu._replicate_assignments(5,100,'cuda',gpu._generator('cuda',9))
+    assert assignment.shape==iters.shape==(5,101)
+    np.testing.assert_array_equal(assignment[:,0].cpu(),np.arange(5))
+    assert (iters[:,0]==0).all() and (iters[:,1:]>=1).all() and (iters[:,1:]<=100).all()
+    coef=torch.tensor([[.4,float('nan'),float('nan')],[.4,.3,.5]],device='cuda',dtype=torch.float64)
+    mean,se,p=gpu._coefficient_summary(coef,False)
+    assert mean[0]==.4 and torch.isnan(se[0]) and torch.isnan(p[0])
+    assert torch.isfinite(p[1])
+
+
+@pytest.mark.parametrize('correlation', [False, True])
+def test_replicate_regression_wide_treatments(cuda, monkeypatch, correlation):
+    torch, gpu = cuda
+    from memento import hypothesis_test as ht
+    rng = np.random.default_rng(907)
+    groups, boots = 19, 769
+    treatment = pd.DataFrame(rng.integers(0, 3, (groups, 19)),
+                             columns=[f'rs{i}' for i in range(19)], dtype=float)
+    covariate = pd.DataFrame({'age': rng.normal(size=groups)})
+    nc = rng.integers(20, 300, groups)
+    means = rng.normal(size=(2, groups, boots + 1))
+    variances = rng.normal(size=means.shape)
+    good = np.ones((2, groups), bool)
+    good[1, :2] = False
+    designs = [(tuple(treatment.columns), ('age',)),
+               (tuple(treatment.columns[::-1]), ('age',))]
+    def assignments(n, b, device, generator):
+        return tuple(torch.as_tensor(x, device=device) for x in
+                     ht._replicate_assignments(n, b, np.random.default_rng(42)))
+    monkeypatch.setattr(gpu, '_replicate_assignments', assignments)
+    actual = gpu._regress(
+        torch.tensor(means, device='cuda'),
+        None if correlation else torch.tensor(variances, device='cuda'),
+        torch.tensor(good, device='cuda'), covariate, treatment, nc, designs,
+        resample_generator=gpu._generator('cuda', 15))
+    for i, (tx, _) in enumerate(designs):
+        mask = good[i]
+        kwargs = dict(covariate=covariate.values[mask],
+                      treatment=treatment.loc[:, list(tx)].values[mask],
+                      Nc_list=nc[mask], resample_rep=True,
+                      rng=np.random.default_rng(42))
+        expected = (ht._regress_2d(boot_corr=means[i, mask], **kwargs) if correlation
+                    else ht._regress_1d(boot_mean=means[i, mask],
+                                        boot_var=variances[i, mask], **kwargs))
+        np.testing.assert_allclose(actual[i], expected, rtol=1e-9, atol=1e-11)
+
+
+@pytest.mark.parametrize('resample_rep', [False, True])
+@pytest.mark.parametrize('correlation', [False, True])
+def test_invalid_observed_moment_is_not_replaced_by_a_bootstrap(cuda, prepared, resample_rep, correlation):
+    torch, gpu = cuda
+    from memento import hypothesis_test as ht
+    _, tx, cov = prepared
+    y = np.random.default_rng(23).normal(size=(1, 6, 65))
+    y[0, 2, 0] = np.nan
+    nc = np.arange(6) + 10
+    got = gpu._regress(
+        torch.tensor(y, device='cuda'), None if correlation else torch.tensor(y, device='cuda'),
+        torch.ones((1, 6), device='cuda', dtype=torch.bool), cov, tx, nc,
+        [(tuple(tx.columns), tuple(cov.columns))],
+        resample_generator=gpu._generator('cuda', 42) if resample_rep else None)
+    kwargs = dict(covariate=cov.values, treatment=tx.values, Nc_list=nc,
+                  resample_rep=resample_rep)
+    ref = (ht._regress_2d(boot_corr=y[0], **kwargs) if correlation
+           else ht._regress_1d(boot_mean=y[0], boot_var=y[0], **kwargs))
+    assert np.isnan(got).all()
+    np.testing.assert_array_equal(got[0], ref)

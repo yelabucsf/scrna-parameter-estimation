@@ -24,9 +24,22 @@ stack:
 pip install tiledb tiledbsoma cellxgene-census
 ```
 
-Figure 6 uses **this repository's** memento package. Building the comparison cube also
-needs a [memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
-[memento-cxg version](#memento-cxg-version).
+Figure 6's full memento comparisons use **`memento-de==0.1.2` from PyPI**, the version
+used for the most recent paper replication.
+
+```bash
+python -m pip install 'memento-de==0.1.2'
+```
+
+Use a dedicated environment and run scripts from this figure directory. See the
+[shared environment instructions](../README.md#reproduction-environment) for
+checking the import location and why 0.1.3 changes seeded replicate-resampling
+results. Install the PyPI release rather than this checkout in that environment.
+
+Building the comparison cube additionally needs a
+[memento-cxg](https://github.com/mincheoly/memento-cxg) checkout — see
+[memento-cxg version](#memento-cxg-version). That builder uses its own implementation
+and is not replaced by the `memento-de==0.1.2` installation.
 
 ## Data
 

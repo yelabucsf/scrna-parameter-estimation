@@ -20,7 +20,17 @@ cM, ncM).
 
 Python with scanpy, pandas, scipy, scikit-learn, seaborn and matplotlib.
 
-Figure 5 uses **this repository's** memento package. No separate clone needed.
+Figure 5 uses **`memento-de==0.1.2` from PyPI**, the version used for the most recent
+paper replication. Keep this pin when recomputing results.
+
+```bash
+python -m pip install 'memento-de==0.1.2'
+```
+
+Use a dedicated environment and run scripts from this figure directory. See the
+[shared environment instructions](../README.md#reproduction-environment) for
+checking the import location and why 0.1.3 changes seeded replicate-resampling
+results. Install the PyPI release rather than this checkout in that environment.
 
 ## Data
 

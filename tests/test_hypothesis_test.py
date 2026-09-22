@@ -222,3 +222,29 @@ def test_cross_coef_resampled_handles_zero_variance_iteration_without_warning():
     assert not np.isnan(beta[:, 0]).any()
     assert not np.isnan(beta[:, 2]).any()
     assert not np.isnan(beta[:, 3]).any()
+
+
+def test_replicate_assignment_count_and_observed_column():
+    groups,draws=hypothesis_test._replicate_assignments(7,101,np.random.default_rng(4))
+    assert groups.shape==draws.shape==(7,102)
+    np.testing.assert_array_equal(groups[:,0],np.arange(7))
+    np.testing.assert_array_equal(draws[:,0],0)
+    assert (draws[:,1:]>=1).all() and (draws[:,1:]<=101).all()
+
+
+def test_resampled_identical_treatments_are_nan_despite_roundoff():
+    a=np.full((3,20,1),.1)
+    b=np.random.default_rng(5).normal(size=(3,20))
+    weights=np.broadcast_to(np.array([7.,11.,13.])[:,None],(3,20))
+    got=hypothesis_test._cross_coef_resampled(a,b,weights)
+    assert np.isnan(got).all()
+
+
+def test_regression_empty_draws_return_correct_output_shape():
+    cov=np.ones((3,1));tx=np.array([[0.],[1.],[2.]])
+    y=np.full((3,4),np.nan)
+    one=hypothesis_test._regress_1d(cov,tx,y,y,np.ones(3),resample_rep=True)
+    two=hypothesis_test._regress_2d(cov,tx,y,np.ones(3),resample_rep=True)
+    assert np.shape(one)==(6,1) and np.shape(two)==(3,1)
+    assert np.isnan(one).all() and np.isnan(two).all()
+    assert np.isnan(hypothesis_test._compute_asl(np.array([1.,np.nan,np.nan])))

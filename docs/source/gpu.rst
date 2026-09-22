@@ -1,29 +1,9 @@
 GPU acceleration
 ================
 
-.. note::
-
-   This page documents the GPU backend planned for the 0.1.3 release.
-   Until that release is published, install from a checkout containing these
-   changes rather than expecting the GPU extra in an older PyPI release.
-
-CPU installation
-----------------
-
-.. code-block:: bash
-
-   pip install memento-de
-
-Scanpy is the only direct dependency of the CPU installation; its dependencies
-provide the numerical libraries used by memento. PyTorch is not required or
-imported for CPU use. Install the optional ``gpu`` extra only for GPU execution.
-
-GPU installation
-----------------
-
-From a checkout containing the GPU implementation, install ``pip install -e '.[gpu]'`` into an environment with a
-CUDA-enabled PyTorch build. After the usual ``setup_memento``, ``create_groups``,
-and ``compute_1d_moments`` steps, use:
+Install the optional dependency as described in :doc:`installation`. Prepare
+counts, groups, and observed moments using the usual functions, then select the
+backend at testing time:
 
 .. code-block:: python
 
@@ -34,91 +14,74 @@ and ``compute_1d_moments`` steps, use:
    )
    results = memento.get_1d_ht_result(adata)
 
+Both ``resample_rep=False`` and ``resample_rep=True`` are supported for 1D and 2D
+tests, including gene-specific and pair-specific treatment/covariate dictionaries.
+Choose replicate resampling based on the design; see :doc:`inference`.
 
-Sampling and reproducibility
-----------------------------
+What runs on the GPU
+--------------------
 
-Treatment and covariate rows must follow ``adata.uns['memento']['groups']``.
-The GPU backend samples cells jointly across genes and computes bootstrap
-moments and regressions on CUDA, without expression-state compression. It
-retains the existing size-factor approximation and per-gene bootstrap
-distribution; bootstrap draws are shared across genes and differ from CPU
-draws. A fixed seed and execution configuration are reproducible, but changing
-batching or memory settings can change the draws.
+The backend samples individual cells jointly across genes, avoiding per-gene
+expression-state compression. Bootstrap moments and regression run on CUDA.
+Replicate resampling also uses CUDA-generated group and iteration indices with
+bounded batches of regression work. Input preparation, observed moments, and
+covariate projection setup still run on CPU.
+
+Moments use float32 with TF32 disabled; transforms and regressions use float64.
+CPU and GPU draws differ, even for the same seed. Their numerical and Monte Carlo
+differences should be distinguished from a change in the statistical procedure.
+Tests compare fixed-weight moments and regression with identical bootstrap
+inputs and group assignments, in addition to public API behavior.
 
 Memory and device settings
 --------------------------
 
-``gpu_memory_budget=None`` (default) automatically targets half of currently free
-GPU memory, capped at 8 GiB. An explicit integer sets a target in MiB, capped at
-75% of free memory. Targets exclude CUDA context and allocator cache; this is
-not a hard allocation limit or protection against another process consuming
-memory after planning.
-``gpu_batch_size`` caps simultaneous genes; the memory planner may lower it.
-Cell weights are cached when they fit, otherwise regenerated in chunks.
-Moments use float32 with TF32 disabled; transforms and regressions use float64.
-Design projections and data preparation still run on CPU. ``gpu_device`` selects
-the CUDA device (default ``"cuda"``). The implementation uses standard PyTorch
-operations rather than kernels tied to the RTX 3060. Only that GPU has been
-hardware-tested so far; low-memory behavior and planning for different free
-memory sizes are tested separately. CUDA-compatible NVIDIA GPUs are the
-current target; Apple MPS is unsupported and AMD/ROCm is unvalidated.
+The defaults adapt to available device memory:
 
-Supported options
------------------
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-Currently supported: ``hyper_relative``, ``approx="norm"``, and
-``resample_rep=False``, including gene-specific treatments/covariates.
-Other estimators and replicate resampling are not supported by this backend.
-CPU remains the default and does not import PyTorch.
+   * - Argument
+     - Behavior
+   * - ``gpu_memory_budget=None``
+     - Target half the currently free GPU memory, capped at 8 GiB.
+   * - ``gpu_memory_budget=<integer>``
+     - Target this many MiB, capped at 75% of currently free GPU memory.
+   * - ``gpu_batch_size=256``
+     - Cap simultaneous genes (1D) or pairs (2D); the planner may lower it.
+   * - ``gpu_device="cuda"``
+     - Select the default CUDA device; use e.g. ``"cuda:1"`` for another GPU.
 
-Gene-specific treatments (eQTLs)
---------------------------------
+These are working-memory targets, excluding CUDA context and allocator cache,
+not hard limits on process memory. Cell weights are cached when they fit and
+otherwise regenerated in chunks. Replicate regression bounds treatment and
+draw temporaries and includes its additional workspace in memory planning.
+For a lower-memory device, start with the defaults; reduce the budget or batch
+cap if sharing a busy GPU. Another process can consume memory after planning.
+More memory can permit caching or larger batches, but does not guarantee a
+speedup when computation or kernel overhead dominates.
 
-For eQTL-style testing, supply genotype dosage columns in ``treatment`` and select
-columns per gene using a dictionary:
-
-.. code-block:: python
-
-   memento.ht_1d_moments(
-       adata, treatment=genotypes, covariate=covariates,
-       treatment_for_gene={"GENE_A": ["rs1", "rs2"], "GENE_B": ["rs3"]},
-       backend="gpu", num_boot=10000, random_state=5,
-   )
-
-
-Rows must match group order; dictionary keys must be retained genes. These are
-separate covariate-adjusted tests, not a joint model conditioning each SNP on
-all the other SNPs. Each gene is bootstrapped once and its assigned treatments
-are processed in small blocks to bound regression memory. Different treatment
-sets can reduce cross-gene regression batching, so timing depends on the design.
-``covariate_for_gene`` optionally selects covariates per gene. Monomorphic SNPs
-are omitted; SNPs numerically explained by the covariates return NaN on GPU.
-Do not include full donor indicators when testing donor-constant genotype main
-effects: those indicators explain the genotype. No real genotype dataset was
-used in the current validation; dictionary behavior and wide designs are tested
-with synthetic dosages against CPU regression.
-
-Differential correlation
-------------------------
-
-For differential correlation, supply an explicit list of gene pairs after
-computing 1D moments, then select the same GPU backend:
+Inspect the plan used for a completed call:
 
 .. code-block:: python
 
-   memento.compute_2d_moments(adata, gene_pairs)
-   memento.ht_2d_moments(
-       adata, treatment=treatment, covariate=covariate,
-       backend="gpu", num_boot=10000, random_state=5,
-       approx="norm", resample_rep=False,
-   )
-   correlations = memento.get_2d_ht_result(adata)
+   print(adata.uns["memento"]["1d_ht"]["gpu"])
+   # For correlation tests, use ["2d_ht"]["gpu"].
 
+Support and portability
+-----------------------
 
-Here ``gpu_batch_size`` counts pairs. Shared cell weights jointly generate both
-variances and covariance for each pair. The backend preserves the CPU handling
-of invalid correlations and regression on raw correlations; reported effects
-are observed correlation differences adjusted for the covariates. Self-pairs
-return NaN. Pair-specific treatment/covariate selections are supported by the
-GPU backend. Observed moments are still prepared on CPU.
+GPU testing currently requires integer-valued, nonnegative counts, the
+``hyper_relative`` estimator, and ``approx="norm"``. Unsupported options raise
+errors rather than silently switching to CPU. CPU remains the default and does
+not import PyTorch.
+
+The implementation uses standard PyTorch operations rather than kernels tied to
+one GPU model. CUDA-compatible NVIDIA GPUs are the current target. Hardware
+validation has used an RTX 3060 with 12 GiB memory; memory planning and streaming
+are also tested with small budgets. Other GPU models have not been hardware
+validated. Apple MPS is unsupported and AMD/ROCm is unvalidated. FP64 throughput
+and available memory vary between devices, so performance will vary too.
+
+For complete examples, see :doc:`basic`, :doc:`correlations`, and :doc:`eqtl`.

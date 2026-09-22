@@ -1,29 +1,17 @@
-import os
+from pathlib import Path
 import sys
-sys.path.insert(0, os.path.abspath('../../'))
 
-# Configuration file for the Sphinx documentation builder.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-# -- Project information -----------------------------------------------------
-project = 'memento'
-copyright = '2025, Min Cheol Kim'
-author = 'YMin Cheol Kim'
-release = '0.1.3'
-
-# -- General configuration ---------------------------------------------------
+project = "memento"
+copyright = "2026, Min Cheol Kim"
+author = "Min Cheol Kim"
+release = "0.1.3"
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.githubpages'
+    "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+    "sphinx.ext.githubpages",
 ]
-
-# Paths that contain templates.
-templates_path = ['_templates']
-
-# Exclude patterns when looking for source files.
 exclude_patterns = []
-
-# -- Options for HTML output -------------------------------------------------
-html_theme = 'sphinx_rtd_theme'
-html_static_path = ['_static']
+html_theme = "sphinx_rtd_theme"

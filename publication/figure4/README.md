@@ -18,7 +18,17 @@ Regenerates every panel of Figure 4 of
 
 Python with scanpy, pandas, scipy, scikit-learn, seaborn, matplotlib and networkx.
 
-Figure 4 uses **this repository's** memento package, like Figure 3. Nothing else to clone.
+Figure 4 uses **`memento-de==0.1.2` from PyPI**, the version used for the most recent
+paper replication.
+
+```bash
+python -m pip install 'memento-de==0.1.2'
+```
+
+Use a dedicated environment and run scripts from this figure directory. See the
+[shared environment instructions](../README.md#reproduction-environment) for
+checking the import location and why 0.1.3 changes seeded replicate-resampling
+results. Install the PyPI release rather than this checkout in that environment.
 
 ## Data
 

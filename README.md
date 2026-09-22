@@ -1,6 +1,6 @@
 # memento
 
-`memento` is a Python package for estimating the mean, variability, and gene correlation from scRNA-seq data as well as contructing a framework for hypothesis testing of differences in these parameters between groups of cells. Method-of-moments estimators are used for parameter estimation, and efficient resampling is used to construct confidence intervals and establish statistical significance.
+`memento` is a Python package for estimating the mean, variability, and gene correlation from scRNA-seq data as well as constructing a framework for hypothesis testing of differences in these parameters between groups of cells. Method-of-moments estimators are used for parameter estimation, and efficient resampling is used to construct confidence intervals and establish statistical significance.
 
 ### Installation
 
@@ -13,8 +13,4 @@ pip install memento-de
 GPU installation and usage for the upcoming 0.1.3 release are documented in
 [the GPU guide](docs/source/gpu.rst).
 
-For more information, please refer to the documentation [here](https://memento.readthedocs.io/en/v0.1.3/)!
-
-NOTE:
-
-This package is under fairly active development. Please run `pip install --upgrade memento-de` to upgrade to the latest version, which is currently `0.1.2`!
+See the [user guide](https://memento.readthedocs.io/en/latest/) for installation, study designs, and complete analysis workflows.
