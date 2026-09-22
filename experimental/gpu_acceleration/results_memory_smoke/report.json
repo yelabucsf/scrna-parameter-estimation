@@ -1,0 +1,274 @@
+{
+  "args": {
+    "genes": 32,
+    "boots": 1000,
+    "batch": 32,
+    "row_batch": 256,
+    "sampler_mib": 256,
+    "modes": [
+      "baseline",
+      "wide",
+      "graph"
+    ],
+    "validate": true,
+    "out": "experimental/gpu_acceleration/results_memory_smoke"
+  },
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "torch": "2.9.0+cu128",
+  "runs": [
+    {
+      "mode": "baseline",
+      "trial": 0,
+      "wall_seconds": 3.9696788910077885,
+      "stages_seconds": {
+        "compression": 0.11127731599844992,
+        "bootstrap": 1.144926703069359,
+        "transform": 0.44620566320372745,
+        "regression": 0.3171726999862585
+      },
+      "peak_allocated_gib": 0.024497509002685547,
+      "peak_reserved_gib": 0.04296875,
+      "regression_checks": [
+        {
+          "max_abs_error": 2.731148640577885e-14,
+          "timings": {
+            "reference_cpu_with_transfer": {
+              "seconds": [
+                0.2154496519942768,
+                0.21935389898135327,
+                0.20493806697777472
+              ],
+              "max_abs_error": 0.0
+            },
+            "mapped_cpu_with_transfer": {
+              "seconds": [
+                0.07801674300571904,
+                0.06353614601539448,
+                0.0565325110219419
+              ],
+              "max_abs_error": 2.7422508708241367e-14
+            },
+            "mapped_gpu_fp64_resident": {
+              "seconds": [
+                0.05696259401156567,
+                0.039817442011553794,
+                0.04676939902128652
+              ],
+              "max_abs_error": 2.731148640577885e-14
+            },
+            "mapped_gpu_fp32_resident": {
+              "seconds": [
+                0.05503255999065004,
+                0.06643413897836581,
+                0.043792353972094133
+              ],
+              "max_abs_error": 6.98229387613436e-06
+            }
+          }
+        }
+      ]
+    },
+    {
+      "mode": "wide",
+      "trial": 1,
+      "wall_seconds": 1.0473802449996583,
+      "stages_seconds": {
+        "compression": 0.12366651900811121,
+        "bootstrap": 0.48205600801156834,
+        "transform": 0.03736501399544068,
+        "regression": 0.0673391169984825
+      },
+      "peak_allocated_gib": 0.03644847869873047,
+      "peak_reserved_gib": 0.048828125,
+      "regression_checks": [
+        2.6423307986078726e-14
+      ],
+      "capture_seconds": 0.0,
+      "cached_graphs": 0,
+      "graph_replays_cumulative": 0,
+      "vs_baseline": {
+        "mean_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0011040862078961072,
+          "max_abs_diff": 0.009333444007004088,
+          "abs_diff_over_se_quantiles": [
+            0.026775679187957886,
+            0.0607601899140402,
+            0.07242041175555827
+          ]
+        },
+        "mean_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0019191034493454204,
+          "max_abs_diff": 0.007246370846192007,
+          "ratio_quantiles": [
+            0.9346820636801024,
+            0.9444512345505486,
+            1.008187095888763,
+            1.0532491966442452,
+            1.0789061370805346
+          ]
+        },
+        "mean_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 4.4714576194115663e-07,
+          "max_abs_diff": 0.019775762681991327
+        },
+        "var_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.011407775868194872,
+          "max_abs_diff": 0.06878069801322528,
+          "abs_diff_over_se_quantiles": [
+            0.03802837720741331,
+            0.1362642798628434,
+            0.20097859619537883
+          ]
+        },
+        "var_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.008493823820282825,
+          "max_abs_diff": 0.048404004297635694,
+          "ratio_quantiles": [
+            0.9062330575050364,
+            0.9336933685983257,
+            1.0032145872288403,
+            1.0559761810541533,
+            1.06599866800251
+          ]
+        },
+        "var_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.01079788840294224,
+          "max_abs_diff": 0.04747751253061838
+        }
+      }
+    },
+    {
+      "mode": "graph",
+      "trial": 2,
+      "wall_seconds": 0.7228370820230339,
+      "stages_seconds": {
+        "compression": 0.14719365199562162,
+        "bootstrap": 0.2306085200398229,
+        "transform": 0.04100054400623776,
+        "regression": 0.0729607229877729
+      },
+      "peak_allocated_gib": 0.038539886474609375,
+      "peak_reserved_gib": 0.05859375,
+      "regression_checks": [
+        2.6756374893466273e-14
+      ],
+      "capture_seconds": 0.0750225450610742,
+      "cached_graphs": 5,
+      "graph_replays_cumulative": 50,
+      "vs_baseline": {
+        "mean_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0021044747238548878,
+          "max_abs_diff": 0.01022208844609096,
+          "abs_diff_over_se_quantiles": [
+            0.030392732114419452,
+            0.08441260187689575,
+            0.09468044739933612
+          ]
+        },
+        "mean_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0010065017824975597,
+          "max_abs_diff": 0.006512353925789124,
+          "ratio_quantiles": [
+            0.9343931024473318,
+            0.9585195025745178,
+            0.997300885078497,
+            1.0516571925412332,
+            1.0867934412938278
+          ]
+        },
+        "mean_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 4.2084117489824554e-07,
+          "max_abs_diff": 0.02174987733476419
+        },
+        "var_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.01255044918687756,
+          "max_abs_diff": 0.0524644475558492,
+          "abs_diff_over_se_quantiles": [
+            0.03814293276660938,
+            0.10692685435590521,
+            0.12138362520872502
+          ]
+        },
+        "var_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.009508650693695803,
+          "max_abs_diff": 0.0377963742598762,
+          "ratio_quantiles": [
+            0.9199415089230615,
+            0.9297108118218054,
+            0.9861515728164499,
+            1.0535386764798302,
+            1.0709943870181367
+          ]
+        },
+        "var_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.010251543248582573,
+          "max_abs_diff": 0.03206440657314075
+        }
+      }
+    }
+  ],
+  "sampler_checks": [
+    {
+      "cells": 100,
+      "states": 3,
+      "q": 0.0,
+      "graph_sd_ratios": [
+        1.004483370265615,
+        1.0005167407421032
+      ]
+    },
+    {
+      "cells": 10,
+      "states": 2,
+      "q": 0.07,
+      "graph_sd_ratios": [
+        1.003812644411625,
+        1.0058582228365025
+      ]
+    },
+    {
+      "cells": 70,
+      "states": 70,
+      "q": 0.4,
+      "graph_sd_ratios": [
+        1.001070150128462,
+        1.0081325111221153
+      ]
+    }
+  ],
+  "dataset": [
+    "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "CD14+ Monocytes",
+    0.07
+  ],
+  "genes": 32,
+  "boots": 1000
+}

@@ -1,0 +1,222 @@
+{
+  "args": {
+    "phase": "full",
+    "out": "experimental/gpu_acceleration/results_cell_matmul_smoke",
+    "boots": 2000,
+    "genes": 32,
+    "batch": 32,
+    "gene_counts": [
+      128
+    ],
+    "cells": [
+      100,
+      200,
+      500,
+      1000,
+      2000,
+      5000,
+      10000,
+      20000
+    ],
+    "repeats": 2,
+    "modes": [
+      "gpu_compressed",
+      "gpu_matrix",
+      "cpu_matrix"
+    ],
+    "validate": true
+  },
+  "dataset": [
+    "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "CD14+ Monocytes",
+    0.07
+  ],
+  "genes": 32,
+  "runs": [
+    {
+      "mode": "gpu_compressed",
+      "trial": 0,
+      "seconds": 1.3466937550001603,
+      "stages": {
+        "compression": 0.42369115899964527,
+        "bootstrap": 0.36941101899992645,
+        "transform": 0.14882115199998225,
+        "regression": 0.17446408600062568
+      },
+      "checks": [
+        2.6423307986078726e-14
+      ],
+      "peak_gpu_allocated_gib": 0.077850341796875
+    },
+    {
+      "mode": "gpu_matrix",
+      "trial": 1,
+      "seconds": 0.4980732779995378,
+      "stages": {
+        "preparation": 0.022944137000195042,
+        "weights": 0.014505338000162737,
+        "bootstrap": 0.06602468600158318,
+        "transform": 0.02758081799856882,
+        "regression": 0.032937408999714535
+      },
+      "checks": [
+        {
+          "reference_cpu_max_abs": 2.731148640577885e-14,
+          "other_device_max_abs": 2.7533531010703882e-14
+        }
+      ],
+      "peak_gpu_allocated_gib": 0.08296346664428711,
+      "vs_compressed": {
+        "mean_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0013246270620597134,
+          "max_abs_diff": 0.005932906687884765,
+          "abs_diff_over_se_quantiles": [
+            0.02408899332204096,
+            0.05294321084940702,
+            0.061461465360437374
+          ]
+        },
+        "mean_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.001112660031772697,
+          "max_abs_diff": 0.0038204520082936733,
+          "ratio_quantiles": [
+            0.9606317312991877,
+            0.9612164845854653,
+            0.9888619783051618,
+            1.0233474250336518,
+            1.0419253077624695
+          ]
+        },
+        "mean_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 2.083527178945094e-07,
+          "max_abs_diff": 0.018553569953436433
+        },
+        "var_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.006007118405059369,
+          "max_abs_diff": 0.03387489309942082,
+          "abs_diff_over_se_quantiles": [
+            0.019695864984067966,
+            0.0654568176535545,
+            0.08327590414820163
+          ]
+        },
+        "var_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.006517664612989388,
+          "max_abs_diff": 0.0338111391919107,
+          "ratio_quantiles": [
+            0.9397963962388156,
+            0.9554509128496186,
+            1.0038885500752177,
+            1.0444963221518606,
+            1.060502565236471
+          ]
+        },
+        "var_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0052864341149574945,
+          "max_abs_diff": 0.028893803982151328
+        }
+      }
+    },
+    {
+      "mode": "cpu_matrix",
+      "trial": 2,
+      "seconds": 0.9712530239994521,
+      "stages": {
+        "preparation": 0.023575096000058693,
+        "weights": 0.09554046999983257,
+        "bootstrap": 0.08394343899999512,
+        "transform": 0.37619276599980367,
+        "regression": 0.0969822059996659
+      },
+      "checks": [
+        {
+          "reference_cpu_max_abs": 2.6756374893466273e-14,
+          "other_device_max_abs": 2.6867397195928788e-14
+        }
+      ],
+      "peak_gpu_allocated_gib": 0.025690555572509766,
+      "vs_compressed": {
+        "mean_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0011305159716839958,
+          "max_abs_diff": 0.005633439886219893,
+          "abs_diff_over_se_quantiles": [
+            0.019732271755125923,
+            0.05650713534149347,
+            0.06970359595553202
+          ]
+        },
+        "mean_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0009264780985555471,
+          "max_abs_diff": 0.002848286418613455,
+          "ratio_quantiles": [
+            0.9504781525029159,
+            0.9732511303968896,
+            0.9996881919247392,
+            1.027651440801471,
+            1.0411457245187832
+          ]
+        },
+        "mean_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 2.8832724235040296e-08,
+          "max_abs_diff": 0.009168312714934679
+        },
+        "var_coef": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.0064808675293853285,
+          "max_abs_diff": 0.03887697475226498,
+          "abs_diff_over_se_quantiles": [
+            0.025412544015822162,
+            0.07438116025506254,
+            0.08274030365630515
+          ]
+        },
+        "var_se": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.004201727771663513,
+          "max_abs_diff": 0.025531186592924915,
+          "ratio_quantiles": [
+            0.9560867310453889,
+            0.9664617387482887,
+            1.0048590667750912,
+            1.0439796182976786,
+            1.0520905397409797
+          ]
+        },
+        "var_asl": {
+          "n_finite": 32,
+          "nan_mismatch": 0,
+          "median_abs_diff": 0.004968908992084298,
+          "max_abs_diff": 0.02477069818019839
+        }
+      }
+    }
+  ],
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "cpu_threads": 2,
+  "torch": "2.9.0+cu128",
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "tf32": false
+}

@@ -8,13 +8,6 @@ setup(
     author='Min Cheol Kim',
     packages=find_packages(),
     python_requires='>=3.9',
-    install_requires=[
-        'anndata>=0.8',
-        'joblib',
-        'numpy',
-        'pandas',
-        'scikit-learn',
-        'scipy',
-        'statsmodels',
-    ],
+    install_requires=['scanpy'],
+    extras_require={'gpu': ['torch>=2.1']},
 )

@@ -1,0 +1,59 @@
+{
+  "args": {
+    "data": "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "cell": "CD14+ Monocytes",
+    "q": 0.07,
+    "genes": 1742,
+    "boots": 10000,
+    "batch": 256,
+    "cpu_jobs": 2,
+    "modes": [
+      "gpu"
+    ],
+    "validate": false,
+    "out": "experimental/gpu_acceleration/results_full256"
+  },
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "torch": "2.9.0+cu128",
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "cells": 5341,
+  "eligible_genes": 1742,
+  "tested_genes": 1742,
+  "group_cells": {
+    "sg^1016^ctrl": 368,
+    "sg^1256^ctrl": 389,
+    "sg^1015^ctrl": 778,
+    "sg^101^ctrl": 202,
+    "sg^1244^ctrl": 415,
+    "sg^1488^ctrl": 292,
+    "sg^1039^ctrl": 112,
+    "sg^107^ctrl": 207,
+    "sg^101^stim": 253,
+    "sg^1016^stim": 328,
+    "sg^1256^stim": 374,
+    "sg^1244^stim": 289,
+    "sg^1488^stim": 348,
+    "sg^1015^stim": 667,
+    "sg^1039^stim": 150,
+    "sg^107^stim": 169
+  },
+  "preparation_seconds": 2.4681267749983817,
+  "runs": {
+    "gpu": {
+      "wall_seconds": 32.46175726299407,
+      "peak_allocated_mb": 1549.44482421875,
+      "stages_seconds": {
+        "compression": 5.771708467771532,
+        "bootstrap": 18.378212915122276,
+        "transform": 2.1272021450276952,
+        "regression": 3.0667435890063643
+      },
+      "padding_fraction": 0.2269487830121324,
+      "same_input_max_abs_errors": []
+    }
+  },
+  "comparisons": {}
+}

@@ -1,0 +1,1119 @@
+{
+  "args": {
+    "phase": "sweep",
+    "out": "experimental/gpu_acceleration/results_cell_matmul",
+    "boots": 10000,
+    "genes": 1742,
+    "batch": 256,
+    "gene_counts": [
+      128
+    ],
+    "cells": [
+      100,
+      200,
+      500,
+      1000,
+      2000,
+      5000,
+      10000,
+      20000
+    ],
+    "repeats": 2,
+    "modes": [
+      "gpu_compressed",
+      "gpu_matrix",
+      "cpu_matrix",
+      "gpu_matrix",
+      "gpu_compressed"
+    ],
+    "validate": false
+  },
+  "dataset": [
+    "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "CD14+ Monocytes",
+    0.07
+  ],
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "cpu_threads": 2,
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "torch": "2.9.0+cu128",
+  "tf32": false,
+  "runs": [
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 1.5655800790000285,
+      "stages": {},
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.411028659939674e-05,
+      "median_variance_sd": 1.118518620297839e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.016304755999954068,
+      "stages": {
+        "preparation": 0.0001940219999596593,
+        "weights": 0.006876996996652451,
+        "multiply": 0.005727656999624742
+      },
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.407368810963817e-05,
+      "median_variance_sd": 1.115390091399604e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.039271884000299906,
+      "stages": {
+        "preparation": 0.0039952639999683015,
+        "sampling": 0.035210453999752644
+      },
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.05393409729003906,
+      "median_mean_sd": 2.4162647605407983e-05,
+      "median_variance_sd": 1.1064641647351436e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.021239349999632395,
+      "stages": {
+        "preparation": 0.0011612770003921469,
+        "weights": 0.007223431999591412,
+        "multiply": 0.012057080999511527
+      },
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.02720499038696289,
+      "median_mean_sd": 2.4036457034526393e-05,
+      "median_variance_sd": 1.1253430187707636e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.011896354999407777,
+      "stages": {
+        "preparation": 0.0010159910007132567,
+        "weights": 0.0034669379992919858,
+        "multiply": 0.006978751002861827
+      },
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.02720499038696289,
+      "median_mean_sd": 2.4134151317412034e-05,
+      "median_variance_sd": 1.1224754459249198e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.06687101099942083,
+      "stages": {
+        "preparation": 0.0034860890000345535,
+        "sampling": 0.0633330680002473
+      },
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.05393409729003906,
+      "median_mean_sd": 2.4246615794254467e-05,
+      "median_variance_sd": 1.124263704355144e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.011119116000372742,
+      "stages": {
+        "preparation": 0.00014280899995355867,
+        "weights": 0.005129652997311496,
+        "multiply": 0.004572877998725744
+      },
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.4330909582204185e-05,
+      "median_variance_sd": 1.117685499707477e-08
+    },
+    {
+      "genes": 128,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 1.565463699999782,
+      "stages": {},
+      "median_states": 32.0,
+      "max_states": 99,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.4188004710068462e-05,
+      "median_variance_sd": 1.1160386898974913e-08
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 2.374087655999574,
+      "stages": {},
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.6534256405684304e-05,
+      "median_variance_sd": 7.806197975727289e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.018284845999914978,
+      "stages": {
+        "preparation": 0.00024121100068441592,
+        "weights": 0.0097618939998938,
+        "multiply": 0.006934132001333637
+      },
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.676587271504104e-05,
+      "median_variance_sd": 7.837443583014192e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.31302243800018914,
+      "stages": {
+        "preparation": 0.005249577000540739,
+        "sampling": 0.30772182599957887
+      },
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.051090240478515625,
+      "median_mean_sd": 1.6624073396087624e-05,
+      "median_variance_sd": 7.8739086362134e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.017031028000019433,
+      "stages": {
+        "preparation": 0.0012162780003563967,
+        "weights": 0.007848976001696428,
+        "multiply": 0.007492853997973725
+      },
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.027401447296142578,
+      "median_mean_sd": 1.65910241776146e-05,
+      "median_variance_sd": 7.779609845215418e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.013324231999831682,
+      "stages": {
+        "preparation": 0.0012009639995085308,
+        "weights": 0.006076516999200976,
+        "multiply": 0.005626438997751393
+      },
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.027401447296142578,
+      "median_mean_sd": 1.67719044839032e-05,
+      "median_variance_sd": 7.803306445453018e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.09837251999942964,
+      "stages": {
+        "preparation": 0.0035734390003199223,
+        "sampling": 0.09473201499986317
+      },
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.051090240478515625,
+      "median_mean_sd": 1.676457395660691e-05,
+      "median_variance_sd": 7.768548471176473e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.018518836999646737,
+      "stages": {
+        "preparation": 0.0002347899999222136,
+        "weights": 0.00993246499911038,
+        "multiply": 0.0069555579975713044
+      },
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.6606405552010983e-05,
+      "median_variance_sd": 7.727875228624725e-09
+    },
+    {
+      "genes": 128,
+      "cells": 200,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 2.337338569000167,
+      "stages": {},
+      "median_states": 40.0,
+      "max_states": 193,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.6574331612588257e-05,
+      "median_variance_sd": 7.819960226495092e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 3.953391635999651,
+      "stages": {},
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.1046847291095809e-05,
+      "median_variance_sd": 7.625129579329475e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.04296387000067625,
+      "stages": {
+        "preparation": 0.0006392240002242033,
+        "weights": 0.024653388999468007,
+        "multiply": 0.01585844999863184
+      },
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.1004930456692819e-05,
+      "median_variance_sd": 7.577941829595147e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.5356707310002093,
+      "stages": {
+        "preparation": 0.010693336000258569,
+        "sampling": 0.5248959470000045
+      },
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.044153690338134766,
+      "median_mean_sd": 1.1080354852310847e-05,
+      "median_variance_sd": 7.63189955677035e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.015572115999930247,
+      "stages": {
+        "preparation": 0.0016770359998190543,
+        "weights": 0.007135133997508092,
+        "multiply": 0.006323011997665162
+      },
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.027991771697998047,
+      "median_mean_sd": 1.1009201443812344e-05,
+      "median_variance_sd": 7.658104372865182e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.011824755000816367,
+      "stages": {
+        "preparation": 0.0015695920001235208,
+        "weights": 0.00537462099964614,
+        "multiply": 0.0044913319952684105
+      },
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.027991771697998047,
+      "median_mean_sd": 1.11006966108107e-05,
+      "median_variance_sd": 7.623828679470535e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.20049231400025747,
+      "stages": {
+        "preparation": 0.004473996999877272,
+        "sampling": 0.19596213299973897
+      },
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.044153690338134766,
+      "median_mean_sd": 1.1008987712557428e-05,
+      "median_variance_sd": 7.54461559893116e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.042503616000431066,
+      "stages": {
+        "preparation": 0.0005484339999384247,
+        "weights": 0.02462427099908382,
+        "multiply": 0.015688988999499998
+      },
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.1034996532544028e-05,
+      "median_variance_sd": 7.664763046477674e-09
+    },
+    {
+      "genes": 128,
+      "cells": 500,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 3.779690399000174,
+      "stages": {},
+      "median_states": 56.5,
+      "max_states": 459,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.0973332110304892e-05,
+      "median_variance_sd": 7.663944768888522e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 4.912229753999782,
+      "stages": {},
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 7.940102927226375e-06,
+      "median_variance_sd": 4.927530680984559e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.09803523200025666,
+      "stages": {
+        "preparation": 0.00114452399975562,
+        "weights": 0.061000524999144545,
+        "multiply": 0.03413911300140171
+      },
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 7.878888027335051e-06,
+      "median_variance_sd": 4.963308430916413e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.540455794999616,
+      "stages": {
+        "preparation": 0.009031732000039483,
+        "sampling": 0.5313674549997813
+      },
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.038730621337890625,
+      "median_mean_sd": 7.884654223744292e-06,
+      "median_variance_sd": 4.929767705164068e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.02325513400046475,
+      "stages": {
+        "preparation": 0.0030200949995560222,
+        "weights": 0.007335338003031211,
+        "multiply": 0.011089003995039093
+      },
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.02897500991821289,
+      "median_mean_sd": 7.897486284491606e-06,
+      "median_variance_sd": 4.971696832001271e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.019679177999933017,
+      "stages": {
+        "preparation": 0.002991770999869914,
+        "weights": 0.006084497998926963,
+        "multiply": 0.009055292999619269
+      },
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.02897500991821289,
+      "median_mean_sd": 7.839164027245715e-06,
+      "median_variance_sd": 4.894538996325082e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.2946406629998819,
+      "stages": {
+        "preparation": 0.005138450000231387,
+        "sampling": 0.28943929799970647
+      },
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.038730621337890625,
+      "median_mean_sd": 7.92348691902589e-06,
+      "median_variance_sd": 4.947715126490948e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.09703136100051779,
+      "stages": {
+        "preparation": 0.0011925650005650823,
+        "weights": 0.061149082996962534,
+        "multiply": 0.03297552700041706
+      },
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 7.80371919972822e-06,
+      "median_variance_sd": 4.94317697885549e-09
+    },
+    {
+      "genes": 128,
+      "cells": 1000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 4.862073260000216,
+      "stages": {},
+      "median_states": 64.5,
+      "max_states": 858,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 7.867487808179e-06,
+      "median_variance_sd": 4.941394422983606e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 6.775518489000206,
+      "stages": {},
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 5.52611144991119e-06,
+      "median_variance_sd": 5.1023077541949774e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.25972575200012216,
+      "stages": {
+        "preparation": 0.005098997000459349,
+        "weights": 0.18409736300054647,
+        "multiply": 0.06799628699991445
+      },
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 5.55050701223081e-06,
+      "median_variance_sd": 5.067974928607555e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.6681201640003565,
+      "stages": {
+        "preparation": 0.010707816999456554,
+        "sampling": 0.6569011239998872
+      },
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.04781961441040039,
+      "median_mean_sd": 5.53826203031349e-06,
+      "median_variance_sd": 5.07900832502628e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.02310916499936866,
+      "stages": {
+        "preparation": 0.004027257000416284,
+        "weights": 0.007246932001180539,
+        "multiply": 0.011395968000215362
+      },
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.0338902473449707,
+      "median_mean_sd": 5.568799679167569e-06,
+      "median_variance_sd": 5.065637687096114e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.018905504999565892,
+      "stages": {
+        "preparation": 0.003885273999912897,
+        "weights": 0.007294260002709052,
+        "multiply": 0.00733593600216409
+      },
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.0338902473449707,
+      "median_mean_sd": 5.565133506024722e-06,
+      "median_variance_sd": 5.047556150827859e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.42865107899979193,
+      "stages": {
+        "preparation": 0.004766885999742954,
+        "sampling": 0.42345891000059055
+      },
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.04781961441040039,
+      "median_mean_sd": 5.561293619393837e-06,
+      "median_variance_sd": 5.0594959333238876e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.2620922390005944,
+      "stages": {
+        "preparation": 0.0034915590003947727,
+        "weights": 0.1896385830032159,
+        "multiply": 0.06667124499927013
+      },
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 5.555056304729078e-06,
+      "median_variance_sd": 5.045464490649465e-09
+    },
+    {
+      "genes": 128,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 6.580705514999863,
+      "stages": {},
+      "median_states": 79.5,
+      "max_states": 1553,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 5.555463050718392e-06,
+      "median_variance_sd": 5.044799336182442e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 9.266758965000008,
+      "stages": {},
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 3.4893087546193835e-06,
+      "median_variance_sd": 3.931711500901031e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.6633965729997726,
+      "stages": {
+        "preparation": 0.010275682000610686,
+        "weights": 0.46185822900133644,
+        "multiply": 0.18951784399723692
+      },
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 3.502469326122082e-06,
+      "median_variance_sd": 3.9416061525798796e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 1.0165938860000097,
+      "stages": {
+        "preparation": 0.03048714699980337,
+        "sampling": 0.98604405199967
+      },
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.05056428909301758,
+      "median_mean_sd": 3.4873662571044406e-06,
+      "median_variance_sd": 3.9583794020359164e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.03360545600025944,
+      "stages": {
+        "preparation": 0.013394722000157344,
+        "weights": 0.011398811996514269,
+        "multiply": 0.00827989900153625
+      },
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.06055498123168945,
+      "median_mean_sd": 3.533039034664398e-06,
+      "median_variance_sd": 3.924180980163783e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.03260334099923057,
+      "stages": {
+        "preparation": 0.010810083000251325,
+        "weights": 0.012192706998575886,
+        "multiply": 0.009045645001606317
+      },
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.06055498123168945,
+      "median_mean_sd": 3.515723619784694e-06,
+      "median_variance_sd": 3.922599578487507e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.7830665889996453,
+      "stages": {
+        "preparation": 0.00875774599990109,
+        "sampling": 0.7742188869997335
+      },
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.05056428909301758,
+      "median_mean_sd": 3.503557536532753e-06,
+      "median_variance_sd": 3.912437485098508e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.5483109960005095,
+      "stages": {
+        "preparation": 0.008712355000170646,
+        "weights": 0.3950359729969932,
+        "multiply": 0.14285249099975772
+      },
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 3.505069344100775e-06,
+      "median_variance_sd": 3.919282232089927e-09
+    },
+    {
+      "genes": 128,
+      "cells": 5000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 9.41235728599986,
+      "stages": {},
+      "median_states": 98.5,
+      "max_states": 2926,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 3.5077303669889005e-06,
+      "median_variance_sd": 3.92196328960099e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 9.858569964999333,
+      "stages": {},
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.4657292515142492e-06,
+      "median_variance_sd": 2.6968374680534245e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 1.3428873570001088,
+      "stages": {
+        "preparation": 0.021133516999725543,
+        "weights": 1.0100351689980016,
+        "multiply": 0.3075272940004652
+      },
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.4953508273029e-06,
+      "median_variance_sd": 2.6654629614597525e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 1.1796779490005065,
+      "stages": {
+        "preparation": 0.0538683860004312,
+        "sampling": 1.1257440429999406
+      },
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.05617809295654297,
+      "median_mean_sd": 2.4605831185908755e-06,
+      "median_variance_sd": 2.711876501138022e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.06214888599970436,
+      "stages": {
+        "preparation": 0.031075983999471646,
+        "weights": 0.02036412000143173,
+        "multiply": 0.01026235699919198
+      },
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.1043858528137207,
+      "median_mean_sd": 2.4811422463244526e-06,
+      "median_variance_sd": 2.701242785008162e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.05482134599969868,
+      "stages": {
+        "preparation": 0.022645288000603614,
+        "weights": 0.020733158998154977,
+        "multiply": 0.010970147000080033
+      },
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.1043858528137207,
+      "median_mean_sd": 2.462298198224744e-06,
+      "median_variance_sd": 2.7072779573700245e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.8073930729997301,
+      "stages": {
+        "preparation": 0.016692921999492683,
+        "sampling": 0.7906279549997635
+      },
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.05617809295654297,
+      "median_mean_sd": 2.45227488449018e-06,
+      "median_variance_sd": 2.7067623697973886e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 1.209734023999772,
+      "stages": {
+        "preparation": 0.018747434000033536,
+        "weights": 0.8991879060004067,
+        "multiply": 0.2881987280015892
+      },
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.4704913812456653e-06,
+      "median_variance_sd": 2.7014901426980487e-09
+    },
+    {
+      "genes": 128,
+      "cells": 10000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 10.056379631999334,
+      "stages": {},
+      "median_states": 93.0,
+      "max_states": 2775,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 2.471239633301659e-06,
+      "median_variance_sd": 2.6879250237096275e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 11.269086373000391,
+      "stages": {},
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.7346737515300134e-06,
+      "median_variance_sd": 1.7721834732454466e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 2.7664817369995944,
+      "stages": {
+        "preparation": 0.04849634899983357,
+        "weights": 2.1316869000002043,
+        "multiply": 0.5846602579986211
+      },
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.7410465034117806e-06,
+      "median_variance_sd": 1.758779788474385e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 1.259130854000432,
+      "stages": {
+        "preparation": 0.10180587099966942,
+        "sampling": 1.1572628250005437
+      },
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.10533428192138672,
+      "median_mean_sd": 1.7364548057230422e-06,
+      "median_variance_sd": 1.755664058578077e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.12759500100037258,
+      "stages": {
+        "preparation": 0.07230901200000517,
+        "weights": 0.03813040199838724,
+        "multiply": 0.016699380001227837
+      },
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.1906743049621582,
+      "median_mean_sd": 1.7342487126370543e-06,
+      "median_variance_sd": 1.7500960680649769e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.1159214230001453,
+      "stages": {
+        "preparation": 0.059216167999693425,
+        "weights": 0.038144934000229114,
+        "multiply": 0.018077632002132304
+      },
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.1906743049621582,
+      "median_mean_sd": 1.7366828615195118e-06,
+      "median_variance_sd": 1.7575783051171356e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.9711745200002042,
+      "stages": {
+        "preparation": 0.025904627999807417,
+        "sampling": 0.9452028160003465
+      },
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.10533428192138672,
+      "median_mean_sd": 1.7460433809901588e-06,
+      "median_variance_sd": 1.745060318469882e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 2.5661665919997176,
+      "stages": {
+        "preparation": 0.04705746300078317,
+        "weights": 1.9332465919978858,
+        "multiply": 0.5841485190030653
+      },
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.7579097857378656e-06,
+      "median_variance_sd": 1.7518561046259151e-09
+    },
+    {
+      "genes": 128,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 11.344369069000095,
+      "stages": {},
+      "median_states": 101.0,
+      "max_states": 3004,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.7301188817358408e-06,
+      "median_variance_sd": 1.7520855240615513e-09
+    }
+  ],
+  "scope": "Computational pool of real CD14+ cells; no biological inference on pooled/resampled groups. Above 5341 cells, sampling with replacement. Preparation and sampling included; regression excluded."
+}

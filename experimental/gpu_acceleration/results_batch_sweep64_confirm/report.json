@@ -1,0 +1,63 @@
+{
+  "args": {
+    "prepared": "experimental/gpu_acceleration/results/prepared.pkl",
+    "batches": [
+      1024
+    ],
+    "repeats": 1,
+    "boots": 10000,
+    "sampler_mib": 64,
+    "out": "experimental/gpu_acceleration/results_batch_sweep64_confirm/report.json"
+  },
+  "dataset": [
+    "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "CD14+ Monocytes",
+    0.07
+  ],
+  "genes": 1742,
+  "cells": 5341,
+  "groups": 16,
+  "torch": "2.9.0+cu128",
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "total_vram_gib": 11.99951171875,
+  "initial_free_vram_gib": 10.9130859375,
+  "runs": [
+    {
+      "repeat": 0,
+      "batch": 1024,
+      "wall_seconds": 26.489997605007375,
+      "peak_allocated_gib": 4.8220062255859375,
+      "peak_reserved_gib": 7.669921875,
+      "stages_seconds": {
+        "compression": 4.418229779956164,
+        "bootstrap": 17.01419966193498,
+        "transform": 1.4498901999904774,
+        "regression": 1.3735959659970831
+      },
+      "padding_fraction": 0.28094503796795356,
+      "nonfinite": {
+        "mean_coef": 0,
+        "mean_se": 0,
+        "mean_asl": 0,
+        "var_coef": 0,
+        "var_se": 0,
+        "var_asl": 0
+      }
+    }
+  ],
+  "summary": {
+    "1024": {
+      "median_seconds": 26.489997605007375,
+      "range_seconds": [
+        26.489997605007375,
+        26.489997605007375
+      ],
+      "peak_allocated_gib": 4.8220062255859375,
+      "peak_reserved_gib": 7.669921875
+    }
+  }
+}

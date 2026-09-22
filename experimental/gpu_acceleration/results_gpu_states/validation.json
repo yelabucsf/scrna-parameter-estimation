@@ -1,0 +1,209 @@
+{
+  "synthetic": [
+    {
+      "genes": 7,
+      "cells": 1,
+      "states": 7,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 17,
+      "states": 54,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 100,
+      "states": 96,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 1,
+      "states": 7,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 17,
+      "states": 55,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 100,
+      "states": 99,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 1,
+      "states": 7,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 17,
+      "states": 54,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 7,
+      "cells": 100,
+      "states": 100,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    },
+    {
+      "genes": 3,
+      "cells": 4,
+      "states": 8,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0
+    }
+  ],
+  "real_groups": [
+    {
+      "genes": 1742,
+      "cells": 368,
+      "states": 93641,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1016^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 389,
+      "states": 121555,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1256^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 778,
+      "states": 142741,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1015^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 202,
+      "states": 92705,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^101^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 415,
+      "states": 111449,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1244^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 292,
+      "states": 84896,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1488^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 112,
+      "states": 72825,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1039^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 207,
+      "states": 82509,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^107^ctrl"
+    },
+    {
+      "genes": 1742,
+      "cells": 253,
+      "states": 94524,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^101^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 328,
+      "states": 81324,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1016^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 374,
+      "states": 103410,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1256^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 289,
+      "states": 87214,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1244^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 348,
+      "states": 88098,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1488^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 667,
+      "states": 116986,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1015^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 150,
+      "states": 80717,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^1039^stim"
+    },
+    {
+      "genes": 1742,
+      "cells": 169,
+      "states": 69605,
+      "nonidentical_coefficients": 0,
+      "max_abs_coefficient_error": 0.0,
+      "group": "sg^107^stim"
+    }
+  ],
+  "rejected_invalid_cases": 6,
+  "same_rng_moment_max_abs_errors": [
+    0.0,
+    0.0
+  ]
+}

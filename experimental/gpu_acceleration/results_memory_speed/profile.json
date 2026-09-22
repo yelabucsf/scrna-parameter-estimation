@@ -1,0 +1,28 @@
+{
+  "group": "sg^1015^ctrl",
+  "cells": 778,
+  "gene_group_rows": 256,
+  "boots": 10000,
+  "max_states": 124,
+  "method": "CUDA events; includes host launch gaps; excludes preparation/transfers",
+  "timings": [
+    {
+      "repeat": 0,
+      "binomial_ms": 220.5511686205864,
+      "moment_update_ms": 37.06777539849281,
+      "binomial_fraction": 0.8561139378176025
+    },
+    {
+      "repeat": 1,
+      "binomial_ms": 221.10310472548008,
+      "moment_update_ms": 36.714495062828064,
+      "binomial_fraction": 0.8575950784858208
+    },
+    {
+      "repeat": 2,
+      "binomial_ms": 222.0216315984726,
+      "moment_update_ms": 37.17222303152084,
+      "binomial_fraction": 0.8565852454928561
+    }
+  ]
+}

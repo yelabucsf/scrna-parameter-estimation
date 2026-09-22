@@ -506,11 +506,26 @@ def ht_1d_moments(
     verbose=1,
     num_cpus=1,
     random_state=5,
+    backend="cpu",
+    gpu_memory_budget=None,
+    gpu_batch_size=256,
+    gpu_device="cuda",
     **kwargs):
     """
         Performs hypothesis testing for 1D moments.
+
+        backend='cpu' retains the reference implementation. backend='gpu' uses
+        shared cell bootstrap weights and CUDA matrix multiplication (optional
+        memento-de[gpu] extra). The GPU path supports hyper_relative, norm ASL,
+        and resample_rep=False, including gene-specific treatment/covariates.
+        gpu_memory_budget=None uses half the free device memory (up to 8 GiB).
+        An integer sets a working-memory target in MiB, not a hard bound
+        on CUDA context or allocator-reserved memory. gpu_batch_size caps the
+        number of simultaneous genes. CPU/GPU bootstrap draws differ.
     """
     
+    if backend not in ('cpu', 'gpu'):
+        raise ValueError("backend must be 'cpu' or 'gpu'")
     if not inplace:
         adata = adata.copy()
     
@@ -552,32 +567,40 @@ def ht_1d_moments(
     # Initialize empty arrays to hold fitted coefficients and achieved significance level
     mean_coef, mean_se, mean_asl, var_coef, var_se, var_asl = [np.zeros(num_tests)*np.nan for i in range(6)]
     
-    ht_funcs = []
-    task_random_states = _spawn_task_random_states(
-        random_state, len(test_genes)
-    )
-    for test_gene, data_idx, task_random_state in zip(
-        test_genes, test_gene_indices, task_random_states
-    ):
+    gpu_info = None
+    if backend == 'gpu':
+        from ._gpu import ht_1d as gpu_ht_1d
+        results, gpu_info = gpu_ht_1d(
+            adata, test_genes, test_gene_indices, treatment, covariate,
+            treatment_for_gene, covariate_for_gene, num_boot, random_state,
+            gpu_memory_budget, gpu_batch_size, gpu_device, **kwargs)
+    else:
+        ht_funcs = []
+        task_random_states = _spawn_task_random_states(
+            random_state, len(test_genes)
+        )
+        for test_gene, data_idx, task_random_state in zip(
+            test_genes, test_gene_indices, task_random_states
+        ):
 
-        ht_funcs.append(
-            partial(
-                hypothesis_test._ht_1d,
-                true_mean=[adata.uns['memento']['1d_moments'][group][0][data_idx] for group in adata.uns['memento']['groups']],
-                true_res_var=[adata.uns['memento']['1d_moments'][group][2][data_idx] for group in adata.uns['memento']['groups']],
-                cells=[adata.uns['memento']['group_cells'][group][:, data_idx] for group in adata.uns['memento']['groups']],
-                approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-                covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_gene]].values,
-                treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_gene]].values,
-                Nc_list=Nc_list,
-                num_boot=num_boot,
-                mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
-                q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
-                _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
-                random_state=task_random_state,
-                **kwargs))
+            ht_funcs.append(
+                partial(
+                    hypothesis_test._ht_1d,
+                    true_mean=[adata.uns['memento']['1d_moments'][group][0][data_idx] for group in adata.uns['memento']['groups']],
+                    true_res_var=[adata.uns['memento']['1d_moments'][group][2][data_idx] for group in adata.uns['memento']['groups']],
+                    cells=[adata.uns['memento']['group_cells'][group][:, data_idx] for group in adata.uns['memento']['groups']],
+                    approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
+                    covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[test_gene]].values,
+                    treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[test_gene]].values,
+                    Nc_list=Nc_list,
+                    num_boot=num_boot,
+                    mv_fit=[adata.uns['memento']['mv_regressor'][group] for group in adata.uns['memento']['groups']],
+                    q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
+                    _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
+                    random_state=task_random_state,
+                    **kwargs))
 
-    results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
+        results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
     
     ci = 0
     for output_idx, output in enumerate(results): #ouptut_idx refers to the index of the gene, output refers to the output from the parallel
@@ -602,6 +625,10 @@ def ht_1d_moments(
         'var_asl': var_asl,
         'random_state': random_state,
     })
+
+    if gpu_info is not None:
+        adata.uns['memento']['1d_ht']['backend'] = 'gpu'
+        adata.uns['memento']['1d_ht']['gpu'] = gpu_info
 
     if not inplace:
         return adata
@@ -772,11 +799,22 @@ def ht_2d_moments(
     verbose=3,
     num_cpus=1,
     random_state=5,
+    backend="cpu",
+    gpu_memory_budget=None,
+    gpu_batch_size=256,
+    gpu_device="cuda",
     **kwargs):
     """
-        Performs hypothesis testing for 1D moments.
+        Performs differential correlation testing.
+
+        backend="gpu" uses shared cell resampling on CUDA with hyper_relative,
+        normal ASL, and resample_rep=False. Memory settings match ht_1d_moments;
+        gpu_batch_size counts pairs. Correlations are regressed without a log
+        or Fisher transform, matching the CPU reference.
     """
     
+    if backend not in ("cpu", "gpu"):
+        raise ValueError("backend must be cpu or gpu")
     if not inplace:
         adata = adata.copy()
     
@@ -815,6 +853,20 @@ def ht_2d_moments(
     if covariate is None:
         covariate = pd.DataFrame(np.ones((treatment.shape[0], 1)))
     
+    if backend == 'gpu':
+        from ._gpu import ht_2d as gpu_ht_2d
+        results, info = gpu_ht_2d(
+            adata, treatment, covariate, treatment_for_gene, covariate_for_gene,
+            num_boot, random_state, gpu_memory_budget, gpu_batch_size, gpu_device, **kwargs)
+        values = np.concatenate(results, axis=1) if results else np.empty((3, 0))
+        result = dict(treatment=treatment, covariate=covariate,
+                      corr_coef=values[0], corr_se=values[1], corr_asl=values[2],
+                      random_state=random_state, backend='gpu', gpu=info)
+        if treatment_for_gene is not None:
+            result['treatment_for_gene'] = treatment_for_gene
+        adata.uns['memento']['2d_ht'] = result
+        return adata if not inplace else None
+
     # Get gene idxs
     gene_idx_1 = adata.uns['memento']['2d_moments']['gene_idx_1']
     gene_idx_2 = adata.uns['memento']['2d_moments']['gene_idx_2']

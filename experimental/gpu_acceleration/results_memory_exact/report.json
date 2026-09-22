@@ -1,0 +1,141 @@
+{
+  "args": {
+    "genes": 1742,
+    "boots": 10000,
+    "batch": 256,
+    "row_batch": 1024,
+    "sampler_mib": 256,
+    "modes": [
+      "wide",
+      "graph_exact",
+      "graph_exact",
+      "wide"
+    ],
+    "validate": false,
+    "out": "experimental/gpu_acceleration/results_memory_exact"
+  },
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "torch": "2.9.0+cu128",
+  "runs": [
+    {
+      "mode": "wide",
+      "trial": 0,
+      "wall_seconds": 24.92296346000512,
+      "stages_seconds": {
+        "compression": 4.571418311999878,
+        "bootstrap": 14.38837741696625,
+        "transform": 1.4311862121103331,
+        "regression": 2.178659043973312
+      },
+      "peak_allocated_gib": 1.6331844329833984,
+      "peak_reserved_gib": 4.94921875,
+      "regression_checks": [],
+      "capture_seconds": 0.0,
+      "cached_graphs": 0,
+      "graph_replays_cumulative": 0
+    },
+    {
+      "mode": "graph_exact",
+      "trial": 1,
+      "wall_seconds": 29.876756337005645,
+      "stages_seconds": {
+        "compression": 4.572942442027852,
+        "bootstrap": 19.652641822001897,
+        "transform": 1.374022344010882,
+        "regression": 1.912882898002863
+      },
+      "peak_allocated_gib": 4.172926902770996,
+      "peak_reserved_gib": 6.361328125,
+      "regression_checks": [],
+      "capture_seconds": 5.575887594954111,
+      "cached_graphs": 41,
+      "graph_replays_cumulative": 43
+    },
+    {
+      "mode": "graph_exact",
+      "trial": 2,
+      "wall_seconds": 24.45674914799747,
+      "stages_seconds": {
+        "compression": 4.613965525932144,
+        "bootstrap": 14.316198311978951,
+        "transform": 1.2604171229759231,
+        "regression": 2.035651742015034
+      },
+      "peak_allocated_gib": 4.457292079925537,
+      "peak_reserved_gib": 8.7421875,
+      "regression_checks": [],
+      "capture_seconds": 0.0,
+      "cached_graphs": 41,
+      "graph_replays_cumulative": 86
+    },
+    {
+      "mode": "wide",
+      "trial": 3,
+      "wall_seconds": 24.84131467199768,
+      "stages_seconds": {
+        "compression": 4.561730393994367,
+        "bootstrap": 14.776947482983815,
+        "transform": 1.2865731260972098,
+        "regression": 2.079304774000775
+      },
+      "peak_allocated_gib": 4.478042125701904,
+      "peak_reserved_gib": 8.8203125,
+      "regression_checks": [],
+      "capture_seconds": 0.0,
+      "cached_graphs": 0,
+      "graph_replays_cumulative": 0
+    }
+  ],
+  "sampler_checks": [
+    {
+      "cells": 100,
+      "states": 3,
+      "q": 0.0,
+      "graph_sd_ratios": [
+        1.0050189583145748,
+        1.0025203591765244
+      ],
+      "exact_graph_sd_ratios": [
+        1.0021686931174922,
+        1.0009851497491897
+      ]
+    },
+    {
+      "cells": 10,
+      "states": 2,
+      "q": 0.07,
+      "graph_sd_ratios": [
+        1.0010260701659184,
+        0.9992162527605888
+      ],
+      "exact_graph_sd_ratios": [
+        1.0045460842597405,
+        1.0011974457682467
+      ]
+    },
+    {
+      "cells": 70,
+      "states": 70,
+      "q": 0.4,
+      "graph_sd_ratios": [
+        0.9983297686871564,
+        1.0016671387758025
+      ],
+      "exact_graph_sd_ratios": [
+        0.995924355520084,
+        1.007193652591226
+      ]
+    }
+  ],
+  "dataset": [
+    "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "CD14+ Monocytes",
+    0.07
+  ],
+  "genes": 1742,
+  "boots": 10000
+}

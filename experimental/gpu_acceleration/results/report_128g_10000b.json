@@ -1,0 +1,282 @@
+{
+  "args": {
+    "data": "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "cell": "CD14+ Monocytes",
+    "q": 0.07,
+    "genes": 128,
+    "boots": 10000,
+    "batch": 128,
+    "cpu_jobs": 2,
+    "modes": [
+      "cpu",
+      "cpu_repeat",
+      "gpu_cpu",
+      "gpu_cpu_map",
+      "gpu"
+    ],
+    "validate": false,
+    "out": "experimental/gpu_acceleration/results"
+  },
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "torch": "2.9.0+cu128",
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "cells": 5341,
+  "eligible_genes": 1742,
+  "tested_genes": 128,
+  "group_cells": {
+    "sg^1016^ctrl": 368,
+    "sg^1256^ctrl": 389,
+    "sg^1015^ctrl": 778,
+    "sg^101^ctrl": 202,
+    "sg^1244^ctrl": 415,
+    "sg^1488^ctrl": 292,
+    "sg^1039^ctrl": 112,
+    "sg^107^ctrl": 207,
+    "sg^101^stim": 253,
+    "sg^1016^stim": 328,
+    "sg^1256^stim": 374,
+    "sg^1244^stim": 289,
+    "sg^1488^stim": 348,
+    "sg^1015^stim": 667,
+    "sg^1039^stim": 150,
+    "sg^107^stim": 169
+  },
+  "preparation_seconds": 4.479999115021201,
+  "runs": {
+    "cpu": {
+      "wall_seconds": 144.79591725801583,
+      "peak_allocated_mb": 0.0
+    },
+    "cpu_repeat": {
+      "wall_seconds": 101.19321567201405,
+      "peak_allocated_mb": 0.0
+    },
+    "gpu_cpu": {
+      "wall_seconds": 11.330444120016182,
+      "peak_allocated_mb": 398.19873046875,
+      "stages_seconds": {
+        "compression": 0.42747984404559247,
+        "bootstrap": 3.3136581230792217,
+        "transform": 0.5933264317864086,
+        "regression": 6.6336283659911714
+      },
+      "padding_fraction": 0.28252702599095303,
+      "same_input_max_abs_errors": []
+    },
+    "gpu_cpu_map": {
+      "wall_seconds": 5.937184729002183,
+      "peak_allocated_mb": 509.3017578125,
+      "stages_seconds": {
+        "compression": 0.46643289300845936,
+        "bootstrap": 3.268448944989359,
+        "transform": 0.34703125306987204,
+        "regression": 1.6357721340027638
+      },
+      "padding_fraction": 0.28252702599095303,
+      "same_input_max_abs_errors": []
+    },
+    "gpu": {
+      "wall_seconds": 4.954499508981826,
+      "peak_allocated_mb": 652.85400390625,
+      "stages_seconds": {
+        "compression": 0.5280585589061957,
+        "bootstrap": 3.286412742047105,
+        "transform": 0.4268489330424927,
+        "regression": 0.38456954900175333
+      },
+      "padding_fraction": 0.28252702599095303,
+      "same_input_max_abs_errors": []
+    }
+  },
+  "comparisons": {
+    "cpu_vs_gpu": {
+      "mean_coef": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0005249508279257971,
+        "max_abs_diff": 0.004153211493327001,
+        "abs_diff_over_se_quantiles": [
+          0.008845741324492134,
+          0.027484000967394204,
+          0.03411269605869063
+        ]
+      },
+      "mean_se": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0003475065944651204,
+        "max_abs_diff": 0.002319028014337518,
+        "ratio_quantiles": [
+          0.9771388770981426,
+          0.985121595371918,
+          1.0006138676853888,
+          1.017510811308565,
+          1.0230381546254341
+        ]
+      },
+      "mean_asl": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 1.8086320573623711e-09,
+        "max_abs_diff": 0.008380629014795582
+      },
+      "var_coef": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.003338072823033937,
+        "max_abs_diff": 0.02022108970072839,
+        "abs_diff_over_se_quantiles": [
+          0.009722180648333436,
+          0.03063947505912386,
+          0.04726336345471532
+        ]
+      },
+      "var_se": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0021236207338377333,
+        "max_abs_diff": 0.014400184113202485,
+        "ratio_quantiles": [
+          0.966342014914627,
+          0.9785993424743898,
+          0.9994880484758568,
+          1.0179262776160096,
+          1.0249882836780277
+        ]
+      },
+      "var_asl": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0017022949683804522,
+        "max_abs_diff": 0.017057595935777714
+      }
+    },
+    "cpu_vs_cpu_repeat": {
+      "mean_coef": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0006729214306466415,
+        "max_abs_diff": 0.004541609541783842,
+        "abs_diff_over_se_quantiles": [
+          0.009545823853724341,
+          0.027940148398637947,
+          0.04029376155313002
+        ]
+      },
+      "mean_se": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.00031845891441004137,
+        "max_abs_diff": 0.0035248801036127098,
+        "ratio_quantiles": [
+          0.9761884055916046,
+          0.9840200979778807,
+          0.9993074622774476,
+          1.0169561802945921,
+          1.0214025315547137
+        ]
+      },
+      "mean_asl": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 6.549484222928604e-10,
+        "max_abs_diff": 0.009221176816360033
+      },
+      "var_coef": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.003702026127938296,
+        "max_abs_diff": 0.023174811940178064,
+        "abs_diff_over_se_quantiles": [
+          0.009997414767361334,
+          0.03138292513441872,
+          0.04618974263308897
+        ]
+      },
+      "var_se": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0027308672715474214,
+        "max_abs_diff": 0.01719446421091353,
+        "ratio_quantiles": [
+          0.971984285451604,
+          0.9802842440218386,
+          1.0034364418500465,
+          1.0227431349167138,
+          1.0347343491336531
+        ]
+      },
+      "var_asl": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0021646821836716346,
+        "max_abs_diff": 0.01878803418987418
+      }
+    },
+    "gpu_cpu_vs_gpu": {
+      "mean_coef": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 2.498001805406602e-16,
+        "max_abs_diff": 9.43689570931383e-16,
+        "abs_diff_over_se_quantiles": [
+          4.204760759532862e-15,
+          9.627676703128686e-15,
+          1.7061170873417555e-14
+        ]
+      },
+      "mean_se": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 1.3877787807814457e-17,
+        "max_abs_diff": 5.551115123125783e-17,
+        "ratio_quantiles": [
+          0.9999999999999993,
+          0.9999999999999996,
+          1.0,
+          1.0000000000000004,
+          1.0000000000000007
+        ]
+      },
+      "mean_asl": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 5.781992481745663e-22,
+        "max_abs_diff": 3.0753177782116836e-14
+      },
+      "var_coef": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 2.7755575615628914e-17,
+        "max_abs_diff": 2.220446049250313e-16,
+        "abs_diff_over_se_quantiles": [
+          7.90448268372772e-17,
+          4.890229699374125e-16,
+          1.2475600508767433e-15
+        ]
+      },
+      "var_se": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 0.0,
+        "max_abs_diff": 2.220446049250313e-16,
+        "ratio_quantiles": [
+          0.9999999999999996,
+          0.9999999999999998,
+          1.0,
+          1.0000000000000002,
+          1.0000000000000002
+        ]
+      },
+      "var_asl": {
+        "n_finite": 128,
+        "nan_mismatch": 0,
+        "median_abs_diff": 8.326672684688674e-17,
+        "max_abs_diff": 1.1657341758564144e-15
+      }
+    }
+  }
+}

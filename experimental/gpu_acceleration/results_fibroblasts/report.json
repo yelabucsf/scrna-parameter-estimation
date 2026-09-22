@@ -1,0 +1,191 @@
+{
+  "data": "/mnt/c/Data/ANTXR2_workspace/data/ts_stromal.h5ad",
+  "count_source": "raw/X",
+  "cell_type": "fibroblast",
+  "method": "10X",
+  "reference": "subcutaneous adipose tissue",
+  "target": "bladder organ",
+  "donors": [
+    "TSP2",
+    "TSP14",
+    "TSP21",
+    "TSP25",
+    "TSP27"
+  ],
+  "cells": 17123,
+  "genes": 9487,
+  "groups": 10,
+  "num_boot": 10000,
+  "q": 0.07,
+  "min_perc_group": 0.7,
+  "preparation_seconds": 15.491623419000007,
+  "cpu_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "cpu_workers": 10,
+  "cpu_backend": "joblib threading; BLAS threads=1",
+  "torch": "2.9.0+cu128",
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "runs": [
+    {
+      "backend": "gpu",
+      "seed": 5,
+      "seconds": 10.87884093400001,
+      "genes": 9487,
+      "de_finite": 9487,
+      "dv_finite": 9487,
+      "de_fdr_05": 7404,
+      "dv_fdr_05": 1964,
+      "peak_allocated_gib": 1.724940299987793,
+      "settings": {
+        "device": "cuda",
+        "working_memory_bytes": 5887229952,
+        "memory_policy": "auto",
+        "gene_batch_size": 256,
+        "bootstrap_chunk_size": 512,
+        "cached_cell_weights": true,
+        "weight_cache_bytes": 684920000,
+        "sampling": "shared_cell_multinomial",
+        "moment_dtype": "float32",
+        "regression_dtype": "float64",
+        "approx": "norm",
+        "resample_rep": false
+      }
+    },
+    {
+      "backend": "gpu",
+      "seed": 6,
+      "seconds": 10.606345492000003,
+      "genes": 9487,
+      "de_finite": 9487,
+      "dv_finite": 9487,
+      "de_fdr_05": 7408,
+      "dv_fdr_05": 1972,
+      "peak_allocated_gib": 1.724940299987793,
+      "settings": {
+        "device": "cuda",
+        "working_memory_bytes": 5871501312,
+        "memory_policy": "auto",
+        "gene_batch_size": 256,
+        "bootstrap_chunk_size": 512,
+        "cached_cell_weights": true,
+        "weight_cache_bytes": 684920000,
+        "sampling": "shared_cell_multinomial",
+        "moment_dtype": "float32",
+        "regression_dtype": "float64",
+        "approx": "norm",
+        "resample_rep": false
+      }
+    },
+    {
+      "backend": "cpu",
+      "seed": 5,
+      "seconds": 1332.063840516,
+      "genes": 9487,
+      "de_finite": 9487,
+      "dv_finite": 9487,
+      "de_fdr_05": 7405,
+      "dv_fdr_05": 1967
+    }
+  ],
+  "design": "Donor x tissue groups; tissue indicator with donor covariates; complete pairs >=30 cells/tissue",
+  "group_counts": {
+    "sg^TSP21^bladder organ": 3020,
+    "sg^TSP25^subcutaneous adipose tissue": 2869,
+    "sg^TSP25^bladder organ": 2763,
+    "sg^TSP27^bladder organ": 1444,
+    "sg^TSP2^bladder organ": 1992,
+    "sg^TSP21^subcutaneous adipose tissue": 2219,
+    "sg^TSP14^subcutaneous adipose tissue": 2087,
+    "sg^TSP2^subcutaneous adipose tissue": 55,
+    "sg^TSP14^bladder organ": 614,
+    "sg^TSP27^subcutaneous adipose tissue": 60
+  },
+  "gpu_repeat": {
+    "de": {
+      "finite_comparisons": 9487,
+      "se_ratio_quantiles": [
+        0.9651066991410372,
+        0.9840982980748854,
+        1.0005882433298634,
+        1.017069180797839,
+        1.0401714694457602
+      ],
+      "coefficient_difference_over_se": [
+        0.009398548847939172,
+        0.026975283293586207,
+        0.05500320259800396
+      ],
+      "nan_se_mismatch": 0
+    },
+    "dv": {
+      "finite_comparisons": 9487,
+      "se_ratio_quantiles": [
+        0.9584547659245635,
+        0.982586043157546,
+        1.0000452655209422,
+        1.017751163907598,
+        1.0383767864039335
+      ],
+      "coefficient_difference_over_se": [
+        0.009506053608262168,
+        0.027872519135248665,
+        0.05673204552074909
+      ],
+      "nan_se_mismatch": 0
+    }
+  },
+  "gpu_vs_cpu": {
+    "de": {
+      "finite_comparisons": 9487,
+      "se_ratio_quantiles": [
+        0.965043331374361,
+        0.9832608118561234,
+        0.9997634810876156,
+        1.016622543146842,
+        1.0407017159957956
+      ],
+      "coefficient_difference_over_se": [
+        0.009645052989887687,
+        0.02790931199774216,
+        0.061351366133023236
+      ],
+      "nan_se_mismatch": 0
+    },
+    "dv": {
+      "finite_comparisons": 9487,
+      "se_ratio_quantiles": [
+        0.9522696799365736,
+        0.9827285470871879,
+        1.0000298074232559,
+        1.0172668564281075,
+        1.0537276603669632
+      ],
+      "coefficient_difference_over_se": [
+        0.009837444959947374,
+        0.02842795319248846,
+        0.05634821717719501
+      ],
+      "nan_se_mismatch": 0
+    }
+  },
+  "de_fdr_agreement": {
+    "both": 7393,
+    "cpu_only": 12,
+    "gpu_only": 11
+  },
+  "dv_fdr_agreement": {
+    "both": 1955,
+    "cpu_only": 12,
+    "gpu_only": 9
+  }
+}

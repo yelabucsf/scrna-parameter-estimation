@@ -1,0 +1,450 @@
+{
+  "args": {
+    "phase": "sweep",
+    "out": "experimental/gpu_acceleration/results_cell_matmul_single",
+    "boots": 10000,
+    "genes": 1742,
+    "batch": 256,
+    "gene_counts": [
+      1
+    ],
+    "cells": [
+      100,
+      2000,
+      20000
+    ],
+    "repeats": 2,
+    "modes": [
+      "gpu_compressed",
+      "gpu_matrix",
+      "cpu_matrix",
+      "gpu_matrix",
+      "gpu_compressed"
+    ],
+    "sweep_modes": [
+      "cpu_compressed",
+      "cpu_matrix",
+      "gpu_compressed",
+      "gpu_matrix"
+    ],
+    "validate": false
+  },
+  "dataset": [
+    "/mnt/c/Data/memento_workspace/interferon_filtered.h5ad",
+    "CD14+ Monocytes",
+    0.07
+  ],
+  "cpu_affinity": [
+    0,
+    1
+  ],
+  "cpu_threads": 2,
+  "gpu": "NVIDIA GeForce RTX 3060",
+  "torch": "2.9.0+cu128",
+  "tf32": false,
+  "runs": [
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 0.026581842999803484,
+      "stages": {},
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.866658646424349e-05,
+      "median_variance_sd": 3.817510920780619e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.0060075849996792385,
+      "stages": {
+        "preparation": 6.057600057829404e-05,
+        "weights": 0.005508662001375342,
+        "multiply": 0.0003337170001032064
+      },
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.8872913642553613e-05,
+      "median_variance_sd": 3.778819923638821e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.006535922000693972,
+      "stages": {
+        "preparation": 0.003268084000410454,
+        "sampling": 0.003219336999791267
+      },
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.0083160400390625,
+      "median_mean_sd": 1.875227280834224e-05,
+      "median_variance_sd": 3.786113644821398e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.007346905999838782,
+      "stages": {
+        "preparation": 0.0009185580001940252,
+        "weights": 0.002803903998028545,
+        "multiply": 0.0032365540000682813
+      },
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.00876760482788086,
+      "median_mean_sd": 1.8863789591705427e-05,
+      "median_variance_sd": 3.778440671453609e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.007209090000287688,
+      "stages": {
+        "preparation": 0.0009732550006447127,
+        "weights": 0.00276247500005411,
+        "multiply": 0.0031250529991666554
+      },
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.00876760482788086,
+      "median_mean_sd": 1.8646613170858473e-05,
+      "median_variance_sd": 3.805161519210287e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.006412159000319662,
+      "stages": {
+        "preparation": 0.0032667089999449672,
+        "sampling": 0.0030900889996701153
+      },
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.0083160400390625,
+      "median_mean_sd": 1.860008342191577e-05,
+      "median_variance_sd": 3.824529137830268e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.0056760739998935605,
+      "stages": {
+        "preparation": 6.069999926694436e-05,
+        "weights": 0.005157877000783628,
+        "multiply": 0.000352356000803411
+      },
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.881365096778609e-05,
+      "median_variance_sd": 3.8220222542406646e-09
+    },
+    {
+      "genes": 1,
+      "cells": 100,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 0.021020936999775586,
+      "stages": {},
+      "median_states": 33.0,
+      "max_states": 33,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.8714167916961325e-05,
+      "median_variance_sd": 3.782015166015383e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 0.07385505999991437,
+      "stages": {},
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 6.04910699519602e-06,
+      "median_variance_sd": 6.82539669741647e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 0.16099628700067115,
+      "stages": {
+        "preparation": 7.521899988205405e-05,
+        "weights": 0.15159793000202626,
+        "multiply": 0.009146424002210551
+      },
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 5.9820290516654495e-06,
+      "median_variance_sd": 6.697525645193991e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.011485764000099152,
+      "stages": {
+        "preparation": 0.003491579999717942,
+        "sampling": 0.00794670000050246
+      },
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.008333683013916016,
+      "median_mean_sd": 6.067978574719746e-06,
+      "median_variance_sd": 6.673770869269902e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.012284288000046217,
+      "stages": {
+        "preparation": 0.0011046230001738877,
+        "weights": 0.007039588997940882,
+        "multiply": 0.0037689629980377504
+      },
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.023430347442626953,
+      "median_mean_sd": 6.142087840999011e-06,
+      "median_variance_sd": 6.8282481890946656e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.010915447000115819,
+      "stages": {
+        "preparation": 0.0009918470004777191,
+        "weights": 0.006154200999844761,
+        "multiply": 0.003462996998678136
+      },
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.023430347442626953,
+      "median_mean_sd": 6.084964752517408e-06,
+      "median_variance_sd": 6.799256713208024e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.011600219000683865,
+      "stages": {
+        "preparation": 0.003402286999516946,
+        "sampling": 0.008135446000778757
+      },
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.008333683013916016,
+      "median_mean_sd": 6.129020675871288e-06,
+      "median_variance_sd": 6.777595817908377e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 0.15162195399989287,
+      "stages": {
+        "preparation": 7.62979998398805e-05,
+        "weights": 0.1406859219996477,
+        "multiply": 0.010006863000853627
+      },
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 6.076765203033574e-06,
+      "median_variance_sd": 6.815341180299583e-09
+    },
+    {
+      "genes": 1,
+      "cells": 2000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 0.07011621499987086,
+      "stages": {},
+      "median_states": 82.0,
+      "max_states": 82,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 6.004802089280377e-06,
+      "median_variance_sd": 6.733909593760754e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_compressed",
+      "seconds": 0.09529641100016306,
+      "stages": {},
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.816796136713339e-06,
+      "median_variance_sd": 1.5879838668384375e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "cpu_matrix",
+      "seconds": 2.0554970660004983,
+      "stages": {
+        "preparation": 0.0003505770000629127,
+        "weights": 1.9661622380026529,
+        "multiply": 0.08860126099716581
+      },
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.83741656201164e-06,
+      "median_variance_sd": 1.5961486576898665e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_compressed",
+      "seconds": 0.015860200000133773,
+      "stages": {
+        "preparation": 0.003915437999239657,
+        "sampling": 0.011898619000021426
+      },
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.008832454681396484,
+      "median_mean_sd": 1.8091193396685412e-06,
+      "median_variance_sd": 1.5774940242962998e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 0,
+      "mode": "gpu_matrix",
+      "seconds": 0.05970409000019572,
+      "stages": {
+        "preparation": 0.0012669930001720786,
+        "weights": 0.038824393000140844,
+        "multiply": 0.01923536799949943
+      },
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.16257190704345703,
+      "median_mean_sd": 1.8163525510317413e-06,
+      "median_variance_sd": 1.6051269202677076e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_matrix",
+      "seconds": 0.04915712700039876,
+      "stages": {
+        "preparation": 0.001898894000078144,
+        "weights": 0.03838183100106107,
+        "multiply": 0.008497285000885313
+      },
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.16257190704345703,
+      "median_mean_sd": 1.8096681060342235e-06,
+      "median_variance_sd": 1.6073222752766014e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "gpu_compressed",
+      "seconds": 0.01597233999927994,
+      "stages": {
+        "preparation": 0.0038829429995530518,
+        "sampling": 0.012032188999910431
+      },
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.008832454681396484,
+      "median_mean_sd": 1.8162212427341728e-06,
+      "median_variance_sd": 1.6064941599225335e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_matrix",
+      "seconds": 2.157402063000518,
+      "stages": {
+        "preparation": 0.0005127479998918716,
+        "weights": 2.0671116170005917,
+        "multiply": 0.08952467999915825
+      },
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.8275547972734785e-06,
+      "median_variance_sd": 1.5950064602421321e-09
+    },
+    {
+      "genes": 1,
+      "cells": 20000,
+      "boots": 10000,
+      "repeat": 1,
+      "mode": "cpu_compressed",
+      "seconds": 0.10002590200019768,
+      "stages": {},
+      "median_states": 102.0,
+      "max_states": 102,
+      "peak_gpu_allocated_gib": 0.0079345703125,
+      "median_mean_sd": 1.8303390009663645e-06,
+      "median_variance_sd": 1.5878691726077434e-09
+    }
+  ],
+  "scope": "Computational pool of real CD14+ cells; no biological inference on pooled/resampled groups. Above 5341 cells, sampling with replacement. Preparation and sampling included; regression excluded."
+}
