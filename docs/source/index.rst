@@ -21,6 +21,7 @@ To install memento, run:
    :caption: User guide & tutorial:
 
    basic
+   gpu
 
 .. toctree::
    :maxdepth: 2
