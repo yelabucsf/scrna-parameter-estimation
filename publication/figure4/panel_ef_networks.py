@@ -27,7 +27,7 @@ import pandas as pd
 import config
 import perturbseq_data
 
-config.add_repo_to_path()
+config.add_helper_paths()
 from memento.util import _fdrcorrect  # noqa: E402
 
 DC_RESULTS = config.FIGURE4_DATA + 'panelEF_network/guide_combine_donor.csv'

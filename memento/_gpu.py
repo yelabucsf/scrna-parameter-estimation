@@ -104,25 +104,94 @@ def _summarize(mapping, ys, observed=False):
     ], axis=-1)
 
 
+def _nanstd(x):
+    mean = x.nanmean(-1, keepdim=True)
+    return ((x - mean).square().nanmean(-1)).sqrt()
+
+
+def _coefficient_summary(coef, observed):
+    if coef.shape[-1] < 2:
+        return [torch.full(coef.shape[:-1], torch.nan, device=coef.device, dtype=coef.dtype)] * 3
+    null = coef[..., 1:] - coef[..., :1]
+    null = torch.where(torch.isfinite(null), null, torch.nan)
+    location = null.nanmean(-1)
+    scale = _nanstd(null)
+    stat = coef[..., 0].abs()
+    p = .5 * torch.erfc((stat - location) / (scale * 2**.5))
+    p += .5 * torch.erfc((stat + location) / (scale * 2**.5))
+    p = torch.where(scale > 0, p, torch.nan)
+    return (coef[..., 0] if observed else coef.nanmean(-1), _nanstd(coef[..., 1:]), p)
+
+
 def _summarize_block(mapping, ys, observed=False):
     values = []
     for y in ys:
-        coef = mapping @ y
-        if coef.shape[-1] < 2:
-            values.extend([torch.full(coef.shape[:-1], torch.nan, device=y.device, dtype=y.dtype)] * 3)
-            continue
-        null = coef[..., 1:] - coef[..., :1]
-        location = null.mean(-1)
-        scale = null.std(-1, correction=0)
-        stat = coef[..., 0].abs()
-        p = .5 * torch.erfc((stat - location) / (scale * 2**.5))
-        p += .5 * torch.erfc((stat + location) / (scale * 2**.5))
-        p = torch.where(scale > 0, p, torch.nan)
-        values.extend((coef[..., 0] if observed else coef.mean(-1), coef[..., 1:].std(-1, correction=0), p))
+        values.extend(_coefficient_summary(mapping @ y, observed))
     return torch.stack(values, dim=-2).cpu().numpy()
 
 
-def _regress(means, variances, good, covariate, treatment, nc, designs):
+def _replicate_assignments(groups, boots, device, generator):
+    shape = (groups, boots + 1)
+    assignment = torch.randint(groups, shape, device=device, generator=generator)
+    iterations = torch.randint(1, boots + 1, shape, device=device, generator=generator)
+    assignment[:, 0] = torch.arange(groups, device=device)
+    iterations[:, 0] = 0
+    return assignment, iterations
+
+
+def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observed):
+    """One gene/pair at a time, with bounded draw and treatment temporaries.
+
+    Match CPU semantics: residualize once, then resample valid group rows and
+    select an independent cell-bootstrap iteration for each sampled row. This
+    is not a paired-donor/cluster bootstrap and does not refit covariates.
+    """
+    groups, columns = ys[0].shape
+    if columns < 2:
+        return np.full((3 * len(ys), treatment.shape[1]), np.nan)
+    residual = np.eye(groups)
+    residual -= LinearRegression(n_jobs=1).fit(covariate, residual, nc).predict(covariate)
+    tx = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, nc).predict(covariate)
+    device = ys[0].device
+    residual = torch.as_tensor(residual, device=device, dtype=torch.float64)
+    tx = torch.as_tensor(tx, device=device, dtype=torch.float64)
+    weights = torch.as_tensor(nc, device=device, dtype=torch.float64)
+    adjusted = [residual @ y for y in ys]
+    assignment, iterations = _replicate_assignments(groups, columns - 1, device, generator)
+    output = []
+    for start in range(0, tx.shape[1], 8):
+        end = min(start + 8, tx.shape[1])
+        betas = [torch.empty((end - start, columns), device=device, dtype=torch.float64) for _ in ys]
+        for beta, y in zip(betas, ys):
+            beta[:, 0] = mapping[start:end] @ y[:, 0]
+        for lo in range(1, columns, 256):
+            hi = min(lo + 256, columns)
+            rows = assignment[:, lo:hi]
+            draws = iterations[:, lo:hi]
+            w = weights[rows]
+            totals = w.sum(0)
+            a = tx[rows, start:end]
+            has_contrast = a.amax(0) > a.amin(0)
+            a = a - (a * w[..., None]).sum(0) / totals[:, None]
+            denominator = (a.square() * w[..., None]).sum(0)
+            denominator = torch.where(has_contrast, denominator, 0)
+            for beta, y in zip(betas, adjusted):
+                b = y[rows, draws]
+                b = b - (b * w).sum(0) / totals
+                numerator = (a * (b * w)[..., None]).sum(0)
+                values = numerator / torch.where(denominator > 0, denominator, 1)
+                values = torch.where(denominator > 0, values, torch.nan)
+                beta[:, lo:hi] = values.T
+        identifiable = torch.isfinite(mapping[start:end]).all(-1)
+        summaries = []
+        for beta in betas:
+            beta[~identifiable] = torch.nan
+            summaries.extend(_coefficient_summary(beta, observed))
+        output.append(torch.stack(summaries, dim=0).cpu().numpy())
+    return np.concatenate(output, axis=-1)
+
+
+def _regress(means, variances, good, covariate, treatment, nc, designs, resample_generator=None):
     """Group matching masks/designs; retain caller gene and treatment ordering."""
     correlation = variances is None
     moments = (means,) if correlation else (means, variances)
@@ -144,22 +213,35 @@ def _regress(means, variances, good, covariate, treatment, nc, designs):
         use = torch.as_tensor(mask, device=means.device)
         ys = [y[ix][:, use] for y in moments]
         finite = torch.stack([torch.isfinite(y).all(1) for y in ys]).all(0)
-        if bool(finite.all()):
+        if resample_generator is not None:
+            cov_values = covariate.loc[:, list(cov)].values[mask].astype(float)
+            tx_values = treatment.loc[:, list(tx)].values[mask].astype(float)
+            for row, i in enumerate(ids):
+                if finite.shape[1] == 0 or not bool(finite[row, 0]):
+                    outputs[i] = np.full((3 * len(ys), len(tx)), np.nan)
+                    continue
+                outputs[i] = _resampled_summary(
+                    [y[row, :, finite[row]] for y in ys], cov_values, tx_values,
+                    nc[mask], mapping, resample_generator, correlation)
+        elif bool(finite.all()):
             for i, result in zip(ids, _summarize(mapping, ys, observed=correlation)):
                 outputs[i] = result
         else:
             for row, i in enumerate(ids):
+                if not bool(finite[row, 0]):
+                    outputs[i] = np.full((3 * len(ys), len(tx)), np.nan)
+                    continue
                 outputs[i] = _summarize(mapping, [y[row, :, finite[row]] for y in ys], observed=correlation)
     return outputs
 
 
-def _memory_plan(nc, boots, genes, budget, batch_size, correlation=False):
+def _memory_plan(nc, boots, genes, budget, batch_size, correlation=False, resample_rep=False):
     """Conservative working-memory target, excluding CUDA context/allocator cache."""
     weight_bytes = int(nc.sum()) * boots * 4
     cache = weight_bytes <= budget // 3
     retained = weight_bytes if cache else 0
     # Logs, regression copies, transform temporaries and dense coefficients.
-    per_gene = (boots + 1) * (64 * len(nc) + 64) + int(nc.max()) * (120 if correlation else 24)
+    per_gene = (boots + 1) * ((96 if resample_rep else 64) * len(nc) + 64) + int(nc.max()) * (120 if correlation else 24)
     available = budget - retained - budget // 8
     if available < per_gene or budget // 8 < int(nc.max()) * 12:
         raise ValueError('gpu_memory_budget is too small for one gene; increase it or reduce num_boot')
@@ -179,8 +261,9 @@ def _working_budget(free, requested):
 def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covariate_for_gene,
           num_boot, random_state, memory_budget, batch_size, device, pair_positions=None, **kwargs):
     correlation = pair_positions is not None
-    if kwargs.get('resample_rep', False):
-        raise NotImplementedError("GPU testing currently requires resample_rep=False")
+    resample_rep = kwargs.get('resample_rep', False)
+    if not isinstance(resample_rep, (bool, np.bool_)):
+        raise ValueError('resample_rep must be boolean')
     if kwargs.get('approx', 'norm') != 'norm':
         raise NotImplementedError("GPU testing currently supports approx='norm' only")
     extra = set(kwargs) - {'resample_rep', 'approx'}
@@ -231,10 +314,11 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
     with torch.cuda.device(device):
         free, _ = torch.cuda.mem_get_info()
         budget = _working_budget(free, budget)
-        batch, chunk, cache, retained = _memory_plan(nc, boots, len(genes), budget, batch_size, correlation)
-        seeds = np.random.SeedSequence(random_state).spawn(len(groups) + 1)
+        batch, chunk, cache, retained = _memory_plan(nc, boots, len(genes), budget, batch_size, correlation, resample_rep)
+        seeds = np.random.SeedSequence(random_state).spawn(len(groups) + 1 + int(resample_rep))
         seed_values = [int(s.generate_state(1, dtype=np.uint64)[0]) for s in seeds]
-        fill_generator = _generator(device, seed_values[-1])
+        fill_generator = _generator(device, seed_values[len(groups)])
+        resample_generator = _generator(device, seed_values[-1]) if resample_rep else None
         weights = {}
         previous_tf32 = torch.backends.cuda.matmul.allow_tf32
         torch.backends.cuda.matmul.allow_tf32 = False
@@ -299,7 +383,9 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
                             means[:, gi, 0] = torch.as_tensor(np.log(true_mean), device=device)
                             variances[:, gi, 0] = torch.as_tensor(np.log(true_var), device=device)
                         good[:, gi] = torch.as_tensor(eligible, device=device) & valid_mean & valid_var
-                    outputs.extend(_regress(means, variances, good, covariate, treatment, nc, designs[start:start + g]))
+                    regression_kwargs = {'resample_generator': resample_generator} if resample_rep else {}
+                    outputs.extend(_regress(means, variances, good, covariate, treatment, nc,
+                                            designs[start:start + g], **regression_kwargs))
         finally:
             weights.clear()
             torch.backends.cuda.matmul.allow_tf32 = previous_tf32
@@ -307,7 +393,7 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
                      'gene_batch_size': batch,
                      'bootstrap_chunk_size': chunk, 'cached_cell_weights': cache, 'weight_cache_bytes': retained,
                      'sampling': 'shared_cell_multinomial', 'moment_dtype': 'float32', 'regression_dtype': 'float64',
-                     'approx': 'norm', 'resample_rep': False}
+                     'approx': 'norm', 'resample_rep': bool(resample_rep)}
 
 
 def ht_1d(*args, **kwargs):

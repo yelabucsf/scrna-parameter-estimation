@@ -84,6 +84,8 @@ def _compute_asl(perm_diff, approx='norm'):
     null = null[np.isfinite(null)]
     
     stat = perm_diff[0]
+    if not np.isfinite(stat) or null.size == 0:
+        return np.nan
     
     if approx == 'norm':
         
@@ -607,6 +609,9 @@ def _cross_coef_resampled(A, B, sample_weight):
     # actual division by zero triggers noisy RuntimeWarnings on every
     # occurrence, which adds up across a large scan. Avoid the division
     # entirely and substitute NaN directly instead.
+    # Identical sampled treatments have no contrast, even if weighted
+    # centering leaves tiny floating-point residuals.
+    ssA[np.ptp(A, axis=0) == 0] = 0
     safe_ssA = np.where(ssA > 0, ssA, 1.0)
     beta = np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / safe_ssA.T
     beta[ssA.T == 0] = np.nan
@@ -616,6 +621,16 @@ def _cross_coef_resampled(A, B, sample_weight):
 #     se = beta/t
 #     num_cell_correction = np.sqrt(num_cells_per_boot/num_cells_per_boot[0])
     return beta
+
+
+def _replicate_assignments(num_rep, num_boot, rng):
+    """Observed column followed by exactly num_boot group-resampled draws."""
+    shape = (num_rep, num_boot + 1)
+    groups = _choice(rng, num_rep, size=shape)
+    iterations = _choice(rng, num_boot, size=shape) + 1
+    groups[:, 0] = np.arange(num_rep)
+    iterations[:, 0] = 0
+    return groups, iterations
 
 
 def _regress_1d(
@@ -635,17 +650,16 @@ def _regress_1d(
     """
     
     valid_boostrap_iters = ~np.any(~np.isfinite(boot_mean), axis=0) & ~np.any(~np.isfinite(boot_var), axis=0)
+    if valid_boostrap_iters.size == 0 or not valid_boostrap_iters[0]:
+        return [np.full(treatment.shape[1], np.nan) for _ in range(6)]
     boot_mean = boot_mean[:, valid_boostrap_iters]
     boot_var = boot_var[:, valid_boostrap_iters]
     
     num_boot = boot_mean.shape[1]-1
     num_rep = boot_mean.shape[0]
 
-    if boot_var.shape[1] == 0:
-
-        print('skipped')
-
-        return [np.zeros(treatment.shape[1])*np.nan]*5
+    if boot_var.shape[1] < 2:
+        return [np.full(treatment.shape[1], np.nan) for _ in range(6)]
     
     boot_mean_tilde = boot_mean - LinearRegression(n_jobs=1).fit(covariate,boot_mean, Nc_list).predict(covariate)
     boot_var_tilde = boot_var - LinearRegression(n_jobs=1).fit(covariate,boot_var, Nc_list).predict(covariate)
@@ -653,14 +667,8 @@ def _regress_1d(
 
     if resample_rep:            
 
-        replicate_assignment = _choice(
-            rng, num_rep, size=(num_rep, num_boot)
-        )
-        replicate_assignment[:, 0] = np.arange(num_rep)
-        b_iter_assignment = _choice(
-            rng, num_boot, size=(num_rep, num_boot)
-        ) + 1
-        b_iter_assignment[:, 0] = 0
+        replicate_assignment, b_iter_assignment = _replicate_assignments(
+            num_rep, num_boot, rng)
 
         boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
         boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
@@ -771,30 +779,23 @@ def _regress_2d(
     """    
     
     valid_boostrap_iters = ~np.any(~np.isfinite(boot_corr), axis=0)
+    if valid_boostrap_iters.size == 0 or not valid_boostrap_iters[0]:
+        return [np.full(treatment.shape[1], np.nan) for _ in range(3)]
     boot_corr = boot_corr[:, valid_boostrap_iters]
     
     num_boot = boot_corr.shape[1]-1
     num_rep = boot_corr.shape[0]
 
-    if boot_corr.shape[1] == 0:
-
-        print('skipped')
-
-        return [np.zeros(treatment.shape[1])*np.nan]*5
+    if boot_corr.shape[1] < 2:
+        return [np.full(treatment.shape[1], np.nan) for _ in range(3)]
     
     boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
     treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
     if resample_rep:
 
-        replicate_assignment = _choice(
-            rng, num_rep, size=(num_rep, num_boot)
-        )
-        replicate_assignment[:, 0] = np.arange(num_rep)
-        b_iter_assignment = _choice(
-            rng, num_boot, size=(num_rep, num_boot)
-        ) + 1
-        b_iter_assignment[:, 0] = 0
+        replicate_assignment, b_iter_assignment = _replicate_assignments(
+            num_rep, num_boot, rng)
 
         boot_corr_resampled = boot_corr_tilde[(replicate_assignment, b_iter_assignment)]
         treatment_resampled = treatment_tilde[replicate_assignment]

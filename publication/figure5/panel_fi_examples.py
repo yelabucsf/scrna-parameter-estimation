@@ -29,7 +29,7 @@ import seaborn as sns
 
 import config
 
-config.add_repo_to_path()
+config.add_helper_paths()
 import memento  # noqa: E402
 
 SINGLE_CELL = config.FIGURE5_DATA + 'panelFI_examples/single_cell/'

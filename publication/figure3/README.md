@@ -21,8 +21,18 @@ matters.
 
 Python with scanpy, pandas, scipy, scikit-learn, seaborn, matplotlib, networkx and xlrd.
 
-Figure 3 uses **this repository's** memento package, not the object-oriented rewrite that
-Figure 2 needs. No separate clone required.
+Figure 3 uses the functional API from **`memento-de==0.1.2` on PyPI**, the version
+used for the most recent paper replication. It does not use Figure 2's separate
+object-oriented implementation.
+
+```bash
+python -m pip install 'memento-de==0.1.2'
+```
+
+Use a dedicated environment and run scripts from this figure directory. See the
+[shared environment instructions](../README.md#reproduction-environment) for
+checking the import location and why 0.1.3 changes seeded replicate-resampling
+results. Install the PyPI release rather than this checkout in that environment.
 
 ## Data
 

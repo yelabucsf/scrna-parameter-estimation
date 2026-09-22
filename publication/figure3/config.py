@@ -1,7 +1,6 @@
 """Shared paths and plotting style for the Figure 3 reproduction scripts."""
 
 import os
-import sys
 
 import matplotlib as mpl
 import matplotlib.pylab as pylab
@@ -25,13 +24,6 @@ HBEC_PATH = DATA_PATH + 'hbec/'
 # Panel-organized tree built by data_manifest.py, which the panel scripts read from.
 FIGURE3_DATA = _dir(os.environ.get('FIGURE3_DATA', DATA_PATH + 'figure3_data'))
 
-# Figure 3 uses THIS repository's memento package, not the object-oriented rewrite that
-# Figure 2 needs -- the notebooks call setup_memento / compute_1d_moments / ht_1d_moments,
-# which only exist here.
-# Three levels up: publication/figureN/config.py -> the repository root. Getting this
-# wrong silently falls back to a pip-installed memento in site-packages.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 FIGURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'figures')
 INTERMEDIATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'intermediate')
 
@@ -51,11 +43,6 @@ TIMEPOINTS = ['3', '6', '9', '24', '48']
 
 CANONICAL_COLOR = 'cyan'
 NONCANONICAL_COLOR = 'magenta'
-
-
-def add_repo_to_path():
-    if REPO_ROOT not in sys.path:
-        sys.path.insert(0, REPO_ROOT)
 
 
 def abbreviate_cell_types(cell_types):

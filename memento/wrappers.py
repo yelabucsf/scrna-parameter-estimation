@@ -22,7 +22,12 @@ def run_eqtl(
 	mean_expr_threshold=0.01,
 	num_boot=5000):
 	"""
-	Run mean-only eQTL analysis using memento. adata, snp, cov, gene_snp_pairs should be specified in the format above.
+	Run the legacy CPU mean-only eQTL workflow with replicate resampling.
+
+	``snps`` and ``cov`` are donor-indexed numeric DataFrames. ``gene_snp_pairs``
+	contains columns named ``gene`` and ``SNP``. ``donor_column`` names the
+	observation column identifying donors. This wrapper does not expose a GPU
+	backend; use ht_1d_moments with gene-specific dictionaries for GPU analysis.
 	"""
 
 	# Check genetics input
@@ -75,7 +80,13 @@ def run_eqtl(
 
 def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=[]):
 	"""
-	Wrapper function for comparing the mean and variability for two groups of cells.
+	Compare mean and variability for a binary treatment using the CPU backend.
+
+	``replicates`` is a list of observation column names added to the grouping
+	alongside ``treatment_col``. It does not add regression covariates, account
+	for donor pairing, or enable replicate resampling. Use the explicit setup,
+	grouping, moment, and testing functions for those designs or GPU execution.
+	Returns a result DataFrame with unadjusted p-values; the input is copied.
 	"""
 	
 	adata = adata.copy().copy()
@@ -96,7 +107,13 @@ def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, 
 
 def binary_test_2d(adata, gene_pairs, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=[]):
 	"""
-	Wrapper function for comparing coexpression between two groups of cells.
+	Compare correlation for a binary treatment using the CPU backend.
+
+	``gene_pairs`` contains (gene_1, gene_2) tuples. Pairs with genes removed by
+	filtering are omitted. ``replicates`` adds observation column names to the
+	grouping only: it does not add donor covariates, account for pairing, or
+	enable replicate resampling. Use the explicit workflow for those controls
+	or GPU execution. Returns a result DataFrame; the input is copied.
 	"""
 	
 	adata = adata.copy().copy()

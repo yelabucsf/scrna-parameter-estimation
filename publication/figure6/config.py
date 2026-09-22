@@ -1,7 +1,6 @@
 """Shared paths and plotting style for the Figure 6 reproduction scripts."""
 
 import os
-import sys
 
 import matplotlib as mpl
 import matplotlib.pylab as pylab
@@ -37,10 +36,6 @@ COMPARISON_CUBE_PATH = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), 'intermediate',
                  'estimators_cube'))
 
-
-# Three levels up: publication/figureN/config.py -> the repository root.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 FIGURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'figures')
 INTERMEDIATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'intermediate')
 
@@ -57,11 +52,6 @@ CAPTURE_RATE = 0.07
 
 MEMENTO_COLOR = 'turquoise'
 BASELINE_COLOR = 'slategrey'
-
-
-def add_repo_to_path():
-    if REPO_ROOT not in sys.path:
-        sys.path.insert(0, REPO_ROOT)
 
 
 def set_style():

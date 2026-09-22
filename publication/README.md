@@ -3,6 +3,41 @@
 Code and data for the figures of
 [Kim et al., *Cell* 2024](https://www.cell.com/cell/fulltext/S0092-8674(24)01144-9).
 
+## Reproduction environment
+
+The most recent paper replication used **`memento-de==0.1.2` from PyPI** for the
+functional API used by Figures 3–6. Install that exact release in a dedicated
+replication environment:
+
+```bash
+python -m pip install 'memento-de==0.1.2'
+```
+
+Use this checkout for the figure scripts and install the additional dependencies
+listed in each figure's README. Do not install the development checkout with
+`pip install -e .` in the replication environment. Run scripts from their figure
+directory as shown below, and avoid adding the repository root to `PYTHONPATH`.
+The scripts use the installed package rather than prepending this checkout to the
+Python import path. From a figure directory, verify the version and import location:
+
+```bash
+python -c "from importlib.metadata import version; import memento; print(version('memento-de'), memento.__file__); assert version('memento-de') == '0.1.2'"
+```
+
+Version 0.1.3 changes seeded results for `resample_rep=True`: it fixes an off-by-one
+error so `num_boot` produces that many bootstrap draws plus the observed statistic.
+Use 0.1.2 when reproducing the latest replication, even if a newer release is
+available. This pin records the replication environment; it does not imply that
+all archived results were originally generated with 0.1.2 or that dependency
+versions and seeds alone reproduce every panel exactly. Figure-specific notes
+record the remaining differences.
+
+Figure 2 panels A/B use a separate object-oriented implementation, and Figure 6's
+cube builder uses `memento-cxg`. Those dependencies are separate from the PyPI pin;
+follow their respective figure READMEs.
+
+## Download and run
+
 Each figure has a directory that regenerates its panels from a published input bundle.
 Download one archive, point one environment variable at it, run one script:
 

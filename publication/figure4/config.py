@@ -25,12 +25,6 @@ TFKO_PATH = DATA_PATH + 'tfko140/'
 # Panel-organized tree built by data_manifest.py, which the panel scripts read from.
 FIGURE4_DATA = _dir(os.environ.get('FIGURE4_DATA', DATA_PATH + 'figure4_data'))
 
-# Like Figure 3, Figure 4 uses THIS repository's memento package (the notebooks import
-# the memento-0.0.9 egg), not the object-oriented rewrite Figure 2 needs.
-# Three levels up: publication/figureN/config.py -> the repository root. Getting this
-# wrong silently falls back to a pip-installed memento in site-packages.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 # github.com/mincheoly/misc-seq supplies the `encode` helper and GRCh38Genes.bed that
 # the ChIP-seq panels lean on. Override with MISCSEQ_PATH.
 MISCSEQ_PATH = os.environ.get('MISCSEQ_PATH', '/home/ubuntu/Github/misc-seq/miscseq')
@@ -50,10 +44,10 @@ def guide_to_gene(guide):
     return guide.split('.')[0]
 
 
-def add_repo_to_path():
-    for path in [REPO_ROOT, MISCSEQ_PATH]:
-        if path not in sys.path:
-            sys.path.insert(0, path)
+def add_helper_paths():
+    """Expose external helpers without shadowing the installed memento release."""
+    if MISCSEQ_PATH not in sys.path:
+        sys.path.insert(0, MISCSEQ_PATH)
 
 
 def set_style():

@@ -18,10 +18,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 
-import config
-
-config.add_repo_to_path()
-from memento.util import _fdrcorrect  # noqa: E402
+from memento.util import _fdrcorrect
 
 
 def read_1d_ht(adata_or_path, add_fdr=True):

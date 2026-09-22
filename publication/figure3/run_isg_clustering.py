@@ -37,7 +37,6 @@ import config
 import isg_gene_lists
 import memento_legacy
 
-config.add_repo_to_path()
 import memento  # noqa: E402
 
 COUNTS = config.FIGURE3_DATA + 'panelDEFG_isg/HBEC_type_I_filtered_counts_deep.h5ad'

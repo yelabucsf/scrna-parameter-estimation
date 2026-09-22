@@ -27,6 +27,11 @@ repository** from this one:
 git clone https://github.com/mincheoly/memento ~/Github/memento   # set MEMENTO_OO_PATH
 ```
 
+The [shared replication environment](../README.md#reproduction-environment) pins
+`memento-de==0.1.2` from PyPI for Figures 3–6, matching the most recent paper
+replication. That package does not provide the object-oriented classes used by
+panels A/B here; keep the separate checkout above for these panels.
+
 ## Data
 
 Everything Figure 2 needs is published as one archive, 4.1 GB unpacked. No S3 access and

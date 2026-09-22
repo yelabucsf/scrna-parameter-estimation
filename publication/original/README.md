@@ -22,6 +22,11 @@ To reproduce a figure, use [`../figure2/`](../figure2/) through
 [`../figure6/`](../figure6/), which are maintained, run against a published data bundle,
 and document every place they depart from the code here.
 
+The maintained Figures 3–6 use `memento-de==0.1.2` from PyPI for the most recent
+replication; follow the [shared environment instructions](../README.md#reproduction-environment).
+This pin does not update the historical notebooks' APIs or replace their original
+package requirements.
+
 Three of these files are still read at run time by the reproductions, so the directory is
 a dependency rather than an archive:
 

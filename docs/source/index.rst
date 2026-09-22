@@ -1,49 +1,51 @@
-Welcome to memento’s documentation!
-====================================================
+memento: differential expression beyond the mean
+================================================
 
-``memento`` is a python package for performing differential mean, variability, and correlation in single-cell RNA sequencing data. Our paper can be found at "Method of moments framework for differential expression analysis of single-cell RNA sequencing data."
+memento estimates and tests differences in **mean expression**, **variability**,
+and **gene correlation** from single-cell RNA sequencing counts. Its method of
+moments estimators account for RNA capture noise; bootstrap samples quantify
+uncertainty in the estimated effects.
 
-Some current limitations include:
-- continous covariates, such as cell state variables
-- non-linear representations of covariates 
+Start with :doc:`installation` and the :doc:`basic` workflow. For multi-sample
+experiments, read :doc:`designs` before choosing a resampling scheme. The
+:doc:`gpu` backend accelerates both bootstrap sampling and regression while
+keeping the same public analysis functions.
 
-**Installation**
+.. note::
 
-Make sure you have a version of ``scanpy > 1.3``. Almost any version should work with ``memento``. Visit the ``scanpy`` `website <https://scanpy.readthedocs.io/en/stable/installation.html>`_  to install the latest version of scanpy. 
+   These pages describe the 0.1.3 code, including optional GPU acceleration and
+   GPU replicate resampling. Until this version is published on PyPI, install
+   from a checkout containing these changes.
 
-To install memento, run:
-
-.. code-block:: bash
-
-    pip install memento-de
 .. toctree::
    :maxdepth: 2
-   :caption: User guide & tutorial:
+   :caption: Get started
 
+   installation
    basic
+   designs
+   correlations
+   eqtl
    gpu
 
 .. toctree::
    :maxdepth: 2
-   :caption: About memento:
+   :caption: Methods and troubleshooting
 
    estimators
    inference
+   troubleshooting
+   release_notes
 
 .. toctree::
    :maxdepth: 1
-   :caption: API Reference:
+   :caption: Reference
 
    api_reference
+   detailed_api_reference
 
-.. .. toctree::
-..    :maxdepth: 1
-..    :caption: Detailed API Reference:
-   
-..    detailed_api_reference
-
-Indices and tables
-==================
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+Source code and issue reports are on
+`GitHub <https://github.com/yelabucsf/scrna-parameter-estimation>`_.
+The repository's ``publication/README.md`` describes how to reproduce the paper,
+*Method of moments framework for differential expression analysis of
+single-cell RNA sequencing data*.
