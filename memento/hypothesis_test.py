@@ -772,10 +772,16 @@ def _regress_2d(
     Nc_list,
     resample_rep=False,
     rng=None,
+    one_sample=False,
     **kwargs,
 ):
     """
         Performs hypothesis testing for a single pair of genes for many bootstrap iterations.
+
+        With ``one_sample=True`` the test is H0: correlation = 0. The statistic
+        is the cell-count-weighted mean of the group correlations, computed for
+        the observed column and every bootstrap column alike; ``covariate`` and
+        ``treatment`` are not used.
     """    
     
     valid_boostrap_iters = ~np.any(~np.isfinite(boot_corr), axis=0)
@@ -789,10 +795,14 @@ def _regress_2d(
     if boot_corr.shape[1] < 2:
         return [np.full(treatment.shape[1], np.nan) for _ in range(3)]
     
-    boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
-    treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
+    if one_sample:
 
-    if resample_rep:
+        corr_coef = np.average(boot_corr, axis=0, weights=Nc_list).reshape(1, -1)
+
+    elif resample_rep:
+
+        boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+        treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
         replicate_assignment, b_iter_assignment = _replicate_assignments(
             num_rep, num_boot, rng)
@@ -804,6 +814,9 @@ def _regress_2d(
         corr_coef = _cross_coef_resampled(treatment_resampled, boot_corr_resampled, weights_resampled)
 
     else:
+
+        boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+        treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
         corr_coef = _cross_coef(treatment_tilde, boot_corr_tilde, Nc_list)
 

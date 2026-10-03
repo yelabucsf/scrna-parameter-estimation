@@ -688,3 +688,84 @@ def test_ht_2d_moments_still_drops_real_pair_with_constant_only_column():
 
     result = main.get_2d_ht_result(adata)
     assert result.shape == (0, 6)
+
+
+def test_ht_2d_moments_one_sample_with_treatment_none():
+    # treatment=None requests the one-sample test of correlation against zero.
+    # The constant intercept is not dropped by the zero-variance pre-filter,
+    # and the coefficient is the cell-count-weighted mean of the observed
+    # group correlations over groups with a usable estimate.
+    rng = np.random.default_rng(3)
+    adata = _build_donor_adata(rng, n_genes=30)
+    genes = adata.uns["memento"]["gene_list"]
+    pairs = [(genes[0], genes[1]), (genes[2], genes[3])]
+    main.compute_2d_moments(adata, pairs)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        main.ht_2d_moments(adata, num_boot=200, verbose=0, num_cpus=1)
+    assert not [w for w in caught if "Dropping" in str(w.message)]
+
+    result = main.get_2d_ht_result(adata)
+    assert list(result["tx"]) == ["intercept", "intercept"]
+    assert result["corr_coef"].notna().all() and result["corr_pval"].notna().all()
+
+    groups = adata.uns["memento"]["groups"]
+    nc = np.array([adata.uns["memento"]["group_cells"][g].shape[0] for g in groups])
+    for i in range(len(pairs)):
+        corr = np.array([adata.uns["memento"]["2d_moments"][g]["corr"][i] for g in groups])
+        usable = np.isfinite(corr) & (np.abs(corr) < 1)
+        expected = np.average(corr[usable], weights=nc[usable])
+        np.testing.assert_allclose(result["corr_coef"].iloc[i], expected)
+
+
+def test_ht_2d_moments_all_constant_treatment_points_to_one_sample():
+    # An all-ones treatment used to select the one-sample branch implicitly.
+    # After the constant-column pre-filter it leaves nothing to test; that must
+    # be a clear error naming treatment=None, not a scikit-learn failure.
+    rng = np.random.default_rng(4)
+    adata = _build_donor_adata(rng, n_genes=30)
+    genes = adata.uns["memento"]["gene_list"]
+    main.compute_2d_moments(adata, [(genes[0], genes[1])])
+    groups = adata.uns["memento"]["groups"]
+    treatment = pd.DataFrame({"intercept": np.ones(len(groups))}, index=groups)
+
+    with pytest.warns(UserWarning, match="Dropping treatment column"):
+        with pytest.raises(ValueError, match="treatment=None"):
+            main.ht_2d_moments(adata, treatment=treatment, num_boot=50, verbose=0)
+
+
+def test_ht_1d_moments_all_constant_treatment_is_a_clear_error():
+    rng = np.random.default_rng(5)
+    adata = _build_donor_adata(rng)
+    groups = adata.uns["memento"]["groups"]
+    treatment = pd.DataFrame({"constant": np.full(len(groups), 2.0)}, index=groups)
+
+    with pytest.warns(UserWarning, match="Dropping treatment column"):
+        with pytest.raises(ValueError, match="nothing to test"):
+            main.ht_1d_moments(adata, treatment=treatment, num_boot=50, verbose=0)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"covariate": "cov"},
+        {"treatment_for_gene": "tfg"},
+        {"resample_rep": True},
+    ],
+)
+def test_ht_2d_moments_one_sample_rejects_design_options(extra):
+    rng = np.random.default_rng(6)
+    adata = _build_donor_adata(rng, n_genes=30)
+    genes = adata.uns["memento"]["gene_list"]
+    pair = (genes[0], genes[1])
+    main.compute_2d_moments(adata, [pair])
+    groups = adata.uns["memento"]["groups"]
+    if "covariate" in extra:
+        extra = {"covariate": pd.DataFrame({"c": np.arange(len(groups), dtype=float)}, index=groups)}
+    if "treatment_for_gene" in extra:
+        extra = {"treatment_for_gene": {pair: ["intercept"]}}
+    error = NotImplementedError if "resample_rep" in extra else ValueError
+
+    with pytest.raises(error):
+        main.ht_2d_moments(adata, num_boot=50, verbose=0, **extra)

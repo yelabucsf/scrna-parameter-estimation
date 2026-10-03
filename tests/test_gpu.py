@@ -471,3 +471,28 @@ def test_invalid_observed_moment_is_not_replaced_by_a_bootstrap(cuda, prepared, 
            else ht._regress_1d(boot_mean=y[0], boot_var=y[0], **kwargs))
     assert np.isnan(got).all()
     np.testing.assert_array_equal(got[0], ref)
+
+
+def test_one_sample_correlation_matches_cpu(cuda,prepared):
+    torch,gpu=cuda;_,tx,cov=prepared
+    from memento.hypothesis_test import _regress_2d
+    rng=np.random.default_rng(193)
+    y=rng.uniform(-.9,.9,(2,6,1001))
+    good=np.ones((2,6),bool);good[1,[1,4]]=False
+    designs=[(('stim',),('d1',))]*2
+    nc=np.arange(6)+30
+    got=gpu._regress(torch.tensor(y,device='cuda'),None,torch.tensor(good,device='cuda'),cov,tx,nc,designs,
+                     one_sample=True)
+    for i in (0,1):
+        mask=good[i]
+        ref=_regress_2d(None,None,y[i,mask],nc[mask],one_sample=True)
+        np.testing.assert_allclose(got[i],ref,atol=1e-12,rtol=1e-10)
+
+
+def test_one_sample_api_runs_on_gpu(cuda,prepared_pairs):
+    a,_,_=prepared_pairs
+    memento.ht_2d_moments(a,num_boot=200,backend='gpu',random_state=3)
+    r=memento.get_2d_ht_result(a)
+    assert set(r.tx)=={'intercept'}
+    off=r.gene_1!=r.gene_2
+    assert r.loc[off,'corr_coef'].notna().all()

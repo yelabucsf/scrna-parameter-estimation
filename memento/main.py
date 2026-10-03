@@ -130,6 +130,22 @@ def _prefilter_constant_treatment(treatment, treatment_for_gene):
     return treatment, filtered
 
 
+def _require_treatment_columns(treatment, treatment_for_gene, one_sample_hint=False):
+    """
+    Raise when the constant-column pre-filter left a global design with no
+    treatment columns. Without this, the regression fails later inside
+    scikit-learn with an uninformative zero-feature error. Per-gene
+    dictionaries are exempt: genes whose columns were all dropped are simply
+    excluded, as documented in `_drop_constant_treatment_columns`.
+    """
+    if treatment_for_gene is None and treatment.shape[1] == 0:
+        msg = ("Every treatment column is constant across groups, so there is "
+               "nothing to test.")
+        if one_sample_hint:
+            msg += (" For a one-sample test of whether correlations differ from "
+                    "zero, call ht_2d_moments with treatment=None.")
+        raise ValueError(msg)
+
 
 def _validate_gene_pairs_exist(adata, treatment_for_gene):
     """
@@ -597,6 +613,7 @@ def ht_1d_moments(
     # monomorphic SNP genotype) before any bootstrap computation runs --
     # there is nothing to test for a treatment that never varies.
     treatment, treatment_for_gene = _prefilter_constant_treatment(treatment, treatment_for_gene)
+    _require_treatment_columns(treatment, treatment_for_gene)
     
     # Get the number of tests and number of genes for those tests
     test_genes, test_gene_indices = _get_test_genes_and_indices(adata, treatment_for_gene)
@@ -835,7 +852,7 @@ def ht_mean(
     
 def ht_2d_moments(
     adata, 
-    treatment,
+    treatment=None,
     covariate=None,
     treatment_for_gene=None,
     covariate_for_gene=None,
@@ -865,12 +882,31 @@ def ht_2d_moments(
     standard error and an unadjusted p-value. Results are stored under
     ``adata.uns['memento']['2d_ht']`` and retrieved by ``get_2d_ht_result``.
     Returns an analyzed AnnData copy only when ``inplace=False``.
+
+    With ``treatment=None`` the test is one-sample: H0 is that each pair's
+    correlation is zero. The coefficient is the cell-count-weighted mean of
+    the group correlations and is reported under ``tx='intercept'``. This
+    form takes no covariates, per-pair dictionaries or ``resample_rep``.
     """
     
     if backend not in ("cpu", "gpu"):
         raise ValueError("backend must be cpu or gpu")
+    one_sample = treatment is None
+    if one_sample:
+        if covariate is not None or treatment_for_gene is not None or covariate_for_gene is not None:
+            raise ValueError(
+                "treatment=None requests a one-sample test of correlation "
+                "against zero, which takes no covariate, treatment_for_gene "
+                "or covariate_for_gene."
+            )
+        if kwargs.get('resample_rep', False):
+            raise NotImplementedError("resample_rep is not supported for the one-sample test (treatment=None).")
     if not inplace:
         adata = adata.copy()
+    if one_sample:
+        groups = adata.uns['memento']['groups']
+        treatment = pd.DataFrame({'intercept': np.ones(len(groups))}, index=groups)
+        kwargs['one_sample'] = True
     
     # Get number of pairs of genes
     G = adata.uns['memento']['2d_moments']['gene_idx_1'].shape[0]
@@ -892,8 +928,12 @@ def ht_2d_moments(
     
     # Drop treatment columns with zero variance across groups (e.g. a
     # monomorphic SNP genotype) before any bootstrap computation runs --
-    # there is nothing to test for a treatment that never varies.
-    treatment, treatment_for_gene = _prefilter_constant_treatment(treatment, treatment_for_gene)
+    # there is nothing to test for a treatment that never varies. The
+    # one-sample intercept is constant by construction and is not a
+    # treatment column in that sense.
+    if not one_sample:
+        treatment, treatment_for_gene = _prefilter_constant_treatment(treatment, treatment_for_gene)
+        _require_treatment_columns(treatment, treatment_for_gene, one_sample_hint=True)
         
     # Get the number of tests
     if treatment_for_gene is None:

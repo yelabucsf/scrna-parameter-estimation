@@ -36,6 +36,24 @@ semantics described in :doc:`inference`. The GPU backend computes variances and
 covariance from shared cell bootstrap weights, then performs regression on CUDA.
 Its ``gpu_batch_size`` counts pairs rather than genes.
 
+One-sample test
+---------------
+
+To ask whether each pair's correlation differs from zero, rather than whether
+it differs between conditions, omit the treatment:
+
+.. code-block:: python
+
+   memento.ht_2d_moments(adata, num_boot=5000, random_state=5)
+   correlations = memento.get_2d_ht_result(adata)  # tx == "intercept"
+
+The coefficient is the cell-count-weighted mean of the group correlations, and
+its bootstrap null is the same weighted mean over each bootstrap draw. The
+one-sample form takes no covariates, per-pair dictionaries or
+``resample_rep``, and runs on either backend. Passing a treatment whose columns
+are all constant is an error: constant columns are removed as having nothing
+to test, so use ``treatment=None`` instead of an all-ones column.
+
 Select treatments or covariates per pair with tuple keys:
 
 .. code-block:: python
