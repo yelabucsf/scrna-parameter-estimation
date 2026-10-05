@@ -69,7 +69,9 @@ Invalid moments and draws
 
 Capture correction can produce invalid moments. Within a group, invalid
 bootstrap moment values are replaced by samples from that group's valid
-bootstrap values. A group without usable values is omitted for that gene or
+bootstrap values. A pair whose variance estimate is not positive in a group has
+no defined correlation; ``get_2d_moments`` reports it as NaN for that group
+rather than as a clipped value of exactly 1 or -1. A group without usable values is omitted for that gene or
 pair. Correlation bootstrap values must lie strictly between -1 and 1.
 
 A replicate draw with no treatment contrast has an undefined coefficient and
