@@ -191,7 +191,13 @@ def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observe
     return np.concatenate(output, axis=-1)
 
 
-def _regress(means, variances, good, covariate, treatment, nc, designs, resample_generator=None):
+def _one_sample_map(weights):
+    """Weighted mean over groups: the one-sample correlation statistic."""
+    return (weights / weights.sum())[None, :]
+
+
+def _regress(means, variances, good, covariate, treatment, nc, designs, resample_generator=None,
+             one_sample=False):
     """Group matching masks/designs; retain caller gene and treatment ordering."""
     correlation = variances is None
     moments = (means,) if correlation else (means, variances)
@@ -202,12 +208,15 @@ def _regress(means, variances, good, covariate, treatment, nc, designs, resample
         partitions.setdefault((tuple(masks[i]), tx, cov), []).append(i)
     for (mask, tx, cov), ids in partitions.items():
         mask = np.array(mask)
-        if mask.sum() < 2:
+        if mask.sum() < (1 if one_sample else 2):
             for i in ids:
                 outputs[i] = np.full((3 if correlation else 6, len(tx)), np.nan)
             continue
-        mapping = _regression_map(covariate.loc[:, list(cov)].values[mask].astype(float),
-                                  treatment.loc[:, list(tx)].values[mask].astype(float), nc[mask])
+        if one_sample:
+            mapping = _one_sample_map(nc[mask].astype(float))
+        else:
+            mapping = _regression_map(covariate.loc[:, list(cov)].values[mask].astype(float),
+                                      treatment.loc[:, list(tx)].values[mask].astype(float), nc[mask])
         mapping = torch.as_tensor(mapping, device=means.device, dtype=torch.float64)
         ix = torch.as_tensor(ids, device=means.device)
         use = torch.as_tensor(mask, device=means.device)
@@ -261,6 +270,9 @@ def _working_budget(free, requested):
 def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covariate_for_gene,
           num_boot, random_state, memory_budget, batch_size, device, pair_positions=None, **kwargs):
     correlation = pair_positions is not None
+    one_sample = bool(kwargs.pop('one_sample', False))
+    if one_sample and not correlation:
+        raise ValueError('The one-sample test is available for correlations only')
     resample_rep = kwargs.get('resample_rep', False)
     if not isinstance(resample_rep, (bool, np.bool_)):
         raise ValueError('resample_rep must be boolean')
@@ -384,6 +396,8 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
                             variances[:, gi, 0] = torch.as_tensor(np.log(true_var), device=device)
                         good[:, gi] = torch.as_tensor(eligible, device=device) & valid_mean & valid_var
                     regression_kwargs = {'resample_generator': resample_generator} if resample_rep else {}
+                    if one_sample:
+                        regression_kwargs['one_sample'] = True
                     outputs.extend(_regress(means, variances, good, covariate, treatment, nc,
                                             designs[start:start + g], **regression_kwargs))
         finally:

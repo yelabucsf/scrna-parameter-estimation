@@ -51,3 +51,21 @@ def test_fit_mv_regressor_tolerates_few_but_nonzero_valid_genes():
     poly = estimator._fit_mv_regressor(mean, var)
 
     assert poly.shape == (3,)
+
+
+def test_corr_from_cov_undefined_variance_is_nan_not_clipped_to_one():
+    # A pair whose variance estimate is <= 0 in a group has no defined
+    # correlation. It must come back as NaN, not as the old 5.0 placeholder
+    # clipped to an exact +1, which downstream averaging cannot tell apart
+    # from a real estimate.
+    cov = np.array([0.2, 0.3, 0.1, 0.5])
+    var_1 = np.array([1.0, 0.0, 1.0, 1.0])
+    var_2 = np.array([1.0, 1.0, -0.2, 0.04])   # pair 3: 0.5 / 0.2 = 2.5
+    corr = estimator._corr_from_cov(cov, var_1.copy(), var_2.copy())
+    np.testing.assert_allclose(corr[0], 0.2)
+    assert np.isnan(corr[1]) and np.isnan(corr[2])
+    assert corr[3] == 1.0          # a finite estimate > 1 is still clipped
+
+    boot = estimator._corr_from_cov(cov, var_1.copy(), var_2.copy(), boot=True)
+    assert np.isnan(boot[1]) and np.isnan(boot[2])
+    np.testing.assert_allclose(boot[3], 2.5)   # bootstrap values are not clipped

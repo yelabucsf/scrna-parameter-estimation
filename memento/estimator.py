@@ -354,12 +354,18 @@ def _hyper_corr_symmetric(data, n_obs, size_factor, q, var, idx1=None, idx2=None
 def _corr_from_cov(cov, var_1, var_2, boot=False):
     """
         Convert the estimation of the covariance to the estimation of correlation.
+
+        Pairs where either variance estimate is <= 0 have no defined
+        correlation and are returned as NaN. (They were previously filled with
+        a 5.0 placeholder, which the clip below turned into an exact +/-1 that
+        is indistinguishable from a real, clipped estimate in get_2d_moments.)
+        Finite estimates outside [-1, 1] are still clipped when boot=False.
     """
     
     if not isinstance(cov, np.ndarray):
         return cov/np.sqrt(var_1*var_2)
         
-    corr = np.full(cov.shape, 5.0)
+    corr = np.full(cov.shape, np.nan)
         
     var_1[var_1 <= 0] = np.nan
     var_2[var_2 <= 0] = np.nan
