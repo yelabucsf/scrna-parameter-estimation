@@ -248,3 +248,37 @@ def test_regression_empty_draws_return_correct_output_shape():
     assert np.shape(one)==(6,1) and np.shape(two)==(3,1)
     assert np.isnan(one).all() and np.isnan(two).all()
     assert np.isnan(hypothesis_test._compute_asl(np.array([1.,np.nan,np.nan])))
+
+
+def test_regress_2d_one_sample_is_weighted_mean_of_group_correlations():
+    # One-sample test (H0: correlation = 0): the coefficient is the
+    # cell-count-weighted mean of the observed group correlations, and the
+    # bootstrap null is the same weighted mean over each bootstrap column.
+    # Covariates and treatment are ignored by construction.
+    rng = np.random.default_rng(11)
+    n_groups, num_boot = 5, 400
+    boot_corr = np.clip(rng.normal(0.3, 0.05, size=(n_groups, num_boot + 1)), -0.99, 0.99)
+    Nc_list = np.array([50, 120, 80, 300, 60])
+    covariate = np.ones((n_groups, 1))
+    treatment = np.ones((n_groups, 1))
+
+    coef, se, pval = hypothesis_test._regress_2d(
+        covariate, treatment, boot_corr, Nc_list, one_sample=True)
+
+    weighted = np.average(boot_corr, axis=0, weights=Nc_list)
+    np.testing.assert_allclose(coef, [weighted[0]])
+    np.testing.assert_allclose(se, [np.std(weighted[1:])])
+    assert pval.shape == (1,) and pval[0] < 1e-6
+
+
+def test_regress_2d_one_sample_null_correlation_is_not_significant():
+    rng = np.random.default_rng(12)
+    boot_corr = rng.normal(0.0, 0.05, size=(6, 1001))
+    boot_corr[:, 0] = 0.0
+    Nc_list = np.full(6, 100)
+
+    coef, _, pval = hypothesis_test._regress_2d(
+        np.ones((6, 1)), np.ones((6, 1)), boot_corr, Nc_list, one_sample=True)
+
+    assert abs(coef[0]) < 1e-12
+    assert pval[0] > 0.5
