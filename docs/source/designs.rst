@@ -35,6 +35,9 @@ What the binary wrappers do
 ``[treatment_col] + replicates``. It **does not add donor covariates**, enable
 replicate resampling, or fit a paired model. Use the explicit setup, grouping,
 moment, and testing functions when you need those controls or GPU execution.
+Because it is easily mistaken for replicate adjustment, ``replicates`` is
+deprecated: passing it emits a ``FutureWarning`` and it will be removed in a
+future release.
 
 ``get_groups`` can return group metadata conveniently, but it converts numeric
 labels to numbers and nonnumeric two-level labels to category codes. To control
