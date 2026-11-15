@@ -496,3 +496,20 @@ def test_one_sample_api_runs_on_gpu(cuda,prepared_pairs):
     assert set(r.tx)=={'intercept'}
     off=r.gene_1!=r.gene_2
     assert r.loc[off,'corr_coef'].notna().all()
+
+
+def test_pair_covariate_for_gene_observed_coefficient_matches_cpu(cuda, prepared_pairs):
+    # Both backends must fit the per-pair covariate selection; the observed
+    # correlation slope is deterministic, so it must agree across backends.
+    a, tx, cov = prepared_pairs
+    # Donor indicators are orthogonal to stim here; 'age' is not, so the
+    # selection changes the fitted slope.
+    cov = cov.assign(age=[.3, 1.1, -.4, .9, .2, -.8])
+    pairs = {('g0', 'g1'): ['age'], ('g1', 'g2'): ['d1'], ('g3', 'g4'): ['d2', 'age'], ('g0', 'g0'): ['d1']}
+    kwargs = dict(treatment=tx[['stim']], covariate=cov, covariate_for_gene=pairs, num_boot=64,
+                  inplace=False, random_state=0)
+    cpu = memento.get_2d_ht_result(memento.ht_2d_moments(a, backend='cpu', **kwargs))
+    gpu = memento.get_2d_ht_result(memento.ht_2d_moments(a, backend='gpu', **kwargs))
+    off = (cpu.gene_1 != cpu.gene_2).to_numpy()
+    assert np.isfinite(cpu.corr_coef[off]).all()
+    np.testing.assert_allclose(gpu.corr_coef[off], cpu.corr_coef[off], rtol=1e-10, atol=1e-12)
