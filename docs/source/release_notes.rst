@@ -21,14 +21,15 @@ One-sample correlation tests
 Replicate resampling
 ~~~~~~~~~~~~~~~~~~~~
 
-* New ``cluster`` option for ``ht_1d_moments`` and ``ht_2d_moments`` (CPU):
-  with ``resample_rep=True``, ``cluster="donor"`` resamples whole donors and
+* New ``cluster`` option for ``ht_1d_moments`` and ``ht_2d_moments`` (CPU and
+  GPU): with ``resample_rep=True``, ``cluster="donor"`` resamples whole donors and
   keeps all of a donor's group rows together. Use it when a donor contributes
   several groups, such as donor-by-batch or donor-by-condition designs, where
   resampling rows independently understates standard errors.
 * Fixed: with ``resample_rep=True``, a draw whose treatment values differed
   only by rounding error could produce a slope around 1e14 and distort the
-  reported 1D coefficient. Such draws are now treated as having no contrast.
+  reported 1D coefficient. Such draws are now treated as having no contrast on
+  both the CPU and GPU backends.
 * CPU replicate resampling now produces exactly ``num_boot`` draws in addition
   to the observed statistic. This fixes an off-by-one error and changes seeded
   results when ``resample_rep=True``. Empty usable null distributions return
