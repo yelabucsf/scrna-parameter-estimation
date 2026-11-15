@@ -54,6 +54,12 @@ one-sample form takes no covariates, per-pair dictionaries or
 are all constant is an error: constant columns are removed as having nothing
 to test, so use ``treatment=None`` instead of an all-ones column.
 
+The p-value reflects cell sampling within groups, not variation between groups
+such as donors, and groups with more cells carry more weight. Inspect the
+per-group correlations from ``get_2d_moments(adata, groupby=...)`` before
+relying on individual pairs. ``tutorials/one_sample_correlations.ipynb`` in
+the repository walks through the test and this check.
+
 Select treatments or covariates per pair with tuple keys:
 
 .. code-block:: python
