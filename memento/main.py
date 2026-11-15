@@ -147,7 +147,7 @@ def _require_treatment_columns(treatment, treatment_for_gene, one_sample_hint=Fa
         raise ValueError(msg)
 
 
-def _resolve_cluster(adata, cluster, resample_rep, backend):
+def _resolve_cluster(adata, cluster, resample_rep):
     """
     Turn the `cluster` option into one integer code per group, in
     ``adata.uns['memento']['groups']`` order. `cluster` names one of the
@@ -158,8 +158,6 @@ def _resolve_cluster(adata, cluster, resample_rep, backend):
         return None
     if not resample_rep:
         raise ValueError("cluster only applies to replicate resampling; pass resample_rep=True as well.")
-    if backend == 'gpu':
-        raise NotImplementedError("cluster resampling is not implemented on the GPU backend yet; use backend='cpu'.")
     label_columns = list(adata.uns['memento']['label_columns'])
     if not isinstance(cluster, str) or cluster not in label_columns:
         raise ValueError(
@@ -607,7 +605,7 @@ def ht_1d_moments(
         (e.g. the donor column). Groups sharing a value are resampled
         together, so the sampling unit is the cluster rather than the group
         row. Use it when a donor contributes several groups, such as
-        donor-by-condition or donor-by-batch designs. CPU only.
+        donor-by-condition or donor-by-batch designs. Supported by CPU and GPU.
     approx : {'norm', 'boot', 'gdp'}, default 'norm'
         Passed through kwargs. Bootstrap p-value approximation. GPU supports
         only ``'norm'``.
@@ -621,7 +619,7 @@ def ht_1d_moments(
     
     if backend not in ('cpu', 'gpu'):
         raise ValueError("backend must be 'cpu' or 'gpu'")
-    cluster_codes = _resolve_cluster(adata, cluster, kwargs.get('resample_rep', False), backend)
+    cluster_codes = _resolve_cluster(adata, cluster, kwargs.get('resample_rep', False))
     if not inplace:
         adata = adata.copy()
     
@@ -670,7 +668,7 @@ def ht_1d_moments(
         results, gpu_info = gpu_ht_1d(
             adata, test_genes, test_gene_indices, treatment, covariate,
             treatment_for_gene, covariate_for_gene, num_boot, random_state,
-            gpu_memory_budget, gpu_batch_size, gpu_device, **kwargs)
+            gpu_memory_budget, gpu_batch_size, gpu_device, cluster=cluster_codes, **kwargs)
     else:
         ht_funcs = []
         task_random_states = _spawn_task_random_states(
@@ -911,7 +909,7 @@ def ht_2d_moments(
     must have been computed before testing.
 
     Both backends support ``resample_rep=True`` through kwargs. This resamples
-    individual group rows after covariate residualization. On CPU, add
+    individual group rows after covariate residualization. Add
     ``cluster='<label column>'`` to resample whole clusters such as donors,
     keeping all of a donor's group rows together. GPU supports ``hyper_relative`` and ``approx='norm'``.
 
@@ -939,7 +937,7 @@ def ht_2d_moments(
             )
         if kwargs.get('resample_rep', False):
             raise NotImplementedError("resample_rep is not supported for the one-sample test (treatment=None).")
-    cluster_codes = _resolve_cluster(adata, cluster, kwargs.get('resample_rep', False), backend)
+    cluster_codes = _resolve_cluster(adata, cluster, kwargs.get('resample_rep', False))
     if not inplace:
         adata = adata.copy()
     if one_sample:
@@ -990,7 +988,8 @@ def ht_2d_moments(
         from ._gpu import ht_2d as gpu_ht_2d
         results, info = gpu_ht_2d(
             adata, treatment, covariate, treatment_for_gene, covariate_for_gene,
-            num_boot, random_state, gpu_memory_budget, gpu_batch_size, gpu_device, **kwargs)
+            num_boot, random_state, gpu_memory_budget, gpu_batch_size, gpu_device,
+            cluster=cluster_codes, **kwargs)
         values = np.concatenate(results, axis=1) if results else np.empty((3, 0))
         result = dict(treatment=treatment, covariate=covariate,
                       corr_coef=values[0], corr_se=values[1], corr_asl=values[2],

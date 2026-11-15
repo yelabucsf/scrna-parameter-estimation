@@ -21,7 +21,7 @@ By itself it does not keep rows belonging to the same donor together, stratify
 by condition, or implement random effects. When a donor contributes several
 group rows (donor-by-condition, donor-by-batch), rows from one donor are not
 independent, and resampling them separately understates the standard error.
-On the CPU backend, add ``cluster="donor"`` to resample whole donors and keep
+Add ``cluster="donor"`` to resample whole donors and keep
 their rows together:
 
 .. code-block:: python

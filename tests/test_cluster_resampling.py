@@ -132,7 +132,6 @@ def test_cluster_resampling_is_seeded():
 @pytest.mark.parametrize("options, error, match", [
     (dict(cluster="donor"), ValueError, "resample_rep=True"),
     (dict(cluster="individual", resample_rep=True), ValueError, "label_columns"),
-    (dict(cluster="donor", resample_rep=True, backend="gpu"), NotImplementedError, "GPU"),
 ])
 def test_cluster_option_is_validated(options, error, match):
     adata, treatment, covariate = _donor_by_batch_adata(32, n_donors=4)

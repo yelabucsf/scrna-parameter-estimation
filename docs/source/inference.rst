@@ -40,7 +40,7 @@ multiple rows from the same donor together. It is not a mixed-effects model.
 Cluster resampling
 ~~~~~~~~~~~~~~~~~~
 
-``cluster="<label column>"`` (CPU only, with ``resample_rep=True``) changes
+``cluster="<label column>"`` (with ``resample_rep=True``; CPU and GPU) changes
 step 2: each draw samples as many clusters as the valid groups contain,
 uniformly with replacement, and takes every group row of a sampled cluster.
 Steps 1, 3 and 4 are unchanged. The column must be one of the ``label_columns``
