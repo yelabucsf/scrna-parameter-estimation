@@ -34,9 +34,29 @@ Replicate resampling
 Covariate residualization happens once, before group resampling; the covariate
 model is not refitted inside each replicate draw. Each gene or pair uses the
 same group assignments for its moment types and assigned treatment columns.
-Sampling is not stratified by treatment and does not keep multiple rows from
-the same donor together. This implements the existing CPU group-row bootstrap;
-it is not a paired-donor cluster bootstrap or a mixed-effects model.
+Sampling is not stratified by treatment and, by default, does not keep
+multiple rows from the same donor together. It is not a mixed-effects model.
+
+Cluster resampling
+~~~~~~~~~~~~~~~~~~
+
+``cluster="<label column>"`` (CPU only, with ``resample_rep=True``) changes
+step 2: each draw samples as many clusters as the valid groups contain,
+uniformly with replacement, and takes every group row of a sampled cluster.
+Steps 1, 3 and 4 are unchanged. The column must be one of the ``label_columns``
+given to ``create_groups``, typically the donor. Groups that are invalid for a
+gene or pair are removed before clusters are formed.
+
+Use it whenever one sampling unit contributes several group rows. Rows from the
+same donor share that donor's expression and correlation levels, so treating
+them as independent overstates the number of replicates. With exactly one row
+per cluster, cluster and row resampling are equivalent.
+
+Two limits remain. The number of clusters bounds what resampling can show:
+with a handful of donors, standard errors are themselves noisy. And because
+covariates are not refitted within draws, designs that spend many degrees of
+freedom on covariates, such as paired designs with an indicator per donor,
+can still give standard errors that are somewhat too small.
 
 Use this option when group rows correspond to the sampling units you intend
 to resample. With very few groups, resampled treatments can be constant and
