@@ -64,6 +64,16 @@ slopes undefined. Additional bootstrap draws cannot compensate for a lack of
 independent biological replication. See :doc:`designs` for paired and unpaired
 designs and :doc:`eqtl` for one-group-per-donor analysis.
 
+One-sample test
+~~~~~~~~~~~~~~~
+
+With ``treatment=None`` the statistic is the cell-count-weighted mean of the
+group correlations. With ``resample_rep=True``, step 1 instead residualizes the
+correlations on the covariates and adds their weighted mean back, so the
+observed statistic is unchanged; steps 2 and 3 (and ``cluster``) are as above,
+and step 4 takes the weighted mean of the selected values. See
+:doc:`correlations`.
+
 Regression and reported statistics
 ----------------------------------
 

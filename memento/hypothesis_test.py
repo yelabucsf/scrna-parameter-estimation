@@ -839,9 +839,14 @@ def _regress_2d(
 
         With ``one_sample=True`` the test is H0: correlation = 0. The statistic
         is the cell-count-weighted mean of the group correlations, computed for
-        the observed column and every bootstrap column alike; ``covariate`` and
-        ``treatment`` are not used.
-    """    
+        the observed column and every bootstrap column alike; ``treatment`` is
+        not used. Covariates enter only with ``resample_rep=True``: each column
+        is residualized on them with its weighted mean added back, so the
+        observed coefficient is unchanged and group resampling no longer
+        carries covariate-explained variation between groups. Without
+        resampling the adjustment is a no-op, because a weighted least-squares
+        fit with an intercept has the same weighted mean as the data.
+    """
     
     valid_boostrap_iters = ~np.any(~np.isfinite(boot_corr), axis=0)
     if valid_boostrap_iters.size == 0 or not valid_boostrap_iters[0]:
@@ -854,7 +859,19 @@ def _regress_2d(
     if boot_corr.shape[1] < 2:
         return [np.full(treatment.shape[1], np.nan) for _ in range(3)]
     
-    if one_sample:
+    if one_sample and resample_rep:
+
+        fitted = LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+        boot_corr_adjusted = boot_corr - fitted + np.average(boot_corr, axis=0, weights=Nc_list)
+
+        replicate_assignment, b_iter_assignment, weights_resampled = _resample_assignments(
+            num_rep, num_boot, rng, Nc_list, cluster)
+
+        boot_corr_resampled = boot_corr_adjusted[(replicate_assignment, b_iter_assignment)]
+
+        corr_coef = np.average(boot_corr_resampled, axis=0, weights=weights_resampled).reshape(1, -1)
+
+    elif one_sample:
 
         corr_coef = np.average(boot_corr, axis=0, weights=Nc_list).reshape(1, -1)
 

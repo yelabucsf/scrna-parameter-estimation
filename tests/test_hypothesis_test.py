@@ -284,6 +284,72 @@ def test_regress_2d_one_sample_null_correlation_is_not_significant():
     assert pval[0] > 0.5
 
 
+def _heterogeneous_group_correlations(rng, n_groups=12, num_boot=2000):
+    # Group correlations that vary with a continuous group-level covariate
+    # (e.g. donor age), plus small cell-bootstrap noise around each group.
+    age = rng.uniform(20, 80, n_groups)
+    centre = 0.1 + 0.005 * (age - 50)
+    boot_corr = centre[:, None] + rng.normal(0, 0.01, size=(n_groups, num_boot + 1))
+    Nc_list = rng.integers(50, 300, n_groups)
+    return boot_corr, Nc_list, age[:, None]
+
+
+def test_regress_2d_one_sample_covariate_is_a_no_op_without_resampling():
+    # The weighted mean of a weighted least-squares fit with an intercept is
+    # the weighted mean of the data, so covariate adjustment cannot move the
+    # one-sample statistic unless groups are resampled.
+    boot_corr, Nc_list, age = _heterogeneous_group_correlations(np.random.default_rng(21))
+    ones = np.ones_like(age)
+
+    plain = hypothesis_test._regress_2d(ones, ones, boot_corr, Nc_list, one_sample=True)
+    adjusted = hypothesis_test._regress_2d(age, ones, boot_corr, Nc_list, one_sample=True)
+
+    np.testing.assert_allclose(adjusted, plain)
+
+
+def test_regress_2d_one_sample_resample_rep_residualizes_on_covariates():
+    boot_corr, Nc_list, age = _heterogeneous_group_correlations(np.random.default_rng(22))
+    ones = np.ones_like(age)
+
+    def run(covariate, resample_rep):
+        return hypothesis_test._regress_2d(
+            covariate, ones, boot_corr, Nc_list, resample_rep=resample_rep,
+            rng=np.random.default_rng(5), one_sample=True)
+
+    cells_only = run(ones, False)
+    groups_plain = run(ones, True)
+    groups_adjusted = run(age, True)
+
+    # The observed coefficient is the weighted mean on every path.
+    weighted = np.average(boot_corr[:, 0], weights=Nc_list)
+    for coef, _, _ in (cells_only, groups_plain, groups_adjusted):
+        np.testing.assert_allclose(coef, [weighted])
+
+    # Resampling groups adds the between-group spread of the correlations;
+    # adjusting for the covariate that drives that spread removes it again.
+    assert groups_plain[1][0] > 5 * cells_only[1][0]
+    assert groups_adjusted[1][0] < 0.5 * groups_plain[1][0]
+
+
+def test_regress_2d_one_sample_resample_rep_matches_manual_resampling():
+    boot_corr, Nc_list, age = _heterogeneous_group_correlations(np.random.default_rng(23), num_boot=300)
+    ones = np.ones_like(age)
+
+    coef, se, _ = hypothesis_test._regress_2d(
+        age, ones, boot_corr, Nc_list, resample_rep=True,
+        rng=np.random.default_rng(9), one_sample=True)
+
+    X = np.column_stack([np.ones(len(age)), age[:, 0]])
+    W = np.diag(Nc_list.astype(float))
+    beta = np.linalg.solve(X.T @ W @ X, X.T @ W @ boot_corr)
+    adjusted = boot_corr - X @ beta + np.average(boot_corr, axis=0, weights=Nc_list)
+    rows, draws = hypothesis_test._replicate_assignments(len(age), 300, np.random.default_rng(9))
+    expected = np.average(adjusted[rows, draws], axis=0, weights=Nc_list[rows])
+
+    np.testing.assert_allclose(coef, [expected[0]])
+    np.testing.assert_allclose(se, [np.std(expected[1:])])
+
+
 def test_resampled_treatments_equal_up_to_rounding_are_nan():
     # Distinct rows whose residualized treatment differs only in the last
     # bits (seen with a binary treatment residualized on a covariate) used

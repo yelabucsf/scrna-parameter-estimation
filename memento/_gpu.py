@@ -251,6 +251,34 @@ def _one_sample_map(weights):
     return (weights / weights.sum())[None, :]
 
 
+def _resampled_one_sample_summary(y, covariate, nc, generator, cluster=None):
+    """Match CPU one-sample semantics: residualize on covariates keeping the
+    weighted mean, then resample valid group rows (or whole clusters) as in
+    _resampled_summary."""
+    groups, columns = y.shape
+    if columns < 2:
+        return np.full((3, 1), np.nan)
+    adjust = np.eye(groups)
+    adjust -= LinearRegression(n_jobs=1).fit(covariate, adjust, nc).predict(covariate)
+    adjust += _one_sample_map(nc.astype(float))
+    device = y.device
+    adjusted = torch.as_tensor(adjust, device=device, dtype=torch.float64) @ y
+    weights = torch.as_tensor(nc, device=device, dtype=torch.float64)
+    if cluster is None:
+        assignment, iterations = _replicate_assignments(groups, columns - 1, device, generator)
+        valid = None
+    else:
+        assignment, iterations, valid = _cluster_assignments(cluster, columns - 1, device, generator)
+    coef = torch.empty(columns, device=device, dtype=torch.float64)
+    for lo in range(0, columns, 256):
+        hi = min(lo + 256, columns)
+        w = weights[assignment[:, lo:hi]]
+        if valid is not None:
+            w = w * valid[:, lo:hi]
+        coef[lo:hi] = (adjusted[assignment[:, lo:hi], iterations[:, lo:hi]] * w).sum(0) / w.sum(0)
+    return torch.stack(_coefficient_summary(coef[None], True), dim=0).cpu().numpy()
+
+
 def _regress(means, variances, good, covariate, treatment, nc, designs, resample_generator=None,
              one_sample=False, cluster=None):
     """Group matching masks/designs; retain caller gene and treatment ordering."""
@@ -283,6 +311,11 @@ def _regress(means, variances, good, covariate, treatment, nc, designs, resample
             for row, i in enumerate(ids):
                 if finite.shape[1] == 0 or not bool(finite[row, 0]):
                     outputs[i] = np.full((3 * len(ys), len(tx)), np.nan)
+                    continue
+                if one_sample:
+                    outputs[i] = _resampled_one_sample_summary(
+                        ys[0][row, :, finite[row]], cov_values, nc[mask], resample_generator,
+                        None if cluster is None else np.asarray(cluster)[mask])
                     continue
                 outputs[i] = _resampled_summary(
                     [y[row, :, finite[row]] for y in ys], cov_values, tx_values,

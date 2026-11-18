@@ -145,3 +145,25 @@ def test_cluster_needs_at_least_two_clusters():
     with pytest.raises(ValueError, match="at least two clusters"):
         main.ht_1d_moments(adata, treatment=treatment, covariate=covariate, num_boot=50,
                            verbose=0, resample_rep=True, cluster="site")
+
+
+@pytest.mark.parametrize("backend", ["cpu", "gpu"])
+def test_one_sample_cluster_resampling(backend):
+    if backend == "gpu":
+        torch = pytest.importorskip("torch")
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA unavailable")
+    adata, _, covariate = _donor_by_batch_adata(34)
+    genes = adata.uns["memento"]["gene_list"]
+    main.compute_2d_moments(adata, [(genes[0], genes[1]), (genes[2], genes[3])])
+
+    def run(**kw):
+        main.ht_2d_moments(adata, treatment=None, num_boot=200, verbose=0, random_state=4,
+                           backend=backend, **kw)
+        return main.get_2d_ht_result(adata)
+
+    plain = run()
+    clustered = run(covariate=covariate, resample_rep=True, cluster="donor")
+    assert np.isfinite(clustered[["corr_coef", "corr_se", "corr_pval"]].to_numpy()).all()
+    np.testing.assert_allclose(clustered.corr_coef, plain.corr_coef)
+    assert not np.allclose(clustered.corr_se, run(covariate=covariate, resample_rep=True).corr_se)
