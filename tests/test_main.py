@@ -275,6 +275,32 @@ def test_drop_constant_treatment_columns_global_case():
     assert constant_cols == ["constant"]
 
 
+def test_ht_2d_moments_cpu_honors_covariate_for_gene():
+    # The CPU path passed the full covariate frame to every pair, silently
+    # ignoring covariate_for_gene (the GPU path already honored it).
+    rng = np.random.default_rng(11)
+    adata = _build_donor_adata(rng, n_genes=30, n_donors=12, cells_per_donor=150, lam=5.0)
+    groups = adata.uns["memento"]["groups"]
+    genes = adata.uns["memento"]["gene_list"]
+    pair = (genes[0], genes[1])
+    main.compute_2d_moments(adata, [pair])
+    treatment = pd.DataFrame({"tx": (np.arange(len(groups)) % 2).astype(float)}, index=groups)
+    covariate = pd.DataFrame(
+        {"noise_a": rng.normal(size=len(groups)), "noise_b": rng.normal(size=len(groups))},
+        index=groups,
+    )
+
+    def run(cov, **kw):
+        main.ht_2d_moments(adata, treatment=treatment, covariate=cov, num_boot=200,
+                           verbose=0, random_state=3, **kw)
+        return main.get_2d_ht_result(adata)["corr_coef"].to_numpy()
+
+    selected = run(covariate, covariate_for_gene={pair: ["noise_a"]})
+    assert np.isfinite(selected).all()
+    np.testing.assert_allclose(selected, run(covariate[["noise_a"]]))
+    assert not np.allclose(selected, run(covariate))
+
+
 def test_drop_constant_treatment_columns_per_gene_case():
     # treatment_for_gene provided: constant columns should be removed from
     # each gene's own list; a gene whose only column is constant should be
@@ -769,29 +795,3 @@ def test_ht_2d_moments_one_sample_rejects_design_options(extra):
 
     with pytest.raises(error):
         main.ht_2d_moments(adata, num_boot=50, verbose=0, **extra)
-
-
-def test_ht_2d_moments_cpu_honors_covariate_for_gene():
-    # The CPU path passed the full covariate frame to every pair, silently
-    # ignoring covariate_for_gene (the GPU path already honored it).
-    rng = np.random.default_rng(11)
-    adata = _build_donor_adata(rng, n_genes=30, n_donors=12, cells_per_donor=150, lam=5.0)
-    groups = adata.uns["memento"]["groups"]
-    genes = adata.uns["memento"]["gene_list"]
-    pair = (genes[0], genes[1])
-    main.compute_2d_moments(adata, [pair])
-    treatment = pd.DataFrame({"tx": (np.arange(len(groups)) % 2).astype(float)}, index=groups)
-    covariate = pd.DataFrame(
-        {"noise_a": rng.normal(size=len(groups)), "noise_b": rng.normal(size=len(groups))},
-        index=groups,
-    )
-
-    def run(cov, **kw):
-        main.ht_2d_moments(adata, treatment=treatment, covariate=cov, num_boot=200,
-                           verbose=0, random_state=3, **kw)
-        return main.get_2d_ht_result(adata)["corr_coef"].to_numpy()
-
-    selected = run(covariate, covariate_for_gene={pair: ["noise_a"]})
-    assert np.isfinite(selected).all()
-    np.testing.assert_allclose(selected, run(covariate[["noise_a"]]))
-    assert not np.allclose(selected, run(covariate))
