@@ -75,14 +75,10 @@ contributes several groups, add ``cluster="donor"`` to resample whole donors
 (see :doc:`inference`). The one-sample form takes no per-pair dictionaries and
 runs on either backend.
 
-By default the p-value reflects cell sampling within groups, not variation
-between groups such as donors, so it describes the donors in hand. For a
-statement about the population they were drawn from, add
-``resample_rep=True`` to resample donors as well. Groups with more cells carry
-more weight; inspect the per-group correlations from
-``get_2d_moments(adata, groupby=...)`` before relying on individual pairs.
-``tutorials/one_sample_correlations.ipynb`` in the repository walks through
-both tests and this check.
+Groups with more cells carry more weight; inspect the per-group correlations
+from ``get_2d_moments(adata, groupby=...)`` before relying on individual
+pairs. ``tutorials/one_sample_correlations.ipynb`` walks through both tests
+and this check.
 
 Select treatments or covariates per pair with tuple keys:
 
