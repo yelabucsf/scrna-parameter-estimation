@@ -139,12 +139,58 @@ def _replicate_assignments(groups, boots, device, generator):
     return assignment, iterations
 
 
-def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observed):
+def _cluster_members(cluster):
+    """Rows of each cluster, padded to the largest cluster, plus a validity mask."""
+    _, codes = np.unique(np.asarray(cluster), return_inverse=True)
+    members = [np.flatnonzero(codes == c) for c in range(codes.max() + 1)]
+    rows = np.zeros((len(members), max(map(len, members))), dtype=np.int64)
+    valid = np.zeros(rows.shape, dtype=bool)
+    for c, m in enumerate(members):
+        rows[c, :len(m)] = m
+        valid[c, :len(m)] = True
+    return rows, valid
+
+
+def _cluster_assignments(cluster, boots, device, generator):
+    """GPU version of `hypothesis_test._cluster_assignments`.
+
+    Each draw samples whole clusters with replacement and keeps all of a
+    cluster's rows together; every selected row gets its own cell-bootstrap
+    iteration. Draws are padded to (n_clusters * largest cluster) rows. Padding
+    has ``valid=False`` (zero weight) and repeats a row already in the draw, so
+    it cannot create treatment contrast. Column 0 is the observed data.
+    """
+    groups = len(cluster)
+    member_rows, member_valid = (torch.as_tensor(x, device=device) for x in _cluster_members(cluster))
+    n_clusters = member_rows.shape[0]
+    chosen = torch.randint(n_clusters, (n_clusters, boots + 1), device=device, generator=generator)
+    assignment = member_rows[chosen].permute(0, 2, 1).reshape(-1, boots + 1)
+    valid = member_valid[chosen].permute(0, 2, 1).reshape(-1, boots + 1)
+    assignment = torch.where(valid, assignment, member_rows[chosen[0], 0])
+    iterations = torch.randint(1, boots + 1, assignment.shape, device=device, generator=generator)
+    assignment[:, 0] = 0
+    valid[:, 0] = False
+    assignment[:groups, 0] = torch.arange(groups, device=device)
+    valid[:groups, 0] = True
+    iterations[:, 0] = 0
+    return assignment, iterations, valid
+
+
+def _resampled_rows(cluster):
+    """Rows per replicate draw: groups, or the padded height of cluster draws."""
+    if cluster is None:
+        return None
+    rows, _ = _cluster_members(cluster)
+    return rows.size
+
+
+def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observed, cluster=None):
     """One gene/pair at a time, with bounded draw and treatment temporaries.
 
     Match CPU semantics: residualize once, then resample valid group rows and
-    select an independent cell-bootstrap iteration for each sampled row. This
-    is not a paired-donor/cluster bootstrap and does not refit covariates.
+    select an independent cell-bootstrap iteration for each sampled row. With
+    `cluster` (one code per row), whole clusters are resampled instead. Does
+    not refit covariates within draws.
     """
     groups, columns = ys[0].shape
     if columns < 2:
@@ -157,7 +203,11 @@ def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observe
     tx = torch.as_tensor(tx, device=device, dtype=torch.float64)
     weights = torch.as_tensor(nc, device=device, dtype=torch.float64)
     adjusted = [residual @ y for y in ys]
-    assignment, iterations = _replicate_assignments(groups, columns - 1, device, generator)
+    if cluster is None:
+        assignment, iterations = _replicate_assignments(groups, columns - 1, device, generator)
+        valid = None
+    else:
+        assignment, iterations, valid = _cluster_assignments(cluster, columns - 1, device, generator)
     # Same no-contrast rule as the CPU `_cross_coef_resampled`: sampled
     # treatments that agree up to rounding (relative to the column's scale)
     # have no contrast. Exact equality lets last-bit residualization noise
@@ -173,7 +223,7 @@ def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observe
             hi = min(lo + 256, columns)
             rows = assignment[:, lo:hi]
             draws = iterations[:, lo:hi]
-            w = weights[rows]
+            w = weights[rows] if valid is None else weights[rows] * valid[:, lo:hi]
             totals = w.sum(0)
             a = tx[rows, start:end]
             has_contrast = (a.amax(0) - a.amin(0)) > contrast_floor[start:end]
@@ -202,7 +252,7 @@ def _one_sample_map(weights):
 
 
 def _regress(means, variances, good, covariate, treatment, nc, designs, resample_generator=None,
-             one_sample=False):
+             one_sample=False, cluster=None):
     """Group matching masks/designs; retain caller gene and treatment ordering."""
     correlation = variances is None
     moments = (means,) if correlation else (means, variances)
@@ -236,7 +286,8 @@ def _regress(means, variances, good, covariate, treatment, nc, designs, resample
                     continue
                 outputs[i] = _resampled_summary(
                     [y[row, :, finite[row]] for y in ys], cov_values, tx_values,
-                    nc[mask], mapping, resample_generator, correlation)
+                    nc[mask], mapping, resample_generator, correlation,
+                    None if cluster is None else np.asarray(cluster)[mask])
         elif bool(finite.all()):
             for i, result in zip(ids, _summarize(mapping, ys, observed=correlation)):
                 outputs[i] = result
@@ -249,13 +300,16 @@ def _regress(means, variances, good, covariate, treatment, nc, designs, resample
     return outputs
 
 
-def _memory_plan(nc, boots, genes, budget, batch_size, correlation=False, resample_rep=False):
+def _memory_plan(nc, boots, genes, budget, batch_size, correlation=False, resample_rep=False,
+                 resample_rows=None):
     """Conservative working-memory target, excluding CUDA context/allocator cache."""
     weight_bytes = int(nc.sum()) * boots * 4
     cache = weight_bytes <= budget // 3
     retained = weight_bytes if cache else 0
     # Logs, regression copies, transform temporaries and dense coefficients.
-    per_gene = (boots + 1) * ((96 if resample_rep else 64) * len(nc) + 64) + int(nc.max()) * (120 if correlation else 24)
+    # Replicate resampling adds draw assignments; cluster draws are padded.
+    draw_rows = (len(nc) if resample_rows is None else resample_rows) if resample_rep else 0
+    per_gene = (boots + 1) * (64 * len(nc) + 32 * draw_rows + 64) + int(nc.max()) * (120 if correlation else 24)
     available = budget - retained - budget // 8
     if available < per_gene or budget // 8 < int(nc.max()) * 12:
         raise ValueError('gpu_memory_budget is too small for one gene; increase it or reduce num_boot')
@@ -273,7 +327,8 @@ def _working_budget(free, requested):
 
 
 def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covariate_for_gene,
-          num_boot, random_state, memory_budget, batch_size, device, pair_positions=None, **kwargs):
+          num_boot, random_state, memory_budget, batch_size, device, pair_positions=None, cluster=None,
+          **kwargs):
     correlation = pair_positions is not None
     one_sample = bool(kwargs.pop('one_sample', False))
     if one_sample and not correlation:
@@ -286,6 +341,8 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
     extra = set(kwargs) - {'resample_rep', 'approx'}
     if extra:
         raise TypeError(f'Unsupported GPU options: {sorted(extra)}')
+    if cluster is not None and not resample_rep:
+        raise ValueError('cluster requires resample_rep=True')
     u = adata.uns['memento']
     if u['estimator_type'] != 'hyper_relative':
         raise NotImplementedError("GPU testing currently supports estimator_type='hyper_relative' only")
@@ -304,6 +361,8 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
         raise ValueError('GPU testing requires at least two groups')
     if treatment.shape[0] != len(groups) or covariate.shape[0] != len(groups):
         raise ValueError('Treatment and covariate rows must match the memento group order')
+    if cluster is not None and len(cluster) != len(groups):
+        raise ValueError('cluster must give one label per memento group')
     if not treatment.columns.is_unique or not covariate.columns.is_unique:
         raise ValueError('Treatment and covariate columns must be unique')
     if not np.isfinite(treatment.values.astype(float)).all() or not np.isfinite(covariate.values.astype(float)).all():
@@ -331,7 +390,8 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
     with torch.cuda.device(device):
         free, _ = torch.cuda.mem_get_info()
         budget = _working_budget(free, budget)
-        batch, chunk, cache, retained = _memory_plan(nc, boots, len(genes), budget, batch_size, correlation, resample_rep)
+        batch, chunk, cache, retained = _memory_plan(nc, boots, len(genes), budget, batch_size, correlation,
+                                                     resample_rep, _resampled_rows(cluster))
         seeds = np.random.SeedSequence(random_state).spawn(len(groups) + 1 + int(resample_rep))
         seed_values = [int(s.generate_state(1, dtype=np.uint64)[0]) for s in seeds]
         fill_generator = _generator(device, seed_values[len(groups)])
@@ -400,7 +460,7 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
                             means[:, gi, 0] = torch.as_tensor(np.log(true_mean), device=device)
                             variances[:, gi, 0] = torch.as_tensor(np.log(true_var), device=device)
                         good[:, gi] = torch.as_tensor(eligible, device=device) & valid_mean & valid_var
-                    regression_kwargs = {'resample_generator': resample_generator} if resample_rep else {}
+                    regression_kwargs = {'resample_generator': resample_generator, 'cluster': cluster} if resample_rep else {}
                     if one_sample:
                         regression_kwargs['one_sample'] = True
                     outputs.extend(_regress(means, variances, good, covariate, treatment, nc,
@@ -412,7 +472,7 @@ def _ht(adata, genes, indices, treatment, covariate, treatment_for_gene, covaria
                      'gene_batch_size': batch,
                      'bootstrap_chunk_size': chunk, 'cached_cell_weights': cache, 'weight_cache_bytes': retained,
                      'sampling': 'shared_cell_multinomial', 'moment_dtype': 'float32', 'regression_dtype': 'float64',
-                     'approx': 'norm', 'resample_rep': bool(resample_rep)}
+                     'approx': 'norm', 'resample_rep': bool(resample_rep), 'cluster_resampling': cluster is not None}
 
 
 def ht_1d(*args, **kwargs):
