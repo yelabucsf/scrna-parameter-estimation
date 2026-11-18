@@ -75,6 +75,12 @@ contributes several groups, add ``cluster="donor"`` to resample whole donors
 (see :doc:`inference`). The one-sample form takes no per-pair dictionaries and
 runs on either backend.
 
+Groups with more cells carry more weight; inspect the per-group correlations
+from ``get_2d_moments(adata, groupby=...)`` before relying on individual
+pairs. The `one-sample tutorial
+<https://github.com/yelabucsf/scrna-parameter-estimation/blob/master/tutorials/one_sample_correlations.ipynb>`_
+walks through both tests and this check.
+
 Select treatments or covariates per pair with tuple keys:
 
 .. code-block:: python
