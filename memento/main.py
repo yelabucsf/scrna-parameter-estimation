@@ -147,6 +147,31 @@ def _require_treatment_columns(treatment, treatment_for_gene, one_sample_hint=Fa
         raise ValueError(msg)
 
 
+def _resolve_cluster(adata, cluster, resample_rep):
+    """
+    Turn the `cluster` option into one integer code per group, in
+    ``adata.uns['memento']['groups']`` order. `cluster` names one of the
+    `label_columns` given to `create_groups` (e.g. the donor column); groups
+    sharing a value are resampled together when ``resample_rep=True``.
+    """
+    if cluster is None:
+        return None
+    if not resample_rep:
+        raise ValueError("cluster only applies to replicate resampling; pass resample_rep=True as well.")
+    label_columns = list(adata.uns['memento']['label_columns'])
+    if not isinstance(cluster, str) or cluster not in label_columns:
+        raise ValueError(
+            f"cluster must name one of the label_columns passed to create_groups {label_columns}; got {cluster!r}."
+        )
+    delimiter = adata.uns['memento']['label_delimiter']
+    position = label_columns.index(cluster) + 1
+    labels = [group.split(delimiter)[position] for group in adata.uns['memento']['groups']]
+    codes, levels = pd.factorize(np.asarray(labels, dtype=object))
+    if len(levels) < 2:
+        raise ValueError(f"cluster column {cluster!r} has a single value across groups; resampling needs at least two clusters.")
+    return codes
+
+
 def _validate_gene_pairs_exist(adata, treatment_for_gene):
     """
     Raise a clear error if `treatment_for_gene` references a gene pair
@@ -530,6 +555,7 @@ def ht_1d_moments(
     gpu_memory_budget=None,
     gpu_batch_size=256,
     gpu_device="cuda",
+    cluster=None,
     **kwargs):
     """Test differences in log mean and log residual variance.
 
@@ -574,6 +600,12 @@ def ht_1d_moments(
         their cell-bootstrap iterations, after covariate residualization.
         Supported by CPU and GPU. Does not preserve paired donor rows or refit
         covariates within each draw. See the bootstrap inference guide.
+    cluster : str, optional
+        With ``resample_rep=True``, name of a ``create_groups`` label column
+        (e.g. the donor column). Groups sharing a value are resampled
+        together, so the sampling unit is the cluster rather than the group
+        row. Use it when a donor contributes several groups, such as
+        donor-by-condition or donor-by-batch designs. Supported by CPU and GPU.
     approx : {'norm', 'boot', 'gdp'}, default 'norm'
         Passed through kwargs. Bootstrap p-value approximation. GPU supports
         only ``'norm'``.
@@ -587,6 +619,7 @@ def ht_1d_moments(
     
     if backend not in ('cpu', 'gpu'):
         raise ValueError("backend must be 'cpu' or 'gpu'")
+    cluster_codes = _resolve_cluster(adata, cluster, kwargs.get('resample_rep', False))
     if not inplace:
         adata = adata.copy()
     
@@ -635,7 +668,7 @@ def ht_1d_moments(
         results, gpu_info = gpu_ht_1d(
             adata, test_genes, test_gene_indices, treatment, covariate,
             treatment_for_gene, covariate_for_gene, num_boot, random_state,
-            gpu_memory_budget, gpu_batch_size, gpu_device, **kwargs)
+            gpu_memory_budget, gpu_batch_size, gpu_device, cluster=cluster_codes, **kwargs)
     else:
         ht_funcs = []
         task_random_states = _spawn_task_random_states(
@@ -660,6 +693,7 @@ def ht_1d_moments(
                     q=[adata.uns['memento']['group_q'][group] for group in adata.uns['memento']['groups']],
                     _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
                     random_state=task_random_state,
+                    cluster=cluster_codes,
                     **kwargs))
 
         results = Parallel(n_jobs=num_cpus, verbose=verbose)(delayed(func)() for func in ht_funcs)
@@ -865,6 +899,7 @@ def ht_2d_moments(
     gpu_memory_budget=None,
     gpu_batch_size=256,
     gpu_device="cuda",
+    cluster=None,
     **kwargs):
     """Test differences in raw gene-gene correlation.
 
@@ -874,8 +909,9 @@ def ht_2d_moments(
     must have been computed before testing.
 
     Both backends support ``resample_rep=True`` through kwargs. This resamples
-    individual group rows after covariate residualization; it is not a paired
-    donor bootstrap. GPU supports ``hyper_relative`` and ``approx='norm'``.
+    individual group rows after covariate residualization. Add
+    ``cluster='<label column>'`` to resample whole clusters such as donors,
+    keeping all of a donor's group rows together. GPU supports ``hyper_relative`` and ``approx='norm'``.
 
     Correlations are regressed without a log or Fisher transform. The reported
     coefficient is the observed covariate-adjusted slope, with bootstrap
@@ -890,7 +926,8 @@ def ht_2d_moments(
     the group correlations are residualized on it before groups are
     resampled, which removes covariate-explained between-group variation
     from the standard error and p-value; without ``resample_rep`` it has no
-    effect. This form takes no per-pair dictionaries.
+    effect. ``cluster`` applies as in the two-sample test. This form takes no
+    per-pair dictionaries.
     """
 
     if backend not in ("cpu", "gpu"):
@@ -903,6 +940,7 @@ def ht_2d_moments(
                 "against zero, which takes no treatment_for_gene or "
                 "covariate_for_gene."
             )
+    cluster_codes = _resolve_cluster(adata, cluster, kwargs.get('resample_rep', False))
     if not inplace:
         adata = adata.copy()
     if one_sample:
@@ -953,7 +991,8 @@ def ht_2d_moments(
         from ._gpu import ht_2d as gpu_ht_2d
         results, info = gpu_ht_2d(
             adata, treatment, covariate, treatment_for_gene, covariate_for_gene,
-            num_boot, random_state, gpu_memory_budget, gpu_batch_size, gpu_device, **kwargs)
+            num_boot, random_state, gpu_memory_budget, gpu_batch_size, gpu_device,
+            cluster=cluster_codes, **kwargs)
         values = np.concatenate(results, axis=1) if results else np.empty((3, 0))
         result = dict(treatment=treatment, covariate=covariate,
                       corr_coef=values[0], corr_se=values[1], corr_asl=values[2],
@@ -1004,6 +1043,7 @@ def ht_2d_moments(
                 _estimator_1d=estimator._get_estimator_1d(adata.uns['memento']['estimator_type']),
                 _estimator_cov=estimator._get_estimator_cov(adata.uns['memento']['estimator_type']),
                 random_state=task_random_states[conv_idx],
+                cluster=cluster_codes,
                 **kwargs))
     
     # Parallel processing

@@ -17,6 +17,8 @@ backend at testing time:
 Both ``resample_rep=False`` and ``resample_rep=True`` are supported for 1D and 2D
 tests, including gene-specific and pair-specific treatment/covariate dictionaries.
 Choose replicate resampling based on the design; see :doc:`inference`.
+Cluster resampling (``cluster="donor"``, with ``resample_rep=True``) is supported
+as well.
 
 What runs on the GPU
 --------------------

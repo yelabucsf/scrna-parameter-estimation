@@ -523,6 +523,31 @@ def test_one_sample_replicate_regression_matches_cpu(cuda,prepared,monkeypatch,c
         np.testing.assert_allclose(got[i],ref,rtol=2e-8,atol=2e-11)
 
 
+def test_one_sample_cluster_regression_matches_cpu(cuda, monkeypatch):
+    torch, gpu = cuda
+    from memento import hypothesis_test as ht
+    rng = np.random.default_rng(67)
+    donor = np.array([0, 0, 1, 2, 2, 2, 3, 4, 4])
+    cov = pd.DataFrame({'batch': (np.arange(donor.size) % 2).astype(float)})
+    nc = rng.integers(40, 300, donor.size)
+    y = rng.normal(0, .3, 5)[donor][None, :, None] + rng.normal(0, .05, (2, donor.size, 513))
+    good = np.ones((2, donor.size), bool); good[1, [1, 7]] = False
+    def assignments(cluster, boots, device, generator):
+        arrays = ht._cluster_assignments(cluster, boots, np.random.default_rng(5))
+        return tuple(torch.as_tensor(x, device=device) for x in arrays)
+    monkeypatch.setattr(gpu, '_cluster_assignments', assignments)
+    intercept = pd.DataFrame({'intercept': np.ones(donor.size)})
+    got = gpu._regress(torch.tensor(y, device='cuda'), None, torch.tensor(good, device='cuda'), cov, intercept,
+                       nc, [(('intercept',), ('batch',))] * 2, resample_generator=gpu._generator('cuda', 1),
+                       one_sample=True, cluster=donor)
+    for i in (0, 1):
+        mask = good[i]
+        ref = ht._regress_2d(cov.values[mask], None, y[i, mask], nc[mask], resample_rep=True,
+                             rng=np.random.default_rng(5), one_sample=True, cluster=donor[mask])
+        assert np.isfinite(ref).all()
+        np.testing.assert_allclose(got[i], ref, rtol=1e-8, atol=1e-11)
+
+
 def test_one_sample_covariate_api_on_gpu(cuda,prepared_pairs):
     torch,gpu=cuda;a,_,cov=prepared_pairs
     cov=cov.assign(age=[23.,71.,45.,38.,60.,52.])
@@ -537,3 +562,126 @@ def test_one_sample_covariate_api_on_gpu(cuda,prepared_pairs):
     assert np.isfinite(first.loc[off,['corr_coef','corr_se','corr_pval']].values).all()
     np.testing.assert_allclose(first.loc[off,'corr_coef'],plain.loc[off,'corr_coef'])
     assert not np.allclose(first.loc[off,'corr_se'],plain.loc[off,'corr_se'])
+
+
+def test_cluster_assignments_keep_whole_clusters_together(cuda):
+    torch, gpu = cuda
+    cluster = np.array([0, 0, 1, 2, 2, 2, 3])
+    rows, iterations, valid = (x.cpu().numpy() for x in gpu._cluster_assignments(
+        cluster, 200, 'cuda', gpu._generator('cuda', 0)))
+    assert rows.shape == iterations.shape == valid.shape == (4 * 3, 201)
+    np.testing.assert_array_equal(rows[valid[:, 0], 0], np.arange(7))
+    assert (iterations[:, 0] == 0).all()
+    assert iterations[:, 1:].min() >= 1 and iterations[:, 1:].max() <= 200
+    for draw in range(1, 201):
+        counts = np.bincount(rows[valid[:, draw], draw], minlength=7)
+        for c in np.unique(cluster):
+            assert len(set(counts[cluster == c])) == 1
+        assert sum(counts[cluster == c][0] for c in np.unique(cluster)) == 4
+        assert set(rows[~valid[:, draw], draw]) <= set(rows[valid[:, draw], draw])
+
+
+@pytest.mark.parametrize('correlation', [False, True])
+def test_cluster_regression_matches_cpu_with_identical_assignments(cuda, monkeypatch, correlation):
+    # Unequal cluster sizes, and groups dropped by the per-gene mask, so the
+    # cluster codes must be subset together with the rows.
+    torch, gpu = cuda
+    from memento import hypothesis_test as ht
+    rng = np.random.default_rng(61)
+    donor = np.array([0, 0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6, 7])
+    groups = donor.size
+    treatment = pd.DataFrame({'sex': (donor % 2).astype(float),
+                              'age': rng.normal(size=8)[donor]})
+    covariate = pd.DataFrame({'batch': (np.arange(groups) % 2).astype(float)})
+    nc = rng.integers(40, 300, groups)
+    means = rng.normal(0, .3, 8)[donor][None, :, None] + rng.normal(0, .05, (3, groups, 513))
+    variances = rng.normal(size=means.shape)
+    means[1, 4, 7] = np.nan
+    good = np.ones((3, groups), bool)
+    good[1, [2, 9]] = False
+    good[2, donor == 3] = False
+    designs = [(('sex', 'age'), ('batch',)), (('sex',), ('batch',)), (('age',), ('batch',))]
+    seed = 211
+    def assignments(cluster, boots, device, generator):
+        arrays = ht._cluster_assignments(cluster, boots, np.random.default_rng(seed))
+        return tuple(torch.as_tensor(x, device=device) for x in arrays)
+    monkeypatch.setattr(gpu, '_cluster_assignments', assignments)
+    got = gpu._regress(torch.tensor(means, device='cuda'),
+                       None if correlation else torch.tensor(variances, device='cuda'),
+                       torch.tensor(good, device='cuda'), covariate, treatment, nc, designs,
+                       resample_generator=gpu._generator('cuda', 5), cluster=donor)
+    for i, (ts, cs) in enumerate(designs):
+        mask = good[i]
+        kwargs = dict(covariate=covariate[list(cs)].values[mask], treatment=treatment[list(ts)].values[mask],
+                      Nc_list=nc[mask], resample_rep=True, rng=np.random.default_rng(seed),
+                      cluster=donor[mask])
+        ref = (ht._regress_2d(boot_corr=means[i, mask], **kwargs) if correlation
+               else ht._regress_1d(boot_mean=means[i, mask], boot_var=variances[i, mask], **kwargs))
+        assert np.isfinite(ref).all()
+        np.testing.assert_allclose(got[i], ref, rtol=1e-8, atol=1e-11)
+
+
+@pytest.mark.parametrize('dimension', [1, 2])
+def test_cluster_resampling_api_on_gpu(cuda, dimension):
+    torch, gpu = cuda
+    from test_cluster_resampling import _donor_by_batch_adata
+    adata, treatment, covariate = _donor_by_batch_adata(40)
+    genes = adata.uns['memento']['gene_list']
+    if dimension == 2:
+        memento.compute_2d_moments(adata, [(genes[0], genes[1]), (genes[2], genes[3])])
+    call = memento.ht_1d_moments if dimension == 1 else memento.ht_2d_moments
+    getter = memento.get_1d_ht_result if dimension == 1 else memento.get_2d_ht_result
+    columns = ['de_coef', 'de_se', 'de_pval'] if dimension == 1 else ['corr_coef', 'corr_se', 'corr_pval']
+    kwargs = dict(treatment=treatment, covariate=covariate, num_boot=300, verbose=0, inplace=False,
+                  resample_rep=True, backend='gpu', random_state=8, gpu_memory_budget=1, gpu_batch_size=1)
+    clustered, again = call(adata, cluster='donor', **kwargs), call(adata, cluster='donor', **kwargs)
+    rows = call(adata, **kwargs)
+    result = getter(clustered)
+    pd.testing.assert_frame_equal(result, getter(again))
+    assert np.isfinite(result[columns].to_numpy()).all()
+    info = clustered.uns['memento'][f'{dimension}d_ht']['gpu']
+    assert info['cluster_resampling'] and not rows.uns['memento'][f'{dimension}d_ht']['gpu']['cluster_resampling']
+    # Same observed coefficient as row resampling (1D reports the bootstrap
+    # mean, so compare only for correlations); only the null changes.
+    if dimension == 2:
+        np.testing.assert_allclose(result.corr_coef, getter(rows).corr_coef)
+    assert not np.allclose(result[columns[1]], getter(rows)[columns[1]])
+
+
+def test_gpu_cluster_requires_resample_rep(cuda, prepared):
+    torch, gpu = cuda
+    a, tx, cov = prepared
+    with pytest.raises(ValueError, match='resample_rep'):
+        gpu.ht_1d(a, ['g0'], np.array([0]), tx, cov, None, None, 16, 0, None, 8, 'cuda',
+                  cluster=np.array([0, 0, 1, 1, 2, 2]))
+
+
+@pytest.mark.parametrize('correlation', [False, True])
+def test_replicate_treatments_equal_up_to_rounding_have_no_contrast(cuda, monkeypatch, correlation):
+    # A binary treatment residualized on covariates balanced against it leaves
+    # rows of one arm equal only up to rounding. Draws that sample a single arm
+    # have no contrast and must be NaN (as on CPU), not slopes around 1e13.
+    torch, gpu = cuda
+    from memento import hypothesis_test as ht
+    groups, boots = 12, 64
+    treatment = pd.DataFrame({'tx': (np.arange(groups) % 2).astype(float)})
+    age = np.r_[np.linspace(0, 1, 6), np.linspace(0, 1, 6)][np.argsort(np.arange(groups) % 2, kind='stable')]
+    covariate = pd.DataFrame({'batch': (np.arange(groups) // 2 % 2).astype(float), 'age': age})
+    nc = np.full(groups, 150)
+    rng = np.random.default_rng(3)
+    y = rng.normal(size=(1, groups, boots + 1))
+    rows, iterations = ht._replicate_assignments(groups, boots, rng)
+    rows[:, 1:9] = rng.choice(np.arange(0, groups, 2), size=(groups, 8))  # control arm only
+    monkeypatch.setattr(ht, '_replicate_assignments', lambda *args: (rows.copy(), iterations.copy()))
+    monkeypatch.setattr(gpu, '_replicate_assignments', lambda *args: tuple(
+        torch.as_tensor(x, device='cuda') for x in (rows, iterations)))
+
+    got = gpu._regress(torch.tensor(y, device='cuda'), None if correlation else torch.tensor(y, device='cuda'),
+                       torch.ones((1, groups), device='cuda', dtype=torch.bool), covariate, treatment, nc,
+                       [(('tx',), ('batch', 'age'))], resample_generator=gpu._generator('cuda', 1))[0]
+    kwargs = dict(covariate=covariate.values, treatment=treatment.values, Nc_list=nc,
+                  resample_rep=True, rng=np.random.default_rng(0))
+    ref = (ht._regress_2d(boot_corr=y[0], **kwargs) if correlation
+           else ht._regress_1d(boot_mean=y[0], boot_var=y[0], **kwargs))
+    assert np.isfinite(got).all() and np.abs(got).max() < 10
+    np.testing.assert_allclose(got, ref, rtol=1e-8, atol=1e-11)

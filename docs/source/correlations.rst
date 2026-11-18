@@ -70,8 +70,10 @@ weighted mean to the covariates' weighted average gives the weighted mean
 back. For the same reason, a covariate without ``resample_rep=True`` leaves
 the coefficient, standard error and p-value unchanged. To estimate the
 correlation in a subpopulation, test only those groups; to ask whether the
-correlation varies with a covariate, pass it as ``treatment``. The one-sample
-form takes no per-pair dictionaries and runs on either backend.
+correlation varies with a covariate, pass it as ``treatment``. When a donor
+contributes several groups, add ``cluster="donor"`` to resample whole donors
+(see :doc:`inference`). The one-sample form takes no per-pair dictionaries and
+runs on either backend.
 
 Select treatments or covariates per pair with tuple keys:
 

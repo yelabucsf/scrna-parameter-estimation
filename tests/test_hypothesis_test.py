@@ -348,3 +348,20 @@ def test_regress_2d_one_sample_resample_rep_matches_manual_resampling():
 
     np.testing.assert_allclose(coef, [expected[0]])
     np.testing.assert_allclose(se, [np.std(expected[1:])])
+
+
+def test_resampled_treatments_equal_up_to_rounding_are_nan():
+    # Distinct rows whose residualized treatment differs only in the last
+    # bits (seen with a binary treatment residualized on a covariate) used
+    # to pass the exact-equality guard and produce slopes around 1e14.
+    value = -5 / 11
+    nearly_equal = np.array([value, np.nextafter(value, 0), value, np.nextafter(value, 0)])
+    contrast = np.array([value, 6 / 11, value, 6 / 11])
+    A = np.stack([contrast, nearly_equal], axis=1)[:, :, None]      # (rows, draws, columns)
+    B = np.random.default_rng(0).normal(size=(4, 2))
+    weights = np.full((4, 2), 150.0)
+
+    beta = hypothesis_test._cross_coef_resampled(A, B, weights)
+
+    assert np.isfinite(beta[0, 0])
+    assert np.isnan(beta[0, 1])
