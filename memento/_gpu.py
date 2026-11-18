@@ -158,6 +158,11 @@ def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observe
     weights = torch.as_tensor(nc, device=device, dtype=torch.float64)
     adjusted = [residual @ y for y in ys]
     assignment, iterations = _replicate_assignments(groups, columns - 1, device, generator)
+    # Same no-contrast rule as the CPU `_cross_coef_resampled`: sampled
+    # treatments that agree up to rounding (relative to the column's scale)
+    # have no contrast. Exact equality lets last-bit residualization noise
+    # through and yields slopes around 1e13.
+    contrast_floor = 16 * np.finfo(float).eps * assignment.shape[0] * tx.abs().amax(0)
     output = []
     for start in range(0, tx.shape[1], 8):
         end = min(start + 8, tx.shape[1])
@@ -171,7 +176,7 @@ def _resampled_summary(ys, covariate, treatment, nc, mapping, generator, observe
             w = weights[rows]
             totals = w.sum(0)
             a = tx[rows, start:end]
-            has_contrast = a.amax(0) > a.amin(0)
+            has_contrast = (a.amax(0) - a.amin(0)) > contrast_floor[start:end]
             a = a - (a * w[..., None]).sum(0) / totals[:, None]
             denominator = (a.square() * w[..., None]).sum(0)
             denominator = torch.where(has_contrast, denominator, 0)

@@ -513,3 +513,34 @@ def test_one_sample_api_runs_on_gpu(cuda,prepared_pairs):
     assert set(r.tx)=={'intercept'}
     off=r.gene_1!=r.gene_2
     assert r.loc[off,'corr_coef'].notna().all()
+
+
+@pytest.mark.parametrize('correlation', [False, True])
+def test_replicate_treatments_equal_up_to_rounding_have_no_contrast(cuda, monkeypatch, correlation):
+    # A binary treatment residualized on covariates balanced against it leaves
+    # rows of one arm equal only up to rounding. Draws that sample a single arm
+    # have no contrast and must be NaN (as on CPU), not slopes around 1e13.
+    torch, gpu = cuda
+    from memento import hypothesis_test as ht
+    groups, boots = 12, 64
+    treatment = pd.DataFrame({'tx': (np.arange(groups) % 2).astype(float)})
+    age = np.r_[np.linspace(0, 1, 6), np.linspace(0, 1, 6)][np.argsort(np.arange(groups) % 2, kind='stable')]
+    covariate = pd.DataFrame({'batch': (np.arange(groups) // 2 % 2).astype(float), 'age': age})
+    nc = np.full(groups, 150)
+    rng = np.random.default_rng(3)
+    y = rng.normal(size=(1, groups, boots + 1))
+    rows, iterations = ht._replicate_assignments(groups, boots, rng)
+    rows[:, 1:9] = rng.choice(np.arange(0, groups, 2), size=(groups, 8))  # control arm only
+    monkeypatch.setattr(ht, '_replicate_assignments', lambda *args: (rows.copy(), iterations.copy()))
+    monkeypatch.setattr(gpu, '_replicate_assignments', lambda *args: tuple(
+        torch.as_tensor(x, device='cuda') for x in (rows, iterations)))
+
+    got = gpu._regress(torch.tensor(y, device='cuda'), None if correlation else torch.tensor(y, device='cuda'),
+                       torch.ones((1, groups), device='cuda', dtype=torch.bool), covariate, treatment, nc,
+                       [(('tx',), ('batch', 'age'))], resample_generator=gpu._generator('cuda', 1))[0]
+    kwargs = dict(covariate=covariate.values, treatment=treatment.values, Nc_list=nc,
+                  resample_rep=True, rng=np.random.default_rng(0))
+    ref = (ht._regress_2d(boot_corr=y[0], **kwargs) if correlation
+           else ht._regress_1d(boot_mean=y[0], boot_var=y[0], **kwargs))
+    assert np.isfinite(got).all() and np.abs(got).max() < 10
+    np.testing.assert_allclose(got, ref, rtol=1e-8, atol=1e-11)
