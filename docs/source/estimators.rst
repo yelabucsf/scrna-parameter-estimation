@@ -32,6 +32,14 @@ an unknown capture rate automatically or calibrate different sequencing
 chemistries for you. Assess plausible capture rates and the sensitivity of your
 conclusions to that choice.
 
+As a starting point for 10x 3' v3 data, use 0.25 times the sequencing
+saturation reported by Cell Ranger. The same value is a reasonable first choice
+for newer chemistries such as GEM-X (v4) until they are calibrated. When
+sequencing saturation is unknown, as for many atlas datasets, use a default
+for the chemistry rather than an arbitrary global value, give groups sequenced
+the same way the same value, and rerun with a few plausible values to check
+that conclusions do not depend on it.
+
 Size factors and residual variability
 -------------------------------------
 
