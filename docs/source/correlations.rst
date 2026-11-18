@@ -48,11 +48,32 @@ it differs between conditions, omit the treatment:
    correlations = memento.get_2d_ht_result(adata)  # tx == "intercept"
 
 The coefficient is the cell-count-weighted mean of the group correlations, and
-its bootstrap null is the same weighted mean over each bootstrap draw. The
-one-sample form takes no covariates, per-pair dictionaries or
-``resample_rep``, and runs on either backend. Passing a treatment whose columns
-are all constant is an error: constant columns are removed as having nothing
-to test, so use ``treatment=None`` instead of an all-ones column.
+its bootstrap null is the same weighted mean over each bootstrap draw. Passing
+a treatment whose columns are all constant is an error: constant columns are
+removed as having nothing to test, so use ``treatment=None`` instead of an
+all-ones column.
+
+By default the standard error reflects only cell sampling within the groups
+you have. To also account for variation between groups, such as donors, add
+``resample_rep=True``. Group-level covariates (continuous or indicator
+columns, one row per group) then remove the between-group variation they
+explain before groups are resampled:
+
+.. code-block:: python
+
+   covariate = pd.DataFrame({"age": age, "batch_2": batch == 2}, index=groups, dtype=float)
+   memento.ht_2d_moments(adata, covariate=covariate, resample_rep=True)
+
+Covariates never change the coefficient. The correlation is estimated within
+each group, so a group-level covariate cannot confound it, and adjusting the
+weighted mean to the covariates' weighted average gives the weighted mean
+back. For the same reason, a covariate without ``resample_rep=True`` leaves
+the coefficient, standard error and p-value unchanged. To estimate the
+correlation in a subpopulation, test only those groups; to ask whether the
+correlation varies with a covariate, pass it as ``treatment``. When a donor
+contributes several groups, add ``cluster="donor"`` to resample whole donors
+(see :doc:`inference`). The one-sample form takes no per-pair dictionaries and
+runs on either backend.
 
 By default the p-value reflects cell sampling within groups, not variation
 between groups such as donors, so it describes the donors in hand. For a

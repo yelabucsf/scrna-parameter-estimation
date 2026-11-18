@@ -343,6 +343,7 @@ def _ht_1d(
     q, # list of numbers
     _estimator_1d,
     random_state=None,
+    cluster=None,
     **kwargs):
     """
         Performs hypothesis testing of the mean and variance using bootstrap.
@@ -370,6 +371,7 @@ def _ht_1d(
             boot_var=np.log(boot_var[good_idxs, :]),
             Nc_list=Nc_list[good_idxs],
             rng=rng,
+            cluster=None if cluster is None else np.asarray(cluster)[good_idxs],
             **kwargs)
     return vals
 
@@ -609,9 +611,14 @@ def _cross_coef_resampled(A, B, sample_weight):
     # actual division by zero triggers noisy RuntimeWarnings on every
     # occurrence, which adds up across a large scan. Avoid the division
     # entirely and substitute NaN directly instead.
-    # Identical sampled treatments have no contrast, even if weighted
-    # centering leaves tiny floating-point residuals.
-    ssA[np.ptp(A, axis=0) == 0] = 0
+    # Sampled treatments that agree up to rounding have no contrast. Exact
+    # equality is not enough: distinct group rows can carry residualized
+    # treatment values that differ only in the last bits, and dividing by
+    # their ~1e-33 variance yields slopes around 1e14. Compare each draw's
+    # range against the column's overall scale instead.
+    scale = np.abs(A).max(axis=(0, 1))
+    tolerance = 16 * np.finfo(float).eps * A.shape[0]
+    ssA[np.ptp(A, axis=0) <= tolerance * scale] = 0
     safe_ssA = np.where(ssA > 0, ssA, 1.0)
     beta = np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / safe_ssA.T
     beta[ssA.T == 0] = np.nan
@@ -633,6 +640,55 @@ def _replicate_assignments(num_rep, num_boot, rng):
     return groups, iterations
 
 
+def _cluster_assignments(cluster, num_boot, rng):
+    """
+        Cluster version of `_replicate_assignments`: each draw samples whole
+        clusters (e.g. donors) with replacement and keeps every group row of
+        a sampled cluster together. Each selected row still gets its own
+        cell-bootstrap iteration.
+
+        Clusters differ in size, so draws differ in their number of rows.
+        The arrays are padded to (n_clusters * largest cluster) rows; the
+        returned `valid` mask is False for padding, which must receive zero
+        weight. Padding repeats a row already selected in the same draw, so
+        it cannot create treatment contrast. Column 0 is the observed data.
+    """
+    cluster = np.asarray(cluster)
+    num_rep = cluster.shape[0]
+    _, codes = np.unique(cluster, return_inverse=True)
+    members = [np.flatnonzero(codes == c) for c in range(codes.max() + 1)]
+    n_clusters = len(members)
+    largest = max(len(m) for m in members)
+
+    member_rows = np.zeros((n_clusters, largest), dtype=int)
+    member_valid = np.zeros((n_clusters, largest), dtype=bool)
+    for c, rows in enumerate(members):
+        member_rows[c, :len(rows)] = rows
+        member_valid[c, :len(rows)] = True
+
+    chosen = _choice(rng, n_clusters, size=(n_clusters, num_boot + 1))
+    groups = member_rows[chosen].transpose(0, 2, 1).reshape(-1, num_boot + 1)
+    valid = member_valid[chosen].transpose(0, 2, 1).reshape(-1, num_boot + 1)
+    groups = np.where(valid, groups, member_rows[chosen[0], 0])
+    iterations = _choice(rng, num_boot, size=groups.shape) + 1
+
+    groups[:, 0] = 0
+    valid[:, 0] = False
+    groups[:num_rep, 0] = np.arange(num_rep)
+    valid[:num_rep, 0] = True
+    iterations[:, 0] = 0
+    return groups, iterations, valid
+
+
+def _resample_assignments(num_rep, num_boot, rng, Nc_list, cluster=None):
+    """Row or cluster assignments, with the matching resampled weights."""
+    if cluster is None:
+        groups, iterations = _replicate_assignments(num_rep, num_boot, rng)
+        return groups, iterations, Nc_list[groups]
+    groups, iterations, valid = _cluster_assignments(cluster, num_boot, rng)
+    return groups, iterations, Nc_list[groups] * valid
+
+
 def _regress_1d(
     covariate,
     treatment,
@@ -641,6 +697,7 @@ def _regress_1d(
     Nc_list,
     resample_rep=False,
     rng=None,
+    cluster=None,
     **kwargs,
 ):
     """
@@ -667,13 +724,12 @@ def _regress_1d(
 
     if resample_rep:            
 
-        replicate_assignment, b_iter_assignment = _replicate_assignments(
-            num_rep, num_boot, rng)
+        replicate_assignment, b_iter_assignment, weights_resampled = _resample_assignments(
+            num_rep, num_boot, rng, Nc_list, cluster)
 
         boot_mean_resampled = boot_mean_tilde[(replicate_assignment, b_iter_assignment)]
         boot_var_resampled = boot_var_tilde[(replicate_assignment, b_iter_assignment)]
         treatment_resampled = treatment_tilde[replicate_assignment]
-        weights_resampled = Nc_list[replicate_assignment]
 
         mean_coef = _cross_coef_resampled(treatment_resampled, boot_mean_resampled, weights_resampled)
         var_coef = _cross_coef_resampled(treatment_resampled, boot_var_resampled, weights_resampled)    
@@ -707,6 +763,7 @@ def _ht_2d(
     _estimator_1d,
     _estimator_cov,
     random_state=None,
+    cluster=None,
     **kwargs):
     
         
@@ -760,6 +817,7 @@ def _ht_2d(
             boot_corr=boot_corr[good_idxs, :],
             Nc_list=Nc_list[good_idxs],
             rng=rng,
+            cluster=None if cluster is None else np.asarray(cluster)[good_idxs],
             **kwargs)
     
     return vals
@@ -772,6 +830,7 @@ def _regress_2d(
     Nc_list,
     resample_rep=False,
     rng=None,
+    cluster=None,
     one_sample=False,
     **kwargs,
 ):
@@ -780,9 +839,14 @@ def _regress_2d(
 
         With ``one_sample=True`` the test is H0: correlation = 0. The statistic
         is the cell-count-weighted mean of the group correlations, computed for
-        the observed column and every bootstrap column alike; ``covariate`` and
-        ``treatment`` are not used.
-    """    
+        the observed column and every bootstrap column alike; ``treatment`` is
+        not used. Covariates enter only with ``resample_rep=True``: each column
+        is residualized on them with its weighted mean added back, so the
+        observed coefficient is unchanged and group resampling no longer
+        carries covariate-explained variation between groups. Without
+        resampling the adjustment is a no-op, because a weighted least-squares
+        fit with an intercept has the same weighted mean as the data.
+    """
     
     valid_boostrap_iters = ~np.any(~np.isfinite(boot_corr), axis=0)
     if valid_boostrap_iters.size == 0 or not valid_boostrap_iters[0]:
@@ -795,7 +859,19 @@ def _regress_2d(
     if boot_corr.shape[1] < 2:
         return [np.full(treatment.shape[1], np.nan) for _ in range(3)]
     
-    if one_sample:
+    if one_sample and resample_rep:
+
+        fitted = LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
+        boot_corr_adjusted = boot_corr - fitted + np.average(boot_corr, axis=0, weights=Nc_list)
+
+        replicate_assignment, b_iter_assignment, weights_resampled = _resample_assignments(
+            num_rep, num_boot, rng, Nc_list, cluster)
+
+        boot_corr_resampled = boot_corr_adjusted[(replicate_assignment, b_iter_assignment)]
+
+        corr_coef = np.average(boot_corr_resampled, axis=0, weights=weights_resampled).reshape(1, -1)
+
+    elif one_sample:
 
         corr_coef = np.average(boot_corr, axis=0, weights=Nc_list).reshape(1, -1)
 
@@ -804,12 +880,11 @@ def _regress_2d(
         boot_corr_tilde = boot_corr - LinearRegression(n_jobs=1).fit(covariate, boot_corr, Nc_list).predict(covariate)
         treatment_tilde = treatment - LinearRegression(n_jobs=1).fit(covariate, treatment, Nc_list).predict(covariate)
 
-        replicate_assignment, b_iter_assignment = _replicate_assignments(
-            num_rep, num_boot, rng)
+        replicate_assignment, b_iter_assignment, weights_resampled = _resample_assignments(
+            num_rep, num_boot, rng, Nc_list, cluster)
 
         boot_corr_resampled = boot_corr_tilde[(replicate_assignment, b_iter_assignment)]
         treatment_resampled = treatment_tilde[replicate_assignment]
-        weights_resampled = Nc_list[replicate_assignment]
 
         corr_coef = _cross_coef_resampled(treatment_resampled, boot_corr_resampled, weights_resampled)
 

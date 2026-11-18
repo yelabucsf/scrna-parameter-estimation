@@ -17,10 +17,21 @@ from sampling a new population of donors.
 With ``resample_rep=True``, memento additionally samples group rows with
 replacement. This can represent between-sample variation when each group is an
 independent biological sample, for example one donor per row in an eQTL study.
-It does not preserve pairs of rows belonging to the same donor, stratify by
-condition, or implement random effects. Turning it on for donor-by-condition
-rows does not create a paired cluster bootstrap. See :doc:`inference` for the
-precise algorithm and its assumptions.
+By itself it does not keep rows belonging to the same donor together, stratify
+by condition, or implement random effects. When a donor contributes several
+group rows (donor-by-condition, donor-by-batch), rows from one donor are not
+independent, and resampling them separately understates the standard error.
+Add ``cluster="donor"`` to resample whole donors and keep
+their rows together:
+
+.. code-block:: python
+
+   memento.create_groups(adata, label_columns=["donor", "batch"])
+   ...
+   memento.ht_2d_moments(adata, treatment=treatment, covariate=covariate,
+                         num_boot=10000, resample_rep=True, cluster="donor")
+
+See :doc:`inference` for the precise algorithm and its assumptions.
 
 For an unpaired comparison with one group per donor, a donor indicator for every
 donor would absorb the treatment effect. Use identifiable covariates such as

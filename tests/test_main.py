@@ -746,26 +746,74 @@ def test_ht_1d_moments_all_constant_treatment_is_a_clear_error():
             main.ht_1d_moments(adata, treatment=treatment, num_boot=50, verbose=0)
 
 
-@pytest.mark.parametrize(
-    "extra",
-    [
-        {"covariate": "cov"},
-        {"treatment_for_gene": "tfg"},
-        {"resample_rep": True},
-    ],
-)
-def test_ht_2d_moments_one_sample_rejects_design_options(extra):
+@pytest.mark.parametrize("option", ["treatment_for_gene", "covariate_for_gene"])
+def test_ht_2d_moments_one_sample_rejects_per_pair_dictionaries(option):
     rng = np.random.default_rng(6)
     adata = _build_donor_adata(rng, n_genes=30)
     genes = adata.uns["memento"]["gene_list"]
     pair = (genes[0], genes[1])
     main.compute_2d_moments(adata, [pair])
-    groups = adata.uns["memento"]["groups"]
-    if "covariate" in extra:
-        extra = {"covariate": pd.DataFrame({"c": np.arange(len(groups), dtype=float)}, index=groups)}
-    if "treatment_for_gene" in extra:
-        extra = {"treatment_for_gene": {pair: ["intercept"]}}
-    error = NotImplementedError if "resample_rep" in extra else ValueError
 
-    with pytest.raises(error):
-        main.ht_2d_moments(adata, num_boot=50, verbose=0, **extra)
+    with pytest.raises(ValueError, match=option):
+        main.ht_2d_moments(adata, num_boot=50, verbose=0, **{option: {pair: ["c"]}})
+
+
+def _one_sample_covariate_setup(seed):
+    # Group-level covariates as in a donor study: a continuous age and a
+    # batch indicator, one row per memento group.
+    rng = np.random.default_rng(seed)
+    adata = _build_donor_adata(rng, n_genes=30)
+    genes = adata.uns["memento"]["gene_list"]
+    main.compute_2d_moments(adata, [(genes[0], genes[1]), (genes[2], genes[3])])
+    groups = adata.uns["memento"]["groups"]
+    covariate = pd.DataFrame(
+        {
+            "age": rng.uniform(20, 80, len(groups)),
+            "batch": np.arange(len(groups)) % 2,
+        },
+        index=groups,
+        dtype=float,
+    )
+    return adata, covariate
+
+
+def test_ht_2d_moments_one_sample_covariate_without_resampling_matches_plain():
+    # This is the call 0.1.3 users made with an all-ones treatment: there the
+    # covariates were skipped, and here they are a no-op by construction, so
+    # treatment=None reproduces it exactly.
+    adata, covariate = _one_sample_covariate_setup(7)
+
+    plain = main.get_2d_ht_result(main.ht_2d_moments(
+        adata, num_boot=200, verbose=0, inplace=False))
+    adjusted = main.get_2d_ht_result(main.ht_2d_moments(
+        adata, covariate=covariate, num_boot=200, verbose=0, inplace=False))
+
+    pd.testing.assert_frame_equal(adjusted, plain)
+
+
+def test_ht_2d_moments_one_sample_resample_rep_with_covariates():
+    adata, covariate = _one_sample_covariate_setup(8)
+    groups = adata.uns["memento"]["groups"]
+    nc = np.array([adata.uns["memento"]["group_cells"][g].shape[0] for g in groups])
+    # An oracle continuous covariate: the first pair's observed group
+    # correlation itself, so it explains all of that pair's between-group
+    # spread.
+    corr = np.array([adata.uns["memento"]["2d_moments"][g]["corr"][0] for g in groups])
+    oracle = pd.DataFrame({"corr": np.nan_to_num(corr)}, index=groups)
+
+    def run(**kwargs):
+        return main.get_2d_ht_result(main.ht_2d_moments(
+            adata, num_boot=500, verbose=0, inplace=False, resample_rep=True,
+            random_state=11, **kwargs))
+
+    plain, adjusted, explained = run(), run(covariate=covariate), run(covariate=oracle)
+
+    for result in (plain, adjusted, explained):
+        assert list(result["tx"]) == ["intercept", "intercept"]
+        assert result[["corr_coef", "corr_se", "corr_pval"]].notna().all().all()
+    pd.testing.assert_series_equal(adjusted["corr_coef"], plain["corr_coef"])
+    usable = np.isfinite(corr) & (np.abs(corr) < 1)
+    np.testing.assert_allclose(
+        plain["corr_coef"].iloc[0], np.average(corr[usable], weights=nc[usable]))
+    assert not np.allclose(adjusted["corr_se"], plain["corr_se"])
+    assert explained["corr_se"].iloc[0] < plain["corr_se"].iloc[0]
