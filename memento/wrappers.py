@@ -92,7 +92,7 @@ def _deprecated_replicates(replicates):
 		"and ht_1d_moments/ht_2d_moments directly; see 'Replicates, covariates, and comparisons' "
 		"in the documentation.",
 		FutureWarning, stacklevel=3)
-	return list(replicates)
+	return [replicates] if isinstance(replicates, str) else list(replicates)
 
 
 def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=None):

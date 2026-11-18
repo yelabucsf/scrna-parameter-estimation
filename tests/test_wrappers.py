@@ -33,6 +33,11 @@ def test_binary_test_1d_replicates_is_deprecated_but_still_groups():
             verbose=0, replicates=["donor"])
     assert len(with_replicates) > 0
     assert set(with_replicates["tx"]) == {"stim"}
+    with pytest.warns(FutureWarning):
+        as_string = memento.binary_test_1d(
+            adata, capture_rate=0.1, treatment_col="stim", num_cpus=1, num_boot=100,
+            verbose=0, replicates="donor")
+    assert len(as_string) == len(with_replicates)
 
 
 def test_binary_test_1d_without_replicates_does_not_warn():
