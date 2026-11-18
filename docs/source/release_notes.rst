@@ -12,11 +12,12 @@ One-sample correlation tests
   treatment column equal to 1 for every group (for example ``Inter = 1``);
   that form now raises an error pointing to ``treatment=None``. The estimate
   is unchanged: the cell-count-weighted mean of the group correlations.
-* The one-sample test rejects covariates, per-pair dictionaries and
-  ``resample_rep`` instead of silently ignoring them as 0.1.3 did. Covariates
-  cannot change a one-sample average; select the population by subsetting.
-* ``tutorials/one_sample_correlations.ipynb`` is rewritten for this API and
-  adds a per-donor consistency check.
+* ``resample_rep=True`` resamples donors (groups) for population-level
+  statements; ``cluster`` and group-level covariates work as in the
+  two-sample test. Covariates never change the estimate. 0.1.3 silently
+  ignored covariates on this path. Per-pair dictionaries are rejected.
+* ``tutorials/one_sample_correlations.ipynb`` is rewritten for this API, with
+  donor resampling and a per-donor consistency check.
 
 Replicate resampling
 ~~~~~~~~~~~~~~~~~~~~
