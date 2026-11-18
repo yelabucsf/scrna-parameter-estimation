@@ -10,7 +10,7 @@ To install `memento`, pull the package from PyPI:
 pip install memento-de
 ```
 
-GPU installation and usage for the upcoming 0.1.3 release are documented in
+GPU installation and usage (available from 0.1.4) are documented in
 [the GPU guide](docs/source/gpu.rst).
 
 See the [user guide](https://memento.readthedocs.io/en/latest/) for installation, study designs, and complete analysis workflows.

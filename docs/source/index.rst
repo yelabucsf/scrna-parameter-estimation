@@ -13,9 +13,9 @@ keeping the same public analysis functions.
 
 .. note::
 
-   These pages describe the 0.1.3 code, including optional GPU acceleration and
-   GPU replicate resampling. Until this version is published on PyPI, install
-   from a checkout containing these changes.
+   These pages describe version 0.1.4, which adds optional GPU acceleration,
+   the explicit one-sample correlation test and cluster resampling. See
+   :doc:`release_notes` for changes since 0.1.3.
 
 .. toctree::
    :maxdepth: 2

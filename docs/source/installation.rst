@@ -33,7 +33,7 @@ Then install the extra from a checkout containing the GPU implementation:
    cd scrna-parameter-estimation
    python -m pip install -e '.[gpu]'
 
-Once 0.1.3 is published, the equivalent PyPI command is:
+From 0.1.4, the equivalent PyPI command is:
 
 .. code-block:: bash
 

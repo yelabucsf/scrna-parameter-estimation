@@ -1,6 +1,6 @@
 name: Publish to PyPI
 
-# Runs automatically when a version tag (e.g. v0.1.3) is pushed, and can
+# Runs automatically when a version tag (e.g. v0.1.4) is pushed, and can
 # also be triggered manually from the Actions tab for a tag that already
 # exists (e.g. one created before this workflow was added).
 on:

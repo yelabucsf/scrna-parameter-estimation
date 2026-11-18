@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 project = "memento"
 copyright = "2026, Min Cheol Kim"
 author = "Min Cheol Kim"
-release = "0.1.3"
+release = "0.1.4"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
