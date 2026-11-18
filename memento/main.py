@@ -994,7 +994,7 @@ def ht_2d_moments(
                 true_corr=[adata.uns['memento']['2d_moments'][group]['corr'][conv_idx] for group in adata.uns['memento']['groups']],
                 cells=[adata.uns['memento']['group_cells'][group][:, [idx_1, idx_2]] for group in adata.uns['memento']['groups']],
                 approx_sf=[adata.uns['memento']['approx_size_factor'][group] for group in adata.uns['memento']['groups']],
-                covariate=covariate.values,
+                covariate=covariate.values if covariate_for_gene is None else covariate[covariate_for_gene[(adata.var.index[idx_1], adata.var.index[idx_2])]].values,
                 treatment=treatment.values if treatment_for_gene is None else treatment[treatment_for_gene[(adata.var.index[idx_1],adata.var.index[idx_2]) ] ].values,
                 Nc_list=Nc_list,
                 num_boot=num_boot,
