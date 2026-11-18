@@ -77,8 +77,9 @@ runs on either backend.
 
 Groups with more cells carry more weight; inspect the per-group correlations
 from ``get_2d_moments(adata, groupby=...)`` before relying on individual
-pairs. ``tutorials/one_sample_correlations.ipynb`` walks through both tests
-and this check.
+pairs. The `one-sample tutorial
+<https://github.com/yelabucsf/scrna-parameter-estimation/blob/master/tutorials/one_sample_correlations.ipynb>`_
+walks through both tests and this check.
 
 Select treatments or covariates per pair with tuple keys:
 
