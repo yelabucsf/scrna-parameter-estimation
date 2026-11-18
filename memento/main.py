@@ -885,22 +885,24 @@ def ht_2d_moments(
 
     With ``treatment=None`` the test is one-sample: H0 is that each pair's
     correlation is zero. The coefficient is the cell-count-weighted mean of
-    the group correlations and is reported under ``tx='intercept'``. This
-    form takes no covariates, per-pair dictionaries or ``resample_rep``.
+    the group correlations and is reported under ``tx='intercept'``. A
+    ``covariate`` does not change the coefficient. With ``resample_rep=True``
+    the group correlations are residualized on it before groups are
+    resampled, which removes covariate-explained between-group variation
+    from the standard error and p-value; without ``resample_rep`` it has no
+    effect. This form takes no per-pair dictionaries.
     """
-    
+
     if backend not in ("cpu", "gpu"):
         raise ValueError("backend must be cpu or gpu")
     one_sample = treatment is None
     if one_sample:
-        if covariate is not None or treatment_for_gene is not None or covariate_for_gene is not None:
+        if treatment_for_gene is not None or covariate_for_gene is not None:
             raise ValueError(
                 "treatment=None requests a one-sample test of correlation "
-                "against zero, which takes no covariate, treatment_for_gene "
-                "or covariate_for_gene."
+                "against zero, which takes no treatment_for_gene or "
+                "covariate_for_gene."
             )
-        if kwargs.get('resample_rep', False):
-            raise NotImplementedError("resample_rep is not supported for the one-sample test (treatment=None).")
     if not inplace:
         adata = adata.copy()
     if one_sample:

@@ -496,3 +496,44 @@ def test_one_sample_api_runs_on_gpu(cuda,prepared_pairs):
     assert set(r.tx)=={'intercept'}
     off=r.gene_1!=r.gene_2
     assert r.loc[off,'corr_coef'].notna().all()
+
+
+@pytest.mark.parametrize('covariates',[('ones',),('age',),('age','d1')])
+def test_one_sample_replicate_regression_matches_cpu(cuda,prepared,monkeypatch,covariates):
+    torch,gpu=cuda;_,tx,cov=prepared
+    from memento import hypothesis_test as ht
+    cov=cov.assign(ones=1.,age=[23.,71.,45.,38.,60.,52.])
+    rng=np.random.default_rng(61)
+    y=rng.uniform(-.9,.9,(2,6,1001))
+    y[0,3,17]=np.nan
+    good=np.ones((2,6),bool);good[1,[0,4]]=False
+    designs=[(('intercept',),covariates)]*2
+    nc=np.arange(6)*11+25
+    def assignments(groups,boots,device,generator):
+        arrays=ht._replicate_assignments(groups,boots,np.random.default_rng(83))
+        return tuple(torch.as_tensor(x,device=device) for x in arrays)
+    monkeypatch.setattr(gpu,'_replicate_assignments',assignments)
+    intercept=pd.DataFrame({'intercept':np.ones(6)},index=tx.index)
+    got=gpu._regress(torch.tensor(y,device='cuda'),None,torch.tensor(good,device='cuda'),cov,intercept,nc,designs,
+                     resample_generator=gpu._generator('cuda',4),one_sample=True)
+    for i in (0,1):
+        mask=good[i]
+        ref=ht._regress_2d(cov[list(covariates)].values[mask],None,y[i,mask],nc[mask],
+                           resample_rep=True,rng=np.random.default_rng(83),one_sample=True)
+        np.testing.assert_allclose(got[i],ref,rtol=2e-8,atol=2e-11)
+
+
+def test_one_sample_covariate_api_on_gpu(cuda,prepared_pairs):
+    torch,gpu=cuda;a,_,cov=prepared_pairs
+    cov=cov.assign(age=[23.,71.,45.,38.,60.,52.])
+    run=lambda **kw:memento.get_2d_ht_result(memento.ht_2d_moments(
+        a,num_boot=512,backend='gpu',inplace=False,random_state=7,**kw))
+    plain=run();adjusted=run(covariate=cov)
+    pd.testing.assert_frame_equal(adjusted,plain)
+    first=run(covariate=cov,resample_rep=True);second=run(covariate=cov,resample_rep=True)
+    pd.testing.assert_frame_equal(first,second)
+    off=(first.gene_1!=first.gene_2).values
+    assert set(first.tx)=={'intercept'}
+    assert np.isfinite(first.loc[off,['corr_coef','corr_se','corr_pval']].values).all()
+    np.testing.assert_allclose(first.loc[off,'corr_coef'],plain.loc[off,'corr_coef'])
+    assert not np.allclose(first.loc[off,'corr_se'],plain.loc[off,'corr_se'])
