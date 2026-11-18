@@ -611,9 +611,14 @@ def _cross_coef_resampled(A, B, sample_weight):
     # actual division by zero triggers noisy RuntimeWarnings on every
     # occurrence, which adds up across a large scan. Avoid the division
     # entirely and substitute NaN directly instead.
-    # Identical sampled treatments have no contrast, even if weighted
-    # centering leaves tiny floating-point residuals.
-    ssA[np.ptp(A, axis=0) == 0] = 0
+    # Sampled treatments that agree up to rounding have no contrast. Exact
+    # equality is not enough: distinct group rows can carry residualized
+    # treatment values that differ only in the last bits, and dividing by
+    # their ~1e-33 variance yields slopes around 1e14. Compare each draw's
+    # range against the column's overall scale instead.
+    scale = np.abs(A).max(axis=(0, 1))
+    tolerance = 16 * np.finfo(float).eps * A.shape[0]
+    ssA[np.ptp(A, axis=0) <= tolerance * scale] = 0
     safe_ssA = np.where(ssA > 0, ssA, 1.0)
     beta = np.einsum('ijk,ij->jk', A_mA * sample_weight[:, :, np.newaxis], B_mB).T/sample_weight.sum(axis=0) / safe_ssA.T
     beta[ssA.T == 0] = np.nan
