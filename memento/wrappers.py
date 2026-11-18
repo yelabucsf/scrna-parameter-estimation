@@ -1,3 +1,5 @@
+import warnings
+
 import memento
 import pandas as pd
 
@@ -78,21 +80,37 @@ def run_eqtl(
 	return pd.concat(results)[['gene', 'tx', 'de_coef', 'de_se', 'de_pval']]
 
 
-def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=[]):
+def _deprecated_replicates(replicates):
+	"""Warn when the binary wrappers' ``replicates`` argument is used."""
+	if not replicates:
+		return []
+	warnings.warn(
+		"The 'replicates' argument of binary_test_1d/binary_test_2d is deprecated "
+		"and will be removed in a future release. It only adds columns to the "
+		"grouping: it does not adjust for replicates as covariates or resample "
+		"them. For designs with replicates, use create_groups, compute_1d_moments "
+		"and ht_1d_moments/ht_2d_moments directly; see 'Replicates, covariates, and comparisons' "
+		"in the documentation.",
+		FutureWarning, stacklevel=3)
+	return [replicates] if isinstance(replicates, str) else list(replicates)
+
+
+def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=None):
 	"""
 	Compare mean and variability for a binary treatment using the CPU backend.
 
-	``replicates`` is a list of observation column names added to the grouping
-	alongside ``treatment_col``. It does not add regression covariates, account
-	for donor pairing, or enable replicate resampling. Use the explicit setup,
-	grouping, moment, and testing functions for those designs or GPU execution.
+	``replicates`` is deprecated and will be removed. It is a list of observation
+	column names added to the grouping alongside ``treatment_col``. It does not
+	add regression covariates, account for donor pairing, or enable replicate
+	resampling. Use the explicit setup, grouping, moment, and testing functions
+	for those designs or GPU execution.
 	Returns a result DataFrame with unadjusted p-values; the input is copied.
 	"""
 	
 	adata = adata.copy().copy()
 	adata.obs['capture_rate'] = capture_rate
 	memento.setup_memento(adata, q_column='capture_rate')
-	memento.create_groups(adata, label_columns=[treatment_col]+replicates)
+	memento.create_groups(adata, label_columns=[treatment_col]+_deprecated_replicates(replicates))
 	memento.compute_1d_moments(adata, min_perc_group=.9)
 	sample_meta = memento.get_groups(adata)[[treatment_col]]
 	memento.ht_1d_moments(
@@ -105,21 +123,21 @@ def binary_test_1d(adata, capture_rate, treatment_col, num_cpus, num_boot=5000, 
 	return result_1d
 
 
-def binary_test_2d(adata, gene_pairs, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=[]):
+def binary_test_2d(adata, gene_pairs, capture_rate, treatment_col, num_cpus, num_boot=5000, verbose=1, replicates=None):
 	"""
 	Compare correlation for a binary treatment using the CPU backend.
 
 	``gene_pairs`` contains (gene_1, gene_2) tuples. Pairs with genes removed by
-	filtering are omitted. ``replicates`` adds observation column names to the
-	grouping only: it does not add donor covariates, account for pairing, or
-	enable replicate resampling. Use the explicit workflow for those controls
+	filtering are omitted. ``replicates`` is deprecated and will be removed. It
+	adds observation column names to the grouping only: it does not add donor
+	covariates, account for pairing, or enable replicate resampling. Use the explicit workflow for those controls
 	or GPU execution. Returns a result DataFrame; the input is copied.
 	"""
 	
 	adata = adata.copy().copy()
 	adata.obs['capture_rate'] = capture_rate
 	memento.setup_memento(adata, q_column='capture_rate')
-	memento.create_groups(adata, label_columns=[treatment_col]+replicates)
+	memento.create_groups(adata, label_columns=[treatment_col]+_deprecated_replicates(replicates))
 	memento.compute_1d_moments(adata, min_perc_group=.9)
 	filtered_gene_pairs = [(a,b) for a,b in gene_pairs if a in adata.var.index and b in adata.var.index]
 	memento.compute_2d_moments(adata, filtered_gene_pairs)
